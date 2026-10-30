@@ -1,10 +1,10 @@
 # TerraCommander
 
-## Project Scope
+## Product Positioning
 
-This project is an Electron application scaffold with a blank renderer entry point. Product requirements have not been defined. Do not add business pages, navigation, demo interactions, or assumed product features without an explicit request.
+TerraCommander is a desktop file manager for local files, cloud accounts, and remote storage. It provides unified browsing, file operations, cross-provider transfers, folder synchronization, scheduled backups, cross-account search, sharing, and encryption. It supports multiple accounts per provider and protocols including S3, FTP, SFTP, and WebDAV. 
 
-Keep `README.md` empty unless the user explicitly requests content.
+Implement features only when requested. Keep `README.md` empty unless explicitly instructed otherwise.
 
 ## Technology Stack
 
