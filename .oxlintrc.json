@@ -1,0 +1,20 @@
+{
+  "plugins": ["typescript", "react", "react-hooks", "jsx-a11y"],
+  "categories": {
+    "correctness": "error"
+  },
+  "env": {
+    "browser": true,
+    "node": true
+  },
+  "options": {
+    "typeAware": true
+  },
+  "rules": {
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn"
+  },
+  "ignorePatterns": ["node_modules", "out", "dist", "coverage"]
+}
