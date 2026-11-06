@@ -8,7 +8,7 @@ import {
   readHandle,
   TestCheckpointStore,
 } from '../testing/fixtures';
-import { deferred } from '../testing/deferred';
+import { deferred } from '../../testing/deferred';
 import { StorageAccess } from '../access/storage-access';
 import { managedRead, scopeSource } from './streams';
 

@@ -25,16 +25,20 @@ Use `package.json` and `package-lock.json` as the source of truth for dependency
 | Data validation         | Zod 4                                                                              |
 | Local persistence       | electron-store 12                                                                  |
 | Logging                 | electron-log 5                                                                     |
+| Google Drive accounts   | google-auth-library 11                                                             |
 | Linting                 | Oxlint and oxlint-tsgolint with type-aware linting                                 |
 | Formatting              | Oxfmt                                                                              |
 | Testing                 | Vitest 5, React Testing Library, jsdom                                             |
 | Packaging               | electron-builder 26; Windows x64 NSIS installer and portable executable            |
 
-Mantine Provider is configured, with theme customization in `src/renderer/src/app/theme.ts`. Dependencies such as Zustand, Zod, electron-store, and notifications are installed for future use; no corresponding product features are implemented.
+Mantine Provider is configured, with theme customization in `src/renderer/src/app/theme.ts`. Zustand and notifications remain reserved for future features. Account management and storage access are separate backend modules, with provider-specific behavior behind common contracts. See `docs/account-management.md` and `docs/storage-abstraction.md` for their designs.
 
 ## Directory Structure and Boundaries
 
 - `src/main/`: Electron main process, window lifecycle, logging, IPC, and sender validation.
+- `src/main/services/`: Application-service ownership, on-demand initialization, and disposal.
+- `src/main/accounts/`: Provider-neutral account management and platform-specific authentication.
+- `src/main/storage/`: Provider-neutral storage access and adapter contracts.
 - `src/preload/`: Restricted desktop APIs exposed through `contextBridge`.
 - `src/shared/`: API types and communication channels shared by the main and renderer processes.
 - `src/renderer/src/app/`: Blank React entry point, Mantine Provider, and theme configuration.
@@ -42,6 +46,8 @@ Mantine Provider is configured, with theme customization in `src/renderer/src/ap
 - `src/renderer/src/testing/`: Renderer test environment configuration.
 
 Keep `contextIsolation: true`, `sandbox: true`, and `nodeIntegration: false`. Implement system capabilities in the main process and expose specific methods through preload. Validate senders and input when adding IPC handlers.
+
+Keep common account and storage layers independent of provider SDKs. Authentication and file operations remain separate responsibilities. Reading account metadata must not initialize provider integrations; credentials remain in the backend.
 
 ## Common Commands
 
