@@ -10,7 +10,7 @@ Google Drive implements the shared [account provider contract](account-managemen
 
 Deliver backend account onboarding and lifecycle management: browser authorization, multiple accounts, encrypted credential persistence, restart recovery, token refresh, reauthorization, local removal, and a minimal Drive API check.
 
-The project supplies a Desktop OAuth client; development can override its configuration. Request full Drive read/write authorization. Frontend screens, new preload/IPC methods, Drive file operations, space discovery, upload drivers, and production upload-checkpoint persistence remain separate work. This phase does not register a partial `StorageAdapter` or imply that files can already be browsed.
+The project supplies a Desktop OAuth client selected through Vite's environment modes. Request full Drive read/write authorization. Frontend screens, new preload/IPC methods, Drive file operations, space discovery, upload drivers, and production upload-checkpoint persistence remain separate work. This phase does not register a partial `StorageAdapter` or imply that files can already be browsed.
 
 ## Components and Dependencies
 
@@ -36,7 +36,7 @@ The account service, browser launcher, callback receiver, token provider, encryp
 
 ## OAuth Client and Permissions
 
-Release builds receive the project-owned Desktop client configuration through release configuration. Development overrides are read only by the main process. Keep development and release account stores separate. Record the client ID with each grant; changing the configured client must not silently replace an existing grant's identity.
+Development and release builds use `VITE_GOOGLE_DRIVE_CLIENT_ID` and `VITE_GOOGLE_DRIVE_CLIENT_SECRET`, with separate values in their mode-specific environment files. Both main and renderer use the shared `VITE_` convention through `import.meta.env`; the Google provider validates its configuration on first use. Keep development and release account stores separate. Record the client ID with each grant; changing the configured client must not silently replace an existing grant's identity.
 
 Request `openid`, `email`, and `https://www.googleapis.com/auth/drive`. Identity scopes support account binding and display. Display names can come from the Drive account check, so `profile` is unnecessary. Record the scopes actually granted and require the Drive scope before accepting a new account. Full Drive authorization is restricted; `drive.file` does not cover a general file manager. See [Drive scopes](https://developers.google.com/workspace/drive/api/guides/api-specific-auth).
 

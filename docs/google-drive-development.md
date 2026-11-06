@@ -8,16 +8,21 @@ The [shared account runtime](account-management.md) opens on first account use. 
 
 Create a Google Cloud project, enable Drive API, configure its consent screen, and create an OAuth client of type **Desktop app**. For a project in Testing, add the Google accounts used for live testing. The requested scopes are `openid`, `email`, and `https://www.googleapis.com/auth/drive`.
 
-Development reads these environment variables in the main process:
+Both development and release builds use `VITE_GOOGLE_DRIVE_CLIENT_ID` and the optional `VITE_GOOGLE_DRIVE_CLIENT_SECRET`. Copy the root `.env.example` to the matching mode file and fill in that environment's Desktop OAuth client. Use separate Google Cloud projects and clients for development and production.
 
 ```powershell
-$env:GOOGLE_DRIVE_CLIENT_ID = '<desktop-client-id>'
-# Optional, if supplied with the Desktop client configuration:
-$env:GOOGLE_DRIVE_CLIENT_SECRET = '<desktop-client-secret>'
+Copy-Item .env.example .env.development.local
+# Edit .env.development.local with your development Desktop OAuth client.
 npm run dev
 ```
 
-Release builds embed the project client configuration in the main bundle. Set `TERRACOMMANDER_GOOGLE_DRIVE_CLIENT_ID` and optionally `TERRACOMMANDER_GOOGLE_DRIVE_CLIENT_SECRET` in the build environment before `npm run build` or `npm run dist`. Packaged applications ignore the development overrides. Keep real values out of source control; native Desktop clients rely on PKCE rather than confidentiality of an embedded client secret.
+Use electron-vite's native `VITE_` prefix for shared build configuration. Main and renderer code read the same variables through `import.meta.env`, for example `import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID`. Vite loads and replaces these values automatically; new variables require no changes to `electron.vite.config.ts`. Shared environment types live in `src/shared/env.d.ts`. There is no custom `define` mapping, environment copying, or runtime override layer.
+
+Commands read `.env`, `.env.local`, and their mode-specific variants from the project root. Development and the smoke harness use `development`; release builds use `production` by default. Mode-specific files override common files; existing shell variables take precedence at build time. Restart the command after editing an environment file. Local environment files are ignored by Git; `.env.example` contains empty placeholders only.
+
+For release builds, copy `.env.example` to `.env.production.local` and set the same variable names to the production client's values, then run `npm run build` or `npm run dist`. Packaged applications use the values selected during the build; they do not load environment files or read runtime Google client overrides.
+
+`VITE_` values are public build configuration available to main and renderer. The Desktop OAuth client configuration follows this convention; user access tokens and refresh tokens remain in backend memory or encrypted persistence. Keep real values out of source control; native Desktop clients rely on PKCE rather than confidentiality of an embedded client secret. See [electron-vite environment variables](https://electron-vite.org/guide/env-and-mode).
 
 Without client configuration, the application still starts and saved account summaries remain readable. Login and credential use report `ClientConfigurationInvalid`. Changing client IDs never migrates existing grants implicitly.
 

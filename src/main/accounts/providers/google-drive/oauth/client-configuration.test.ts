@@ -3,18 +3,16 @@ import { readGoogleClientConfiguration } from './client-configuration';
 import { TEST_CLIENT_ID } from '../testing/fixtures';
 
 describe('Google client configuration', () => {
-  it('ignores client overrides in releases and validates development client identity', () => {
-    const bundled = { clientId: TEST_CLIENT_ID };
-    const overrides = { GOOGLE_DRIVE_CLIENT_ID: 'developer.apps.googleusercontent.com' };
-    expect(readGoogleClientConfiguration(bundled, false, overrides)).toEqual(bundled);
-    expect(readGoogleClientConfiguration(bundled, true, overrides)?.clientId).toBe(
-      overrides.GOOGLE_DRIVE_CLIENT_ID,
+  it('validates the configured client and permits an omitted secret or unconfigured provider', () => {
+    expect(readGoogleClientConfiguration(TEST_CLIENT_ID)).toEqual({ clientId: TEST_CLIENT_ID });
+    expect(readGoogleClientConfiguration(TEST_CLIENT_ID, 'desktop-secret')).toEqual({
+      clientId: TEST_CLIENT_ID,
+      clientSecret: 'desktop-secret',
+    });
+    expect(readGoogleClientConfiguration(undefined)).toBeUndefined();
+    expect(readGoogleClientConfiguration('')).toBeUndefined();
+    expect(() => readGoogleClientConfiguration('https://untrusted.test')).toThrow(
+      expect.objectContaining({ code: 'ClientConfigurationInvalid' }),
     );
-    expect(readGoogleClientConfiguration(undefined, true, {})).toBeUndefined();
-    expect(() =>
-      readGoogleClientConfiguration(bundled, true, {
-        GOOGLE_DRIVE_CLIENT_ID: 'https://untrusted.test',
-      }),
-    ).toThrow(expect.objectContaining({ code: 'ClientConfigurationInvalid' }));
   });
 });
