@@ -18,14 +18,19 @@ async function setup() {
 }
 
 describe('storage access dispatch and native references', () => {
-  it('rejects oversized range results and releases the returned handle', async () => {
+  it('forwards byte ranges and releases handles when adapters exceed them', async () => {
     const { adapter, registry, access } = await setup();
+    const handle = await access.read(fixtureRef(), { range: { offset: 1, length: 2 } });
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of handle.stream) chunks.push(chunk as Uint8Array);
+    expect(Buffer.concat(chunks).toString()).toBe('bc');
+    await handle.dispose();
     const original = adapter.read.bind(adapter);
     adapter.read = (ref, _options, ctx) => original(ref, {}, ctx);
     await expect(
       access.read(fixtureRef(), { range: { offset: 1, length: 2 } }),
     ).rejects.toMatchObject({ code: 'OutcomeUnknown' });
-    expect(adapter.streamDisposals).toBe(1);
+    expect(adapter.streamDisposals).toBe(2);
     await registry.dispose();
   });
   it('preserves duplicate names, exact keys and absent metadata', async () => {

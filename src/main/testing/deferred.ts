@@ -1,10 +1,6 @@
 export function deferred<T>() {
-  let resolve: (value: T | PromiseLike<T>) => void = () => {
-    throw new Error('Not initialized');
-  };
-  let reject: (reason?: unknown) => void = () => {
-    throw new Error('Not initialized');
-  };
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
   const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
     reject = rejectPromise;

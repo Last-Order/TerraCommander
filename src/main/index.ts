@@ -1,13 +1,35 @@
 import { fileURLToPath } from 'node:url';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { app, BrowserWindow, dialog, session } from 'electron';
 import log from 'electron-log/main';
 import { registerIpcHandlers } from './ipc';
 import { isTrustedRenderer } from './security';
+import { ApplicationServices } from './services/application-services';
 
 let mainWindow: BrowserWindow | null = null;
+const services = new ApplicationServices({ whenReady: () => app.whenReady() });
+let shutdownStarted = false;
+let shutdownComplete = false;
 const developmentUrl = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefined;
 const rendererFile = new URL('../renderer/index.html', import.meta.url);
 const entryUrl = developmentUrl ?? rendererFile.href;
+
+// Account storage has one main-process writer. Development uses a separate profile
+// so test OAuth clients cannot overwrite grants in an installed release.
+const profileName = app.isPackaged ? 'TerraCommander' : 'TerraCommander Development';
+app.setName('TerraCommander');
+const profilePath = join(app.getPath('appData'), profileName);
+mkdirSync(profilePath, { recursive: true });
+app.setPath('userData', profilePath);
+const ownsProfile = app.requestSingleInstanceLock();
+if (!ownsProfile) app.quit();
+
+app.on('second-instance', () => {
+  if (mainWindow?.isMinimized()) mainWindow.restore();
+  mainWindow?.show();
+  mainWindow?.focus();
+});
 
 function createWindow(): void {
   const window = new BrowserWindow({
@@ -56,6 +78,7 @@ function createWindow(): void {
 void app
   .whenReady()
   .then(() => {
+    if (!ownsProfile) return;
     app.setAppUserModelId('com.terracommander.app');
     app.setName('TerraCommander');
     log.info('Starting TerraCommander', { version: app.getVersion() });
@@ -73,11 +96,30 @@ void app
     });
   })
   .catch((error: unknown) => {
-    log.error('Application startup failed', error);
+    // Keep diagnostics safe even when future startup dependencies carry private causes.
+    log.error('Application startup failed', {
+      errorType: error instanceof Error ? error.name : 'Unknown',
+    });
     dialog.showErrorBox('TerraCommander', '应用启动失败，请查看应用日志。');
     app.quit();
   });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('before-quit', (event) => {
+  if (shutdownComplete) return;
+  event.preventDefault();
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  void services
+    .dispose()
+    .catch(() => {
+      log.error('Application services could not finish shutting down');
+    })
+    .finally(() => {
+      shutdownComplete = true;
+      app.quit();
+    });
 });

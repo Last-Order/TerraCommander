@@ -2,6 +2,8 @@
 
 Design and infrastructure implementation notes · November 1, 2026
 
+This document records the infrastructure phase. The subsequent [Google Drive account integration plan](google-drive-accounts.md) covers account onboarding separately and does not implement a Drive storage adapter.
+
 ## Current Delivery Scope
 
 This phase covers provider-neutral infrastructure only: contracts, adapter registration and dispatch, capability handling, normalized errors, stream lifecycle, and upload recovery coordination through injected ports.
@@ -203,6 +205,7 @@ Live integration tests, production checkpoint-store bindings, and real local/clo
 - `src/shared/storage/index.ts` exports serializable models and public failure types.
 - `src/main/storage/index.ts` exports the registry, access facade, upload coordinator, stream helpers, and adapter/service contracts.
 - The host supplies adapter factories, a credential resolver, a logger, and a checkpoint store. No production adapters are registered automatically.
+- The [shared account runtime](account-management.md) supplies provider-bound connection definitions and a credential resolver. It remains separate from file-operation adapters.
 - `CheckpointStore.save` must atomically replace the record, resolve only after durable persistence, and protect confidential payloads. One coordinator owns a backing store at a time; cross-process exclusion belongs to the host binding.
 - A connection ID can reconnect with the same configuration in a registry. Reusing it for another configuration is rejected; allocate another connection ID instead.
 - Pagination cursors are authenticated and bound to a facade instance, connection, parent, and page size. They are intentionally separate from persistent upload checkpoints.

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ConnectionDefinition } from '../../../shared/storage/models';
 import type { AdapterServices } from '../ports/adapter';
 import { StorageError } from '../core/errors';
-import { deferred } from '../testing/deferred';
+import { deferred } from '../../testing/deferred';
 import { FixtureAdapter, fixtureServices } from '../testing/fixtures';
 import { AdapterRegistry } from './adapter-registry';
 
