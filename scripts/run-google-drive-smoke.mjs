@@ -7,6 +7,7 @@ import { build } from 'vite';
 const outputDirectory = resolve('node_modules/.cache/google-drive-smoke');
 await build({
   configFile: false,
+  mode: 'development',
   build: {
     ssr: 'scripts/google-drive-accounts-smoke.ts',
     target: 'node24',

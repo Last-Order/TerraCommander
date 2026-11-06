@@ -17,18 +17,7 @@ export default defineConfig(({ command }) => {
   ].join('; ');
 
   return {
-    main: {
-      define: {
-        __GOOGLE_DRIVE_OAUTH_CLIENT__: process.env.TERRACOMMANDER_GOOGLE_DRIVE_CLIENT_ID
-          ? JSON.stringify({
-              clientId: process.env.TERRACOMMANDER_GOOGLE_DRIVE_CLIENT_ID,
-              ...(process.env.TERRACOMMANDER_GOOGLE_DRIVE_CLIENT_SECRET
-                ? { clientSecret: process.env.TERRACOMMANDER_GOOGLE_DRIVE_CLIENT_SECRET }
-                : {}),
-            })
-          : 'undefined',
-      },
-    },
+    main: {},
     preload: {
       build: {
         externalizeDeps: false,

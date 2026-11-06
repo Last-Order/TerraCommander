@@ -7,21 +7,12 @@ const clientSchema = z.strictObject({
   clientSecret: z.string().min(1).optional(),
 });
 
-/** Release configuration is embedded in main only; packaged apps ignore developer overrides. */
+/** Validate client values selected by the current Vite mode when the provider is first used. */
 export function readGoogleClientConfiguration(
-  bundled: GoogleClientConfiguration | undefined,
-  development: boolean,
-  environment: NodeJS.ProcessEnv,
+  clientId: string | undefined,
+  clientSecret?: string,
 ): GoogleClientConfiguration | undefined {
-  const overrideId = development ? environment.GOOGLE_DRIVE_CLIENT_ID : undefined;
-  const candidate = overrideId
-    ? {
-        clientId: overrideId,
-        ...(environment.GOOGLE_DRIVE_CLIENT_SECRET
-          ? { clientSecret: environment.GOOGLE_DRIVE_CLIENT_SECRET }
-          : {}),
-      }
-    : bundled;
-  if (!candidate) return undefined;
+  if (!clientId) return undefined;
+  const candidate = { clientId, ...(clientSecret ? { clientSecret } : {}) };
   return parseAccountData(clientSchema, candidate, 'ClientConfigurationInvalid');
 }
