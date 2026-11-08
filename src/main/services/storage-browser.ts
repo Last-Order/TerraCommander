@@ -1,0 +1,219 @@
+import { realpath, stat } from 'node:fs/promises';
+import type { AccountSummary } from '../../shared/accounts';
+import type { ConnectionDefinition, EntryRef, Space } from '../../shared/storage';
+import {
+  localConnectionId,
+  type SpaceChoice,
+  type StorageConnectionSummary,
+} from '../../shared/storage-browser';
+import { AccountError } from '../accounts/core/errors';
+import { AdapterRegistry, StorageAccess, StorageError, type StorageLogger } from '../storage';
+import {
+  googleDriveAdapterFactory,
+  myDriveSpace,
+} from '../storage/providers/google-drive/google-drive-adapter';
+import {
+  localAdapterFactory,
+  localFailure,
+  localSpace,
+} from '../storage/providers/local/local-adapter';
+import type { AccountRuntime } from './application-services';
+import type { StoragePreferences } from './storage-preferences';
+
+const localConnection: ConnectionDefinition = {
+  id: localConnectionId,
+  provider: 'local',
+  configuration: {},
+};
+const browserAuthentication = { method: 'browser' };
+
+export class StorageBrowser {
+  private readonly registry: AdapterRegistry;
+  private readonly storage: StorageAccess;
+  private readonly connections = new Map<string, Promise<void>>();
+  private readonly discovered = new Map<string, Map<string, Space>>();
+  private readonly authorizationRequired = new Set<string>();
+  private authorization: AbortController | undefined;
+
+  constructor(
+    private readonly preferences: StoragePreferences,
+    private readonly getAccounts: (signal?: AbortSignal) => Promise<AccountRuntime>,
+    logger: StorageLogger,
+  ) {
+    this.registry = new AdapterRegistry({
+      logger,
+      credentials: {
+        resolve: async (reference, ctx) =>
+          (await getAccounts(ctx.signal)).credentials.resolve(reference, ctx),
+      },
+    });
+    this.registry.register(localAdapterFactory(() => preferences.folders()));
+    this.registry.register(googleDriveAdapterFactory());
+    this.storage = new StorageAccess(this.registry, {
+      async load() {
+        throw new StorageError('Unsupported');
+      },
+      async save() {
+        throw new StorageError('Unsupported');
+      },
+    });
+  }
+
+  async listConnections(): Promise<StorageConnectionSummary[]> {
+    const { accounts } = await this.getAccounts();
+    const result = (await accounts.list('google-drive')).map((account) =>
+      this.summarizeAccount(account),
+    );
+    const localSpaces = this.preferences.spaces(localConnectionId);
+    if (localSpaces) {
+      result.push({
+        id: localConnectionId,
+        provider: 'local',
+        name: '此电脑',
+        detail: '本地文件系统',
+        needsAuthorization: false,
+        spaces: this.displayedSpaces(localConnectionId),
+      });
+    }
+    return result.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+  }
+
+  async listSpaces(id: string): Promise<SpaceChoice[]> {
+    return this.withConnection(id, async () => {
+      const available = await this.storage.listSpaces(id);
+      const known = new Map(available.map((space) => [space.id, space]));
+      this.discovered.set(id, known);
+      const choices = available.map((space) => ({ space, available: true }));
+      for (const space of this.displayedSpaces(id)) {
+        if (!known.has(space.id)) choices.push({ space, available: false });
+      }
+      return choices;
+    });
+  }
+
+  async saveSpaces(id: string, spaceIds: string[]): Promise<void> {
+    await this.definition(id);
+    const spaces = new Map(this.displayedSpaces(id).map((space) => [space.id, space]));
+    for (const [spaceId, space] of this.discovered.get(id) ?? []) spaces.set(spaceId, space);
+    const selected = spaceIds.map((spaceId) => {
+      const space = spaces.get(spaceId);
+      if (!space) throw new StorageError('InvalidArgument');
+      return space;
+    });
+    this.preferences.saveSpaces(id, selected);
+  }
+
+  async addLocalFolder(path: string): Promise<Space> {
+    try {
+      const folder = await realpath(path);
+      if (!(await stat(folder)).isDirectory()) throw new StorageError('InvalidArgument');
+      this.preferences.addFolder(folder);
+      const space = localSpace(localConnectionId, folder);
+      const spaces = this.discovered.get(localConnectionId) ?? new Map<string, Space>();
+      spaces.set(space.id, space);
+      this.discovered.set(localConnectionId, spaces);
+      return space;
+    } catch (error) {
+      localFailure(error);
+    }
+  }
+
+  async addGoogleDrive(): Promise<StorageConnectionSummary> {
+    return this.runAuthorization(async (signal) => {
+      const { accounts } = await this.getAccounts(signal);
+      const account = await accounts.add('google-drive', browserAuthentication, { signal });
+      this.authorizationRequired.delete(account.id);
+      return this.summarizeAccount(account);
+    });
+  }
+
+  async reauthorize(id: string): Promise<void> {
+    if (id === localConnectionId) throw new AccountError('Unsupported');
+    await this.runAuthorization(async (signal) => {
+      const { accounts } = await this.getAccounts(signal);
+      await accounts.updateAuthentication(id, browserAuthentication, { signal });
+      this.authorizationRequired.delete(id);
+    });
+  }
+
+  cancelAuthorization(): void {
+    this.authorization?.abort();
+  }
+
+  async listDirectory(parent: EntryRef, cursor?: string) {
+    return this.withConnection(parent.connectionId, () => {
+      const { connectionId, spaceId } = parent;
+      if (
+        !this.discovered.get(connectionId)?.has(spaceId) &&
+        !this.displayedSpaces(connectionId).some((space) => space.id === spaceId)
+      ) {
+        throw new StorageError('NotFound');
+      }
+      return this.storage.list(parent, { cursor });
+    });
+  }
+
+  async dispose(): Promise<void> {
+    this.cancelAuthorization();
+    await this.registry.dispose();
+  }
+
+  private displayedSpaces(id: string): Space[] {
+    const saved =
+      this.preferences.spaces(id) ?? (id === localConnectionId ? [] : [myDriveSpace(id)]);
+    const discovered = this.discovered.get(id);
+    return saved.map((space) => discovered?.get(space.id) ?? space);
+  }
+
+  private summarizeAccount(account: AccountSummary): StorageConnectionSummary {
+    return {
+      id: account.id,
+      provider: 'google-drive',
+      name: account.displayName || account.email || 'Google Drive',
+      detail:
+        account.email && account.displayName ? 'Google Drive · ' + account.email : 'Google Drive',
+      needsAuthorization:
+        account.authorization === 'reauthorization-required' ||
+        this.authorizationRequired.has(account.id),
+      spaces: this.displayedSpaces(account.id),
+    };
+  }
+
+  private async definition(id: string): Promise<ConnectionDefinition> {
+    if (id === localConnectionId) return localConnection;
+    const { accounts } = await this.getAccounts();
+    return accounts.getConnectionDefinition(id);
+  }
+
+  private async withConnection<T>(id: string, run: () => Promise<T>): Promise<T> {
+    const definition = await this.definition(id);
+    try {
+      let connection = this.connections.get(id);
+      if (!connection) {
+        connection = this.registry.connect(definition).catch((error: unknown) => {
+          this.connections.delete(id);
+          throw error;
+        });
+        this.connections.set(id, connection);
+      }
+      await connection;
+      return await run();
+    } catch (error) {
+      if (error instanceof StorageError && error.code === 'AuthRequired') {
+        this.authorizationRequired.add(id);
+      }
+      throw error;
+    }
+  }
+
+  private async runAuthorization<T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    if (this.authorization) throw new AccountError('Busy');
+    const controller = new AbortController();
+    this.authorization = controller;
+    try {
+      return await run(controller.signal);
+    } finally {
+      this.authorization = undefined;
+    }
+  }
+}

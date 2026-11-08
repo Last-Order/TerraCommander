@@ -1,0 +1,256 @@
+.workspace {
+  --sidebar-surface: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7));
+  --storage-border: light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
+  --storage-hover: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6));
+  --storage-accent: var(--mantine-color-teal-light-color);
+
+  display: grid;
+  grid-template-columns: 17rem minmax(0, 1fr);
+  height: 100dvh;
+}
+
+.sidebar {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--sidebar-surface);
+  border-inline-end: 1px solid var(--storage-border);
+}
+
+.brand {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.55rem;
+  height: 3.5rem;
+  padding-inline: 1rem;
+  border-bottom: 1px solid var(--storage-border);
+  font-weight: 650;
+}
+
+.brand svg,
+.emptyDirectory svg,
+button.entry > svg:first-child {
+  color: var(--storage-accent);
+}
+
+.navigation {
+  overflow: auto;
+  padding: 0.75rem 0.625rem;
+}
+
+.sidebarHeading,
+.connectionHeading {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.sidebarHeading {
+  justify-content: space-between;
+  padding-inline: 0.375rem;
+  margin-bottom: 0.75rem;
+}
+
+.sidebarHeading h2 {
+  margin: 0;
+  font-size: var(--mantine-font-size-sm);
+}
+
+.connection + .connection {
+  margin-top: 0.55rem;
+}
+
+.connectionToggle,
+.space,
+.crumb button,
+button.entry {
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: var(--mantine-radius-sm);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.connectionToggle:hover,
+.space:hover,
+.crumb button:hover,
+button.entry:hover {
+  background: var(--storage-hover);
+}
+
+.connectionToggle,
+.space {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.45rem;
+}
+
+.connectionToggle {
+  flex: 1;
+}
+
+.connectionToggle svg,
+.space svg,
+.crumb svg,
+.entry svg {
+  flex: none;
+}
+
+.connectionToggle[aria-expanded='false'] .chevron {
+  transform: rotate(-90deg);
+}
+
+.connectionText {
+  display: grid;
+  min-width: 0;
+  font-size: var(--mantine-font-size-sm);
+}
+
+.connectionText small {
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-xs);
+}
+
+.connectionText > *,
+.space span,
+.crumb span,
+.crumb button {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.authorization {
+  margin-inline-start: 1.95rem;
+}
+
+.spaces {
+  list-style: none;
+  padding-inline-start: 1.55rem;
+  margin: 0.2rem 0 0;
+}
+
+.space {
+  width: 100%;
+  min-height: 2rem;
+  font-size: var(--mantine-font-size-sm);
+}
+
+.space[aria-current='location'] {
+  color: var(--storage-accent);
+  background: var(--mantine-color-teal-light);
+  font-weight: 600;
+}
+
+.sidebarStatus,
+.directoryStatus {
+  margin: 0.5rem 0.375rem;
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-sm);
+}
+
+.sidebarStatus p {
+  margin: 0 0 0.25rem;
+}
+
+.spaceChoices {
+  display: grid;
+  gap: 0.7rem;
+  max-height: min(50vh, 22rem);
+  overflow: auto;
+}
+
+.spaceChoices:empty {
+  display: none;
+}
+
+.directory {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.directoryHeader {
+  display: flex;
+  min-height: 3.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 1.25rem;
+  border-bottom: 1px solid var(--storage-border);
+}
+
+.breadcrumbs,
+.crumb {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.crumb button,
+.crumb span {
+  padding: 0.25rem 0.5rem;
+}
+
+.crumb span {
+  font-weight: 600;
+}
+
+.crumb svg,
+.entry svg:last-child {
+  color: var(--mantine-color-dimmed);
+}
+
+.directoryContents {
+  min-height: 0;
+  overflow: auto;
+  padding: 0.9rem 1.25rem;
+}
+
+.entries {
+  list-style: none;
+  margin: 0 0 0.65rem;
+  padding: 0;
+}
+
+.entry {
+  display: flex;
+  width: 100%;
+  min-height: 2.3rem;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.35rem 0.6rem;
+  font-size: var(--mantine-font-size-sm);
+}
+
+.entry span {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.emptyDirectory {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 0.45rem;
+  padding: 1.25rem;
+  text-align: center;
+}
+
+.emptyDirectory h1 {
+  margin: 0.35rem 0 0;
+  font-size: var(--mantine-font-size-lg);
+  font-weight: 600;
+}
+
+.emptyDirectory p {
+  margin: 0;
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-sm);
+}

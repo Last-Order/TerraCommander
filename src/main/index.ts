@@ -88,7 +88,7 @@ void app
     });
     session.defaultSession.setPermissionCheckHandler(() => false);
 
-    registerIpcHandlers(() => mainWindow, entryUrl);
+    registerIpcHandlers(() => mainWindow, entryUrl, services);
     createWindow();
 
     app.on('activate', () => {
