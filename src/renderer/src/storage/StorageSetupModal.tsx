@@ -1,11 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Group, Loader, Modal, Stack, Text } from '@mantine/core';
 import { Cloud, FolderPlus, Monitor } from 'lucide-react';
-import {
-  localConnectionId,
-  type SpaceChoice,
-  type StorageConnectionSummary,
-} from '../../../shared/storage-browser';
+import useSWR from 'swr';
+import { localConnectionId, type StorageConnectionSummary } from '../../../shared/storage-browser';
 import { errorText, resultOf } from './storage-client';
 import classes from './StorageWorkspace.module.css';
 
@@ -162,40 +159,23 @@ interface PickerProps {
 }
 
 function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }: PickerProps) {
-  const [choices, setChoices] = useState<SpaceChoice[]>(() =>
-    connection.spaces.map((space) => ({ space, available: true })),
+  const {
+    data: choices,
+    error,
+    isValidating: loading,
+    mutate,
+  } = useSWR(
+    ['storage/spaces', connection.id] as const,
+    ([, id]) => resultOf(window.desktop.storage.listSpaces(id)),
+    {
+      fallbackData: connection.spaces.map((space) => ({ space, available: true })),
+      onError: onChanged,
+    },
   );
   const [selected, setSelected] = useState(() => new Set(connection.spaces.map(({ id }) => id)));
-  const [attempt, setAttempt] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [discoveryError, setDiscoveryError] = useState<string | null>(null);
   const [action, setAction] = useState<'folder' | 'save' | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let current = true;
-    void resultOf(window.desktop.storage.listSpaces(connection.id))
-      .then((result) => {
-        if (current) setChoices(result);
-      })
-      .catch((failure: unknown) => {
-        if (!current) return;
-        setDiscoveryError(errorText(failure));
-        onChanged();
-      })
-      .finally(() => {
-        if (current) setLoading(false);
-      });
-    return () => {
-      current = false;
-    };
-  }, [attempt, connection.id, onChanged]);
-
-  function retry() {
-    setDiscoveryError(null);
-    setLoading(true);
-    setAttempt((previous) => previous + 1);
-  }
+  const discoveryError = !loading && error ? errorText(error) : null;
 
   function toggle(id: string, checked: boolean) {
     setSelected((previous) => {
@@ -213,10 +193,13 @@ function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }: Picke
     try {
       const space = await resultOf(window.desktop.storage.chooseFolder());
       if (space) {
-        setChoices((previous) => [
-          ...previous.filter((choice) => choice.space.id !== space.id),
-          { space, available: true },
-        ]);
+        await mutate(
+          (previous = choices) => [
+            ...previous.filter((choice) => choice.space.id !== space.id),
+            { space, available: true },
+          ],
+          { revalidate: false },
+        );
         toggle(space.id, true);
       }
     } catch (failure) {
@@ -233,6 +216,10 @@ function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }: Picke
     setActionError(null);
     try {
       await resultOf(window.desktop.storage.saveSpaces(connection.id, [...selected]));
+      await mutate(
+        choices.filter(({ space, available }) => available || selected.has(space.id)),
+        { revalidate: false },
+      );
       onSaved();
     } catch (failure) {
       setActionError(errorText(failure));
@@ -252,7 +239,12 @@ function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }: Picke
         <Alert color="red" role="alert">
           <Group justify="space-between">
             {discoveryError}
-            <Button size="compact-sm" variant="subtle" onClick={retry} disabled={action !== null}>
+            <Button
+              size="compact-sm"
+              variant="subtle"
+              onClick={() => void mutate()}
+              disabled={action !== null}
+            >
               重试
             </Button>
           </Group>
