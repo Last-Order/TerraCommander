@@ -68,7 +68,11 @@ it('discovers all shared drives and lists a selected drive through its own corpu
       credentialRef: 'ref',
     });
     const spaces = await storage.listSpaces('account');
-    expect(spaces.map(({ id }) => id)).toEqual(['my-drive', 'shared:team', 'shared:archive']);
+    expect(spaces).toMatchObject([
+      { id: 'my-drive', name: { messageKey: 'myDrive' } },
+      { id: 'shared:team', name: 'Team' },
+      { id: 'shared:archive', name: 'Archive' },
+    ]);
     const sharedDrive = spaces.find(({ id }) => id === 'shared:team');
     if (!sharedDrive) throw new Error('Expected the team drive');
     const first = await storage.list(sharedDrive.root);

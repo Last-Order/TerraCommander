@@ -22,10 +22,13 @@ export interface EntryRef {
   locator: string;
 }
 
+export const storageLabelKeys = ['thisPc', 'localFileSystem', 'myDrive'] as const;
+export type StorageLabel = string | { messageKey: (typeof storageLabelKeys)[number] };
+
 export interface Space {
   id: string;
   connectionId: string;
-  name: string;
+  name: StorageLabel;
   root: EntryRef;
 }
 

@@ -38,7 +38,7 @@ const failureSchema = z.object({
 });
 
 export function myDriveSpace(connectionId: string): Space {
-  return driveSpace(connectionId, myDriveId, '我的云端硬盘', 'root');
+  return driveSpace(connectionId, myDriveId, { messageKey: 'myDrive' }, 'root');
 }
 
 export function googleDriveAdapterFactory(request: typeof fetch = fetch): AdapterFactory {
@@ -169,7 +169,7 @@ class GoogleDriveAdapter implements StorageAdapter {
   }
 }
 
-function driveSpace(connectionId: string, id: string, name: string, locator: string): Space {
+function driveSpace(connectionId: string, id: string, name: Space['name'], locator: string): Space {
   return { id, connectionId, name, root: { connectionId, spaceId: id, locator } };
 }
 

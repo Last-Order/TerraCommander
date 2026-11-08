@@ -1,5 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { fallbackLanguage, type AppLanguage } from '../../../../../shared/language';
+import { nativeMessages } from '../../../../native-messages';
 import { assertNotCancelled, AccountError } from '../../../core/errors';
 import type { AuthorizationCallback } from '../ports';
 
@@ -28,6 +30,7 @@ function respond(response: ServerResponse, status: number, text: string): void {
 export async function listenForGoogleCallback(
   state: string,
   signal: AbortSignal,
+  getLanguage: () => AppLanguage = () => fallbackLanguage,
 ): Promise<AuthorizationCallback> {
   assertNotCancelled(signal);
   let origin = '';
@@ -54,8 +57,9 @@ export async function listenForGoogleCallback(
   }
 
   function handleCallback(request: IncomingMessage, response: ServerResponse): void {
+    const messages = nativeMessages[getLanguage()];
     if (consumed) {
-      respond(response, 410, 'This authorization response has already been received.');
+      respond(response, 410, messages.callbackDuplicate);
       return;
     }
     if (
@@ -65,7 +69,7 @@ export async function listenForGoogleCallback(
       request.url.startsWith('//') ||
       request.url.length > 8192
     ) {
-      respond(response, 400, 'Invalid authorization callback.');
+      respond(response, 400, messages.callbackInvalid);
       return;
     }
 
@@ -73,7 +77,7 @@ export async function listenForGoogleCallback(
     try {
       url = new URL(request.url, origin);
     } catch {
-      respond(response, 400, 'Invalid authorization callback.');
+      respond(response, 400, messages.callbackInvalid);
       return;
     }
     const query = url.searchParams;
@@ -92,7 +96,7 @@ export async function listenForGoogleCallback(
       (query.has('error') && !authorizationError)
     ) {
       // Invalid requests do not consume the attempt; a valid browser response can still arrive.
-      respond(response, 400, 'Invalid authorization callback.');
+      respond(response, 400, messages.callbackInvalid);
       return;
     }
 
@@ -103,11 +107,11 @@ export async function listenForGoogleCallback(
           authorizationError === 'admin_policy_enforced' ? 'AccessBlocked' : 'AccessDenied',
         ),
       );
-      respond(response, 200, 'Authorization was not completed. Return to TerraCommander.');
+      respond(response, 200, messages.callbackIncomplete);
     } else {
       settled = true;
       resolveCode(authorizationCode!);
-      respond(response, 200, 'Authorization response received. Return to TerraCommander.');
+      respond(response, 200, messages.callbackReceived);
     }
   }
 

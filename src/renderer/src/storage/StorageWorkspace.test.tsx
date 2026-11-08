@@ -1,26 +1,32 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
+import { I18nextProvider } from 'react-i18next';
 import { SWRConfig } from 'swr';
 import { expect, it, vi } from 'vitest';
 import type { Space } from '../../../shared/storage';
 import {
+  emptyLocalConnection,
   localConnectionId,
   type BrowserResult,
   type StorageBrowserApi,
   type StorageConnectionSummary,
 } from '../../../shared/storage-browser';
 import { App } from '../app/App';
+import { createRendererI18n } from '../i18n/i18n';
 
 function success<T>(value: T): BrowserResult<T> {
   return { ok: true, value };
 }
 
-function renderWorkspace() {
+async function renderWorkspace() {
+  const i18n = await createRendererI18n('zh-CN');
   render(
     <StrictMode>
       <SWRConfig value={{ provider: () => new Map() }}>
-        <App />
+        <I18nextProvider i18n={i18n}>
+          <App languagePreference="system" />
+        </I18nextProvider>
       </SWRConfig>
     </StrictMode>,
   );
@@ -28,16 +34,16 @@ function renderWorkspace() {
 
 it('adds a local folder to the same sidebar as Drive and browses both connections', async () => {
   const user = userEvent.setup();
-  const local: Space = {
+  const local = {
     id: 'saved-folder',
     connectionId: localConnectionId,
     name: '项目文件夹',
     root: { connectionId: localConnectionId, spaceId: 'saved-folder', locator: '.' },
-  };
+  } satisfies Space;
   const drive: Space = {
     id: 'my-drive',
     connectionId: 'studio',
-    name: '我的云端硬盘',
+    name: { messageKey: 'myDrive' },
     root: { connectionId: 'studio', spaceId: 'my-drive', locator: 'root' },
   };
   const google: StorageConnectionSummary = {
@@ -55,10 +61,7 @@ it('adds a local folder to the same sidebar as Drive and browses both connection
           ? [
               google,
               {
-                id: localConnectionId,
-                provider: 'local',
-                name: '此电脑',
-                needsAuthorization: false,
+                ...emptyLocalConnection,
                 spaces: visible,
               },
             ]
@@ -97,9 +100,9 @@ it('adds a local folder to the same sidebar as Drive and browses both connection
   const listSpaces = vi.spyOn(storage, 'listSpaces');
   vi.stubGlobal('desktop', { storage });
   try {
-    renderWorkspace();
+    await renderWorkspace();
     const navigation = screen.getByRole('navigation', { name: '存储' });
-    const driveLink = await within(navigation).findByRole('button', { name: drive.name });
+    const driveLink = await within(navigation).findByRole('button', { name: '我的云端硬盘' });
     expect(listConnections).toHaveBeenCalledTimes(1);
     await user.click(driveLink);
     expect(await screen.findByText('云端文件.txt')).toBeInTheDocument();
@@ -123,18 +126,15 @@ it('adds a local folder to the same sidebar as Drive and browses both connection
 
 it('loads only the next directory page and refreshes the visible pages with the new cursor', async () => {
   const user = userEvent.setup();
-  const space: Space = {
+  const space = {
     id: 'drive',
     connectionId: localConnectionId,
     name: '项目盘',
     root: { connectionId: localConnectionId, spaceId: 'drive', locator: '.' },
-  };
+  } satisfies Space;
   const connections: StorageConnectionSummary[] = [
     {
-      id: localConnectionId,
-      provider: 'local',
-      name: '此电脑',
-      needsAuthorization: false,
+      ...emptyLocalConnection,
       spaces: [space],
     },
   ];
@@ -159,7 +159,7 @@ it('loads only the next directory page and refreshes the visible pages with the 
     storage: { listConnections: async () => success(connections), listDirectory },
   });
   try {
-    renderWorkspace();
+    await renderWorkspace();
     await user.click(await screen.findByRole('button', { name: space.name }));
     expect(await screen.findByText('first-before')).toBeInTheDocument();
     expect(listDirectory).toHaveBeenCalledExactlyOnceWith(space.root, undefined);
@@ -179,5 +179,74 @@ it('loads only the next directory page and refreshes the visible pages with the 
     ]);
   } finally {
     vi.unstubAllGlobals();
+  }
+});
+
+it('translates My Drive and an existing error while keeping the current folder open', async () => {
+  const user = userEvent.setup();
+  const drive: Space = {
+    id: 'personal-root',
+    connectionId: 'studio',
+    name: { messageKey: 'myDrive' },
+    root: { connectionId: 'studio', spaceId: 'personal-root', locator: 'root' },
+  };
+  const sharedDrive: Space = {
+    id: 'shared:team',
+    connectionId: 'studio',
+    name: 'My Drive',
+    root: { connectionId: 'studio', spaceId: 'shared:team', locator: 'team' },
+  };
+  const child = { ...drive.root, locator: 'child' };
+  const listDirectory = vi.fn<StorageBrowserApi['listDirectory']>(async (ref) => {
+    if (ref.locator === child.locator) return { ok: false, code: 'PermissionDenied' };
+    return success({
+      entries: [{ ref: child, name: '项目文件夹', kind: 'directory', capabilities: {} }],
+    });
+  });
+  const connections: StorageConnectionSummary[] = [
+    {
+      id: 'studio',
+      provider: 'google-drive',
+      name: '工作室',
+      needsAuthorization: false,
+      spaces: [drive, sharedDrive],
+    },
+  ];
+  const setLanguage = vi.fn(async () => ({ preference: 'en', language: 'en' }));
+  vi.stubGlobal('desktop', {
+    language: { set: setLanguage },
+    storage: { listConnections: async () => success(connections), listDirectory },
+  });
+  const previousLang = document.documentElement.lang;
+  try {
+    await renderWorkspace();
+    const navigation = screen.getByRole('navigation', { name: '存储' });
+    const personal = await within(navigation).findByRole('button', { name: '我的云端硬盘' });
+    expect(within(navigation).getByRole('button', { name: 'My Drive' })).toBeInTheDocument();
+    await user.click(personal);
+    await user.click(await screen.findByRole('button', { name: '项目文件夹' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('没有权限访问这个位置。');
+
+    await user.selectOptions(screen.getByRole('combobox', { name: '语言' }), 'en');
+    expect(setLanguage).toHaveBeenCalledExactlyOnceWith('en');
+    expect(await screen.findByRole('combobox', { name: 'Language' })).toHaveValue('en');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'You do not have permission to access this location.',
+    );
+    const breadcrumb = screen.getByRole('navigation', { name: 'Current directory' });
+    expect(within(breadcrumb).getByRole('button', { name: 'My Drive' })).toBeInTheDocument();
+    expect(within(breadcrumb).getByText('项目文件夹')).toHaveAttribute('aria-current', 'page');
+    const sidebar = screen.getByRole('navigation', { name: 'Storage' });
+    expect(within(sidebar).getByRole('button', { name: 'My Drive', current: 'location' })).toBe(
+      personal,
+    );
+    expect(listDirectory.mock.calls).toEqual([
+      [drive.root, undefined],
+      [child, undefined],
+    ]);
+    expect(document.documentElement).toHaveAttribute('lang', 'en');
+  } finally {
+    vi.unstubAllGlobals();
+    document.documentElement.lang = previousLang;
   }
 });

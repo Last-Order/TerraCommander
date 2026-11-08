@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { ActionIcon, Button, Loader } from '@mantine/core';
 import {
   ChevronDown,
@@ -9,8 +9,10 @@ import {
   Plus,
   SlidersHorizontal,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { Space } from '../../../shared/storage';
 import type { StorageConnectionSummary } from '../../../shared/storage-browser';
+import { formatStorageLabel } from './storage-labels';
 import classes from './StorageWorkspace.module.css';
 
 interface SidebarProps {
@@ -18,6 +20,7 @@ interface SidebarProps {
   activeSpace: Space | null;
   loading: boolean;
   error: string | null;
+  languageControl: ReactNode;
   onRetry: () => void;
   onAdd: () => void;
   onManage: (connection: StorageConnectionSummary) => void;
@@ -30,44 +33,49 @@ export function StorageSidebar({
   activeSpace,
   loading,
   error,
+  languageControl,
   onRetry,
   onAdd,
   onManage,
   onReauthorize,
   onOpen,
 }: SidebarProps) {
+  const { t, i18n } = useTranslation(['storage', 'common']);
+  const { compare } = new Intl.Collator(i18n.resolvedLanguage);
+  const sorted = connections.toSorted((a, b) =>
+    compare(formatStorageLabel(a.name, t), formatStorageLabel(b.name, t)),
+  );
+
   return (
     <aside className={classes.sidebar}>
       <header className={classes.brand}>
         <Layers size={19} aria-hidden="true" /> TerraCommander
       </header>
-      <nav className={classes.navigation} aria-label="存储">
+      <nav className={classes.navigation} aria-label={t('title')}>
         <div className={classes.sidebarHeading}>
-          <h2>存储</h2>
+          <h2>{t('title')}</h2>
           <Button
             size="compact-sm"
             variant="light"
             leftSection={<Plus size={15} />}
             onClick={onAdd}
           >
-            添加存储
+            {t('add')}
           </Button>
         </div>
-        {loading && <Loader size="sm" aria-label="正在加载存储" />}
+        {loading && <Loader size="sm" aria-label={t('loading')} />}
         {error && (
           <div className={classes.sidebarStatus} role="alert">
             <p>{error}</p>
             <Button size="compact-sm" variant="subtle" onClick={onRetry}>
-              重试
+              {t('common:retry')}
             </Button>
           </div>
         )}
         {!loading && !error && connections.length === 0 && (
-          <p className={classes.sidebarStatus}>
-            添加本地文件系统或 Google Drive，选择要显示的空间。
-          </p>
+          <p className={classes.sidebarStatus}>{t('addPrompt')}</p>
         )}
-        {connections.map((connection) => (
+        {sorted.map((connection) => (
           <ConnectionGroup
             key={connection.id}
             connection={connection}
@@ -78,6 +86,7 @@ export function StorageSidebar({
           />
         ))}
       </nav>
+      <div className={classes.languageControl}>{languageControl}</div>
     </aside>
   );
 }
@@ -91,12 +100,15 @@ interface GroupProps {
 }
 
 function ConnectionGroup({ connection, activeSpace, onManage, onReauthorize, onOpen }: GroupProps) {
+  const { t } = useTranslation('storage');
   const [expanded, setExpanded] = useState(true);
   const spaceListId = useId();
   const Icon = connection.provider === 'local' ? Monitor : Cloud;
+  const name = formatStorageLabel(connection.name, t);
+  const detail = connection.detail && formatStorageLabel(connection.detail, t);
 
   return (
-    <section className={classes.connection} aria-label={connection.name}>
+    <section className={classes.connection} aria-label={name}>
       <div className={classes.connectionHeading}>
         <button
           type="button"
@@ -108,15 +120,15 @@ function ConnectionGroup({ connection, activeSpace, onManage, onReauthorize, onO
           <ChevronDown size={14} aria-hidden="true" className={classes.chevron} />
           <Icon size={17} aria-hidden="true" />
           <span className={classes.connectionText}>
-            <strong title={connection.name}>{connection.name}</strong>
-            {connection.detail && <small title={connection.detail}>{connection.detail}</small>}
+            <strong title={name}>{name}</strong>
+            {detail && <small title={detail}>{detail}</small>}
           </span>
         </button>
         <ActionIcon
           variant="subtle"
           color="gray"
-          aria-label={`管理 ${connection.name} 显示的空间`}
-          title="管理显示的空间"
+          aria-label={t('manageConnectionSpaces', { name })}
+          title={t('manageSpaces')}
           onClick={() => onManage(connection)}
         >
           <SlidersHorizontal size={16} aria-hidden="true" />
@@ -129,31 +141,34 @@ function ConnectionGroup({ connection, activeSpace, onManage, onReauthorize, onO
           className={classes.authorization}
           onClick={() => onReauthorize(connection)}
         >
-          重新授权
+          {t('reauthorize')}
         </Button>
       )}
       <ul className={classes.spaces} id={spaceListId} hidden={!expanded}>
         {connection.spaces.length === 0 && (
-          <li className={classes.sidebarStatus}>暂无显示的空间</li>
+          <li className={classes.sidebarStatus}>{t('noDisplayedSpaces')}</li>
         )}
-        {connection.spaces.map((space) => (
-          <li key={space.id}>
-            <button
-              type="button"
-              className={classes.space}
-              title={space.name}
-              aria-current={
-                activeSpace?.connectionId === connection.id && activeSpace.id === space.id
-                  ? 'location'
-                  : undefined
-              }
-              onClick={() => onOpen(space)}
-            >
-              <HardDrive size={16} aria-hidden="true" />
-              <span>{space.name}</span>
-            </button>
-          </li>
-        ))}
+        {connection.spaces.map((space) => {
+          const label = formatStorageLabel(space.name, t);
+          return (
+            <li key={space.id}>
+              <button
+                type="button"
+                className={classes.space}
+                title={label}
+                aria-current={
+                  activeSpace?.connectionId === connection.id && activeSpace.id === space.id
+                    ? 'location'
+                    : undefined
+                }
+                onClick={() => onOpen(space)}
+              >
+                <HardDrive size={16} aria-hidden="true" />
+                <span>{label}</span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

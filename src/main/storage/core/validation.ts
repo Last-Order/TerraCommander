@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { operations, type JsonValue } from '../../../shared/storage/models';
+import { operations, storageLabelKeys, type JsonValue } from '../../../shared/storage/models';
 import { StorageError } from './errors';
 
 const identifier = z.string().min(1);
@@ -35,7 +35,7 @@ export const entrySchema = z.strictObject({
 export const spaceSchema = z.strictObject({
   id: identifier,
   connectionId: identifier,
-  name: z.string(),
+  name: z.union([z.string(), z.strictObject({ messageKey: z.enum(storageLabelKeys) })]),
   root: entryRefSchema,
 });
 
