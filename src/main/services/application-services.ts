@@ -1,3 +1,4 @@
+import type { AppLanguage } from '../../shared/language';
 import { LazyService } from './lazy-service';
 import type { StorageBrowser } from './storage-browser';
 
@@ -6,6 +7,7 @@ export type AccountRuntime = ReturnType<AccountModule['createDesktopAccountServi
 
 interface ApplicationServicesOptions {
   whenReady: () => Promise<void>;
+  getLanguage?: () => AppLanguage;
   loadAccounts?: () => Promise<AccountModule>;
 }
 
@@ -24,7 +26,7 @@ export class ApplicationServices {
           ? options.loadAccounts()
           : import('../accounts/runtime/desktop-accounts'));
         signal.throwIfAborted();
-        return module.createDesktopAccountServices();
+        return module.createDesktopAccountServices(options.getLanguage);
       },
       dispose: (runtime) => runtime.dispose(),
     });

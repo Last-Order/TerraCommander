@@ -3,6 +3,10 @@ import { channels, type DesktopApi } from '../shared/contracts';
 
 const api: DesktopApi = {
   getAppInfo: () => ipcRenderer.invoke(channels.getAppInfo),
+  language: {
+    get: () => ipcRenderer.invoke(channels.getLanguage),
+    set: (preference) => ipcRenderer.invoke(channels.setLanguage, preference),
+  },
   storage: {
     listConnections: () => ipcRenderer.invoke(channels.listConnections),
     listSpaces: (id) => ipcRenderer.invoke(channels.listSpaces, id),

@@ -3,12 +3,20 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { app, BrowserWindow, dialog, session } from 'electron';
 import log from 'electron-log/main';
+import { fallbackLanguage, type AppLanguage } from '../shared/language';
+import { setApplicationMenu } from './application-menu';
 import { registerIpcHandlers } from './ipc';
+import { nativeMessages } from './native-messages';
 import { isTrustedRenderer } from './security';
 import { ApplicationServices } from './services/application-services';
+import {
+  createLanguagePreferences,
+  type LanguagePreferences,
+} from './services/language-preferences';
 
 let mainWindow: BrowserWindow | null = null;
-const services = new ApplicationServices({ whenReady: () => app.whenReady() });
+let languagePreferences: LanguagePreferences | undefined;
+const services = new ApplicationServices({ whenReady: () => app.whenReady(), getLanguage });
 let shutdownStarted = false;
 let shutdownComplete = false;
 const developmentUrl = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefined;
@@ -24,6 +32,10 @@ mkdirSync(profilePath, { recursive: true });
 app.setPath('userData', profilePath);
 const ownsProfile = app.requestSingleInstanceLock();
 if (!ownsProfile) app.quit();
+
+function getLanguage(): AppLanguage {
+  return languagePreferences?.get().language ?? fallbackLanguage;
+}
 
 app.on('second-instance', () => {
   if (mainWindow?.isMinimized()) mainWindow.restore();
@@ -70,7 +82,7 @@ function createWindow(): void {
     : window.loadFile(fileURLToPath(rendererFile));
   void loading.catch((error: unknown) => {
     log.error('Could not load the renderer', error);
-    dialog.showErrorBox('TerraCommander', '应用加载失败，请重新启动。');
+    dialog.showErrorBox('TerraCommander', nativeMessages[getLanguage()].rendererFailed);
     app.quit();
   });
 }
@@ -88,7 +100,20 @@ void app
     });
     session.defaultSession.setPermissionCheckHandler(() => false);
 
-    registerIpcHandlers(() => mainWindow, entryUrl, services);
+    const preferences = createLanguagePreferences(profilePath, () =>
+      app.getPreferredSystemLanguages(),
+    );
+    languagePreferences = preferences;
+    setApplicationMenu(getLanguage());
+    registerIpcHandlers(() => mainWindow, entryUrl, services, {
+      get: preferences.get,
+      set(preference) {
+        const previous = getLanguage();
+        const settings = preferences.set(preference);
+        if (settings && settings.language !== previous) setApplicationMenu(settings.language);
+        return settings;
+      },
+    });
     createWindow();
 
     app.on('activate', () => {
@@ -100,7 +125,7 @@ void app
     log.error('Application startup failed', {
       errorType: error instanceof Error ? error.name : 'Unknown',
     });
-    dialog.showErrorBox('TerraCommander', '应用启动失败，请查看应用日志。');
+    dialog.showErrorBox('TerraCommander', nativeMessages[getLanguage()].startupFailed);
     app.quit();
   });
 

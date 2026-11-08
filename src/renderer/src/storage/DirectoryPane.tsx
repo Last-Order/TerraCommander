@@ -1,14 +1,16 @@
 import { useState, type ReactNode } from 'react';
 import { ActionIcon, Alert, Button, Group, Loader } from '@mantine/core';
 import { ChevronRight, File, Folder, FolderOpen, Link2, RefreshCw } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import useSWRInfinite from 'swr/infinite';
-import type { Entry, EntryPage, EntryRef, Space } from '../../../shared/storage';
-import { errorText, resultOf, StorageBrowserError } from './storage-client';
+import type { Entry, EntryPage, EntryRef, Space, StorageLabel } from '../../../shared/storage';
+import { errorKey, resultOf, StorageBrowserError } from './storage-client';
+import { formatStorageLabel } from './storage-labels';
 import classes from './StorageWorkspace.module.css';
 
 interface Location {
   ref: EntryRef;
-  name: string;
+  name: StorageLabel;
 }
 
 interface DirectoryProps {
@@ -18,6 +20,7 @@ interface DirectoryProps {
 }
 
 export function DirectoryPane({ space, version, onAuthRequired }: DirectoryProps) {
+  const { t } = useTranslation('storage');
   const [trail, setTrail] = useState<Location[]>([{ ref: space.root, name: space.name }]);
   const current = trail.at(-1) ?? { ref: space.root, name: space.name };
 
@@ -30,25 +33,28 @@ export function DirectoryPane({ space, version, onAuthRequired }: DirectoryProps
         onOpen={(entry) => setTrail([...trail, entry])}
         onAuthRequired={onAuthRequired}
       >
-        <nav className={classes.breadcrumbs} aria-label="当前目录">
-          {trail.map((location, index) => (
-            <div className={classes.crumb} key={index}>
-              {index > 0 && <ChevronRight size={14} aria-hidden="true" />}
-              {index === trail.length - 1 ? (
-                <span aria-current="page" title={location.name}>
-                  {location.name}
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setTrail(trail.slice(0, index + 1))}
-                  title={location.name}
-                >
-                  {location.name}
-                </button>
-              )}
-            </div>
-          ))}
+        <nav className={classes.breadcrumbs} aria-label={t('currentDirectory')}>
+          {trail.map((location, index) => {
+            const name = formatStorageLabel(location.name, t);
+            return (
+              <div className={classes.crumb} key={index}>
+                {index > 0 && <ChevronRight size={14} aria-hidden="true" />}
+                {index === trail.length - 1 ? (
+                  <span aria-current="page" title={name}>
+                    {name}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setTrail(trail.slice(0, index + 1))}
+                    title={name}
+                  >
+                    {name}
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </nav>
       </DirectoryListing>
     </main>
@@ -56,11 +62,12 @@ export function DirectoryPane({ space, version, onAuthRequired }: DirectoryProps
 }
 
 export function EmptyDirectoryPane() {
+  const { t } = useTranslation('storage');
   return (
     <main className={classes.emptyDirectory}>
       <FolderOpen size={32} strokeWidth={1.5} aria-hidden="true" />
-      <h1>选择一个存储空间</h1>
-      <p>从侧栏打开已添加的磁盘、文件夹或云端硬盘。</p>
+      <h1>{t('chooseSpace')}</h1>
+      <p>{t('chooseSpaceHint')}</p>
     </main>
   );
 }
@@ -74,6 +81,7 @@ interface ListingProps {
 }
 
 function DirectoryListing({ parent, version, onOpen, onAuthRequired, children }: ListingProps) {
+  const { t } = useTranslation(['storage', 'common', 'errors']);
   const {
     data: pages,
     error: failure,
@@ -99,7 +107,7 @@ function DirectoryListing({ parent, version, onOpen, onAuthRequired, children }:
     for (const entry of page.entries) entries.set(entry.ref.locator, entry);
   }
   const nextCursor = pages?.at(-1)?.nextCursor;
-  const error = !loading && failure ? errorText(failure) : null;
+  const error = !loading && failure ? t(`errors:${errorKey(failure)}`) : null;
   const reload = () => void mutate();
 
   return (
@@ -109,7 +117,7 @@ function DirectoryListing({ parent, version, onOpen, onAuthRequired, children }:
         <ActionIcon
           variant="subtle"
           color="gray"
-          aria-label="刷新目录"
+          aria-label={t('refreshDirectory')}
           disabled={loading}
           onClick={reload}
         >
@@ -117,22 +125,22 @@ function DirectoryListing({ parent, version, onOpen, onAuthRequired, children }:
         </ActionIcon>
       </header>
       <div className={classes.directoryContents} aria-busy={loading}>
-        {loading && !pages && <Loader size="sm" aria-label="正在加载目录" />}
+        {loading && !pages && <Loader size="sm" aria-label={t('loadingDirectory')} />}
         {error && (
           <Alert color="red" role="alert">
             <Group justify="space-between">
               {error}
               <Button variant="subtle" size="compact-sm" onClick={reload}>
-                重试
+                {t('common:retry')}
               </Button>
             </Group>
           </Alert>
         )}
         {pages && entries.size === 0 && !nextCursor && !error && (
-          <p className={classes.directoryStatus}>此文件夹为空。</p>
+          <p className={classes.directoryStatus}>{t('emptyDirectory')}</p>
         )}
         {entries.size > 0 && (
-          <ul className={classes.entries} aria-label="文件和文件夹">
+          <ul className={classes.entries} aria-label={t('filesAndFolders')}>
             {[...entries.values()].map((entry) => (
               <li key={entry.ref.locator}>
                 {entry.kind === 'directory' ? (
@@ -162,7 +170,7 @@ function DirectoryListing({ parent, version, onOpen, onAuthRequired, children }:
             loading={loading}
             onClick={() => void setSize((size) => size + 1)}
           >
-            加载更多
+            {t('loadMore')}
           </Button>
         )}
       </div>

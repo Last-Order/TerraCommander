@@ -1,14 +1,16 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import useSWR from 'swr';
 import type { Space } from '../../../shared/storage';
 import { localConnectionId } from '../../../shared/storage-browser';
 import { DirectoryPane, EmptyDirectoryPane } from './DirectoryPane';
 import { StorageSetupModal, type SetupIntent } from './StorageSetupModal';
 import { StorageSidebar } from './StorageSidebar';
-import { errorText, resultOf } from './storage-client';
+import { errorKey, resultOf } from './storage-client';
 import classes from './StorageWorkspace.module.css';
 
-export function StorageWorkspace() {
+export function StorageWorkspace({ languageControl }: { languageControl: ReactNode }) {
+  const { t } = useTranslation('errors');
   const {
     data: connections = [],
     isValidating,
@@ -29,7 +31,8 @@ export function StorageWorkspace() {
         connections={connections}
         activeSpace={location?.space ?? null}
         loading={isValidating}
-        error={!isValidating && error ? errorText(error) : null}
+        error={!isValidating && error ? t(errorKey(error)) : null}
+        languageControl={languageControl}
         onRetry={refresh}
         onAdd={() => setDialog({ kind: 'add' })}
         onManage={(connection) => setDialog({ kind: 'manage', connection })}

@@ -75,6 +75,7 @@ export function accountFixture(options: { authorizationTimeoutMs?: number } = {}
     });
     return {
       ...runtime,
+      runtime,
       credentials: {
         resolve: async (reference: string, context: OperationContext) => {
           const handle = await runtime.credentials.resolve(reference, context);

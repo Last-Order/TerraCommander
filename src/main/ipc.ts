@@ -3,8 +3,13 @@ import { z } from 'zod';
 import { channels, type AppInfo } from '../shared/contracts';
 import { localConnectionId, type BrowserResult } from '../shared/storage-browser';
 import { AccountError } from './accounts/core/errors';
+import { nativeMessages } from './native-messages';
 import { isTrustedRenderer } from './security';
 import type { ApplicationServices } from './services/application-services';
+import {
+  languagePreferenceSchema,
+  type LanguagePreferences,
+} from './services/language-preferences';
 import type { StorageBrowser } from './services/storage-browser';
 import { normalizeStorageError } from './storage/core/errors';
 import { entryRefSchema } from './storage/core/validation';
@@ -22,6 +27,7 @@ export function registerIpcHandlers(
   getWindow: () => BrowserWindow | null,
   entryUrl: string,
   services: ApplicationServices,
+  language: LanguagePreferences,
 ): void {
   function assertTrusted(event: IpcMainInvokeEvent): BrowserWindow {
     const window = getWindow();
@@ -48,6 +54,19 @@ export function registerIpcHandlers(
         node: process.versions.node,
       },
     };
+  });
+
+  ipcMain.handle(channels.getLanguage, (event, ...args: unknown[]) => {
+    assertTrusted(event);
+    if (!noArguments.safeParse(args).success)
+      throw new Error('Unexpected language settings arguments');
+    return language.get();
+  });
+  const setLanguageArguments = z.tuple([languagePreferenceSchema]);
+  ipcMain.handle(channels.setLanguage, (event, ...args: unknown[]) => {
+    assertTrusted(event);
+    const parsed = setLanguageArguments.safeParse(args);
+    return parsed.success ? language.set(parsed.data[0]) : null;
   });
 
   function handleStorage<A extends unknown[], T>(
@@ -80,7 +99,7 @@ export function registerIpcHandlers(
   );
   handleStorage(channels.chooseFolder, noArguments, async (browser, window) => {
     const result = await dialog.showOpenDialog(window, {
-      title: '选择要显示的文件夹',
+      title: nativeMessages[language.get().language].chooseFolder,
       properties: ['openDirectory'],
     });
     const folder = result.filePaths[0];

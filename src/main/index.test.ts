@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest';
+import { defaultLanguageSettings } from '../shared/language';
 
 const host = vi.hoisted(() => {
   const callbacks = new Map<string, (event: { preventDefault(): void }) => void>();
@@ -52,7 +53,11 @@ vi.mock('electron', () => ({
   dialog: { showErrorBox: vi.fn() },
 }));
 vi.mock('electron-log/main', () => ({ default: { info: vi.fn(), error: vi.fn() } }));
+vi.mock('./application-menu', () => ({ setApplicationMenu: vi.fn() }));
 vi.mock('./ipc', () => ({ registerIpcHandlers: vi.fn() }));
+vi.mock('./services/language-preferences', () => ({
+  createLanguagePreferences: () => ({ get: () => defaultLanguageSettings, set: vi.fn() }),
+}));
 vi.mock('./accounts/runtime/desktop-accounts', () => {
   throw new Error('Ordinary application startup must not load Google Drive or its account store.');
 });

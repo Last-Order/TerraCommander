@@ -2,6 +2,7 @@ import { realpath, stat } from 'node:fs/promises';
 import type { AccountSummary } from '../../shared/accounts';
 import type { ConnectionDefinition, EntryRef, Space } from '../../shared/storage';
 import {
+  emptyLocalConnection,
   localConnectionId,
   type SpaceChoice,
   type StorageConnectionSummary,
@@ -64,18 +65,14 @@ export class StorageBrowser {
     const result = (await accounts.list('google-drive')).map((account) =>
       this.summarizeAccount(account),
     );
-    const localSpaces = this.preferences.spaces(localConnectionId);
-    if (localSpaces) {
+    if (this.preferences.selectedSpaces(localConnectionId)) {
       result.push({
-        id: localConnectionId,
-        provider: 'local',
-        name: '此电脑',
-        detail: '本地文件系统',
-        needsAuthorization: false,
+        ...emptyLocalConnection,
+        detail: { messageKey: 'localFileSystem' },
         spaces: this.displayedSpaces(localConnectionId),
       });
     }
-    return result.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+    return result;
   }
 
   async listSpaces(id: string): Promise<SpaceChoice[]> {
@@ -93,12 +90,15 @@ export class StorageBrowser {
 
   async saveSpaces(id: string, spaceIds: string[]): Promise<void> {
     await this.definition(id);
+    const builtIn = this.builtInSpace(id);
     const spaces = new Map(this.displayedSpaces(id).map((space) => [space.id, space]));
     for (const [spaceId, space] of this.discovered.get(id) ?? []) spaces.set(spaceId, space);
     const selected = spaceIds.map((spaceId) => {
       const space = spaces.get(spaceId);
       if (!space) throw new StorageError('InvalidArgument');
-      return space;
+      if (builtIn?.id === spaceId) return { id: spaceId };
+      if (typeof space.name !== 'string') throw new StorageError('OutcomeUnknown');
+      return { id: spaceId, cached: { name: space.name, locator: space.root.locator } };
     });
     this.preferences.saveSpaces(id, selected);
   }
@@ -159,10 +159,27 @@ export class StorageBrowser {
   }
 
   private displayedSpaces(id: string): Space[] {
-    const saved =
-      this.preferences.spaces(id) ?? (id === localConnectionId ? [] : [myDriveSpace(id)]);
+    const saved = this.preferences.selectedSpaces(id);
+    const builtIn = this.builtInSpace(id);
+    if (!saved) return builtIn ? [builtIn] : [];
+
     const discovered = this.discovered.get(id);
-    return saved.map((space) => discovered?.get(space.id) ?? space);
+    return saved.map(({ id: spaceId, cached }) => {
+      const latest = discovered?.get(spaceId);
+      if (latest) return latest;
+      if (builtIn?.id === spaceId) return builtIn;
+      if (!cached) throw new StorageError('OutcomeUnknown');
+      return {
+        id: spaceId,
+        connectionId: id,
+        name: cached.name,
+        root: { connectionId: id, spaceId, locator: cached.locator },
+      };
+    });
+  }
+
+  private builtInSpace(id: string): Space | undefined {
+    return id === localConnectionId ? undefined : myDriveSpace(id);
   }
 
   private summarizeAccount(account: AccountSummary): StorageConnectionSummary {

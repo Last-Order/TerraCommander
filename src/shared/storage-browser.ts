@@ -1,5 +1,5 @@
 import type { AccountErrorCode } from './accounts';
-import type { EntryPage, EntryRef, Space, StorageErrorCode } from './storage';
+import type { EntryPage, EntryRef, Space, StorageErrorCode, StorageLabel } from './storage';
 
 export const localConnectionId = 'local';
 export type StorageProvider = 'local' | 'google-drive';
@@ -7,11 +7,19 @@ export type StorageProvider = 'local' | 'google-drive';
 export interface StorageConnectionSummary {
   id: string;
   provider: StorageProvider;
-  name: string;
-  detail?: string | undefined;
+  name: StorageLabel;
+  detail?: StorageLabel | undefined;
   needsAuthorization: boolean;
   spaces: Space[];
 }
+
+export const emptyLocalConnection: StorageConnectionSummary = {
+  id: localConnectionId,
+  provider: 'local',
+  name: { messageKey: 'thisPc' },
+  needsAuthorization: false,
+  spaces: [],
+};
 
 export interface SpaceChoice {
   space: Space;

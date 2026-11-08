@@ -62,12 +62,17 @@ describe('Google OAuth loopback callback', () => {
 
   it('handles denial and cancellation without returning provider error text', async () => {
     const controller = new AbortController();
-    const callback = await listenForGoogleCallback('expected-state', controller.signal);
+    const callback = await listenForGoogleCallback(
+      'expected-state',
+      controller.signal,
+      () => 'zh-CN',
+    );
     const denied = callback.code.catch((error: unknown) => error);
     try {
       const response = await send(
         `${callback.redirectUri}?state=expected-state&error=access_denied&error_description=private-detail`,
       );
+      expect(response.body).toBe('未完成授权，请返回 TerraCommander。');
       expect(response.body).not.toContain('private-detail');
       expect(await denied).toMatchObject({ code: 'AccessDenied' });
     } finally {

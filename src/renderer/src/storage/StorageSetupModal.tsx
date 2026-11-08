@@ -1,9 +1,14 @@
 import { useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Group, Loader, Modal, Stack, Text } from '@mantine/core';
 import { Cloud, FolderPlus, Monitor } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import useSWR from 'swr';
-import { localConnectionId, type StorageConnectionSummary } from '../../../shared/storage-browser';
-import { errorText, resultOf } from './storage-client';
+import {
+  emptyLocalConnection,
+  type StorageConnectionSummary,
+} from '../../../shared/storage-browser';
+import { errorKey, resultOf, type StorageErrorKey } from './storage-client';
+import { formatStorageLabel } from './storage-labels';
 import classes from './StorageWorkspace.module.css';
 
 export type SetupIntent =
@@ -18,14 +23,6 @@ interface SetupProps {
   onAuthorized: (id: string) => void;
 }
 
-const localDraft: StorageConnectionSummary = {
-  id: localConnectionId,
-  provider: 'local',
-  name: '此电脑',
-  needsAuthorization: false,
-  spaces: [],
-};
-
 export function StorageSetupModal({
   intent,
   localConnection,
@@ -33,11 +30,12 @@ export function StorageSetupModal({
   onChanged,
   onAuthorized,
 }: SetupProps) {
+  const { t } = useTranslation(['storage', 'common', 'errors']);
   const [connection, setConnection] = useState(intent.kind === 'manage' ? intent.connection : null);
   const [showAuthorization, setShowAuthorization] = useState(intent.kind === 'reauthorize');
   const [authorizing, setAuthorizing] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<StorageErrorKey | null>(null);
   const cancelRequested = useRef(false);
   const existing = intent.kind === 'reauthorize' ? intent.connection : null;
 
@@ -50,7 +48,7 @@ export function StorageSetupModal({
     cancelRequested.current = true;
     void resultOf(window.desktop.storage.cancelAuthorization()).catch((failure: unknown) => {
       cancelRequested.current = false;
-      setError(errorText(failure));
+      setError(errorKey(failure));
     });
   }
 
@@ -71,22 +69,23 @@ export function StorageSetupModal({
       }
     } catch (failure) {
       if (cancelRequested.current) onClose();
-      else setError(errorText(failure));
+      else setError(errorKey(failure));
     } finally {
       setAuthorizing(false);
     }
   }
 
-  let title = '添加存储';
-  if (connection) title = '管理显示的空间';
-  else if (existing) title = '重新授权 Google Drive';
-  else if (showAuthorization) title = '添加 Google Drive';
+  let title: string = t('add');
+  if (connection) title = t('manageSpaces');
+  else if (existing) title = t('reauthorizeGoogleDrive');
+  else if (showAuthorization) title = t('addGoogleDrive');
 
   return (
     <Modal
       opened
       onClose={dismiss}
       title={title}
+      closeButtonProps={{ 'aria-label': t('common:close') }}
       centered
       closeOnClickOutside={!busy && !authorizing}
       closeOnEscape={!busy}
@@ -106,35 +105,35 @@ export function StorageSetupModal({
         <Stack gap="md">
           <Text size="sm" c="dimmed">
             {existing
-              ? `请在浏览器中使用 ${existing.name} 对应的 Google 账号完成授权。`
-              : '在浏览器中完成授权后，选择要显示的云端硬盘。'}
+              ? t('reauthorizeInBrowser', { name: formatStorageLabel(existing.name, t) })
+              : t('authorizeHint')}
           </Text>
           {error && (
             <Alert color="red" role="alert">
-              {error}
+              {t(`errors:${error}`)}
             </Alert>
           )}
           <Group justify="flex-end">
             <Button variant="default" onClick={dismiss}>
-              {authorizing ? '取消授权' : '取消'}
+              {authorizing ? t('cancelAuthorization') : t('common:cancel')}
             </Button>
             <Button loading={authorizing} onClick={() => void authorize()}>
-              在浏览器中授权
+              {t('authorizeInBrowser')}
             </Button>
           </Group>
         </Stack>
       ) : (
         <Stack gap="xs">
           <Text size="sm" c="dimmed">
-            选择存储类型
+            {t('chooseType')}
           </Text>
           <Button
             justify="flex-start"
             variant="default"
             leftSection={<Monitor size={18} />}
-            onClick={() => setConnection(localConnection ?? localDraft)}
+            onClick={() => setConnection(localConnection ?? emptyLocalConnection)}
           >
-            本地文件系统
+            {t('localFileSystem')}
           </Button>
           <Button
             justify="flex-start"
@@ -159,6 +158,7 @@ interface PickerProps {
 }
 
 function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }: PickerProps) {
+  const { t } = useTranslation(['storage', 'common', 'errors']);
   const {
     data: choices,
     error,
@@ -174,8 +174,8 @@ function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }: Picke
   );
   const [selected, setSelected] = useState(() => new Set(connection.spaces.map(({ id }) => id)));
   const [action, setAction] = useState<'folder' | 'save' | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const discoveryError = !loading && error ? errorText(error) : null;
+  const [actionError, setActionError] = useState<StorageErrorKey | null>(null);
+  const discoveryError = !loading && error ? t(`errors:${errorKey(error)}`) : null;
 
   function toggle(id: string, checked: boolean) {
     setSelected((previous) => {
@@ -203,7 +203,7 @@ function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }: Picke
         toggle(space.id, true);
       }
     } catch (failure) {
-      setActionError(errorText(failure));
+      setActionError(errorKey(failure));
     } finally {
       setAction(null);
       onBusy(false);
@@ -222,7 +222,7 @@ function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }: Picke
       );
       onSaved();
     } catch (failure) {
-      setActionError(errorText(failure));
+      setActionError(errorKey(failure));
     } finally {
       setAction(null);
       onBusy(false);
@@ -232,9 +232,9 @@ function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }: Picke
   return (
     <Stack gap="md">
       <Text size="sm" c="dimmed">
-        {connection.detail ?? connection.name}
+        {formatStorageLabel(connection.detail ?? connection.name, t)}
       </Text>
-      {loading && <Loader size="sm" aria-label="正在查找空间" />}
+      {loading && <Loader size="sm" aria-label={t('discoveringSpaces')} />}
       {discoveryError && (
         <Alert color="red" role="alert">
           <Group justify="space-between">
@@ -245,22 +245,22 @@ function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }: Picke
               onClick={() => void mutate()}
               disabled={action !== null}
             >
-              重试
+              {t('common:retry')}
             </Button>
           </Group>
         </Alert>
       )}
       {!loading && !discoveryError && choices.length === 0 && (
         <Text size="sm" c="dimmed">
-          未找到可用空间。
+          {t('noAvailableSpaces')}
         </Text>
       )}
       <div className={classes.spaceChoices}>
         {choices.map(({ space, available }) => (
           <Checkbox
             key={space.id}
-            label={space.name}
-            description={available ? undefined : '当前不可用'}
+            label={formatStorageLabel(space.name, t)}
+            description={available ? undefined : t('spaceUnavailable')}
             checked={selected.has(space.id)}
             disabled={loading || action !== null}
             onChange={(event) => toggle(space.id, event.currentTarget.checked)}
@@ -275,24 +275,24 @@ function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }: Picke
           disabled={loading || action === 'save'}
           onClick={() => void chooseFolder()}
         >
-          选择文件夹
+          {t('chooseFolder')}
         </Button>
       )}
       {actionError && (
         <Alert color="red" role="alert">
-          {actionError}
+          {t(`errors:${actionError}`)}
         </Alert>
       )}
       <Group justify="flex-end">
         <Button variant="default" disabled={action !== null} onClick={onCancel}>
-          取消
+          {t('common:cancel')}
         </Button>
         <Button
           loading={action === 'save'}
           disabled={loading || action === 'folder'}
           onClick={() => void save()}
         >
-          保存
+          {t('common:save')}
         </Button>
       </Group>
     </Stack>
