@@ -124,6 +124,67 @@ it('adds a local folder to the same sidebar as Drive and browses both connection
   }
 });
 
+it('selects files and folders with a click and opens only folders with a double click', async () => {
+  const user = userEvent.setup();
+  const space = {
+    id: 'drive',
+    connectionId: localConnectionId,
+    name: '项目盘',
+    root: { connectionId: localConnectionId, spaceId: 'drive', locator: '.' },
+  } satisfies Space;
+  const child = { ...space.root, locator: 'child' };
+  const listDirectory = vi.fn<StorageBrowserApi['listDirectory']>(async (ref) =>
+    success({
+      entries:
+        ref.locator === space.root.locator
+          ? [
+              { ref: child, name: '资料', kind: 'directory', capabilities: {} },
+              {
+                ref: { ...ref, locator: 'file' },
+                name: '清单.txt',
+                kind: 'file',
+                capabilities: {},
+              },
+            ]
+          : [],
+    }),
+  );
+  vi.stubGlobal('desktop', {
+    storage: {
+      listConnections: async () => success([{ ...emptyLocalConnection, spaces: [space] }]),
+      listDirectory,
+    },
+  });
+  try {
+    await renderWorkspace();
+    await user.click(await screen.findByRole('button', { name: space.name }));
+    const folder = await screen.findByRole('button', { name: '资料' });
+    const file = screen.getByRole('button', { name: '清单.txt' });
+
+    await user.click(folder);
+    expect(folder).toHaveAttribute('aria-pressed', 'true');
+    expect(listDirectory).toHaveBeenCalledExactlyOnceWith(space.root, undefined);
+
+    await user.click(file);
+    expect(file).toHaveAttribute('aria-pressed', 'true');
+    expect(folder).toHaveAttribute('aria-pressed', 'false');
+    await user.dblClick(file);
+    expect(listDirectory).toHaveBeenCalledTimes(1);
+
+    await user.dblClick(folder);
+    await waitFor(() => expect(listDirectory).toHaveBeenLastCalledWith(child, undefined));
+    const breadcrumb = screen.getByRole('navigation', { name: '当前目录' });
+    expect(within(breadcrumb).getByText('资料')).toHaveAttribute('aria-current', 'page');
+    await user.click(within(breadcrumb).getByRole('button', { name: space.name }));
+    expect(await screen.findByRole('button', { name: '资料' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 it('loads only the next directory page and refreshes the visible pages with the new cursor', async () => {
   const user = userEvent.setup();
   const space = {
@@ -225,6 +286,7 @@ it('changes language in General settings and keeps the current folder open', asy
     expect(within(navigation).getByRole('button', { name: 'My Drive' })).toBeInTheDocument();
     await user.click(personal);
     await user.click(await screen.findByRole('button', { name: '项目文件夹' }));
+    await user.keyboard('{Enter}');
     expect(await screen.findByRole('alert')).toHaveTextContent('没有权限访问这个位置。');
 
     const settingsEntry = screen.getByRole('button', { name: '设置' });

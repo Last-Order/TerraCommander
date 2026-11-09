@@ -30,7 +30,7 @@
 
 .brand svg,
 .emptyDirectory svg,
-button.entry > svg:first-child {
+.entry[data-kind='directory'] > svg:first-child {
   color: var(--storage-accent);
 }
 
@@ -71,7 +71,7 @@ button.entry > svg:first-child {
 .connectionToggle,
 .space,
 .crumb button,
-button.entry {
+.entry {
   color: inherit;
   background: transparent;
   border: 0;
@@ -84,7 +84,7 @@ button.entry {
 .connectionToggle:hover,
 .space:hover,
 .crumb button:hover,
-button.entry:hover {
+.entry:hover {
   background: var(--storage-hover);
 }
 
@@ -148,7 +148,8 @@ button.entry:hover {
   font-size: var(--mantine-font-size-sm);
 }
 
-.space[aria-current='location'] {
+.space[aria-current='location'],
+.entry[aria-pressed='true'] {
   color: var(--storage-accent);
   background: var(--mantine-color-teal-light);
   font-weight: 600;
@@ -234,6 +235,7 @@ button.entry:hover {
   gap: 0.65rem;
   padding: 0.35rem 0.6rem;
   font-size: var(--mantine-font-size-sm);
+  user-select: none;
 }
 
 .entry span {

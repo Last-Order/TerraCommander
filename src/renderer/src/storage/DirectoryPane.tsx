@@ -82,6 +82,7 @@ interface ListingProps {
 
 function DirectoryListing({ parent, version, onOpen, onAuthRequired, children }: ListingProps) {
   const { t } = useTranslation(['storage', 'common', 'errors']);
+  const [selectedLocator, setSelectedLocator] = useState<string | null>(null);
   const {
     data: pages,
     error: failure,
@@ -141,26 +142,34 @@ function DirectoryListing({ parent, version, onOpen, onAuthRequired, children }:
         )}
         {entries.size > 0 && (
           <ul className={classes.entries} aria-label={t('filesAndFolders')}>
-            {[...entries.values()].map((entry) => (
-              <li key={entry.ref.locator}>
-                {entry.kind === 'directory' ? (
-                  <button type="button" className={classes.entry} onClick={() => onOpen(entry)}>
-                    <Folder size={17} aria-hidden="true" />
+            {[...entries.values()].map((entry) => {
+              const { locator } = entry.ref;
+              const isDirectory = entry.kind === 'directory';
+              const Icon = isDirectory ? Folder : entry.kind === 'link' ? Link2 : File;
+
+              return (
+                <li key={locator}>
+                  <button
+                    type="button"
+                    className={classes.entry}
+                    data-kind={entry.kind}
+                    aria-pressed={selectedLocator === locator}
+                    onClick={() => setSelectedLocator(locator)}
+                    onDoubleClick={isDirectory ? () => onOpen(entry) : undefined}
+                    onKeyDown={(event) => {
+                      if (isDirectory && event.key === 'Enter') {
+                        event.preventDefault();
+                        onOpen(entry);
+                      }
+                    }}
+                  >
+                    <Icon size={17} aria-hidden="true" />
                     <span>{entry.name}</span>
-                    <ChevronRight size={14} aria-hidden="true" />
+                    {isDirectory && <ChevronRight size={14} aria-hidden="true" />}
                   </button>
-                ) : (
-                  <div className={classes.entry}>
-                    {entry.kind === 'link' ? (
-                      <Link2 size={17} aria-hidden="true" />
-                    ) : (
-                      <File size={17} aria-hidden="true" />
-                    )}
-                    <span>{entry.name}</span>
-                  </div>
-                )}
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         )}
         {nextCursor && !error && (
