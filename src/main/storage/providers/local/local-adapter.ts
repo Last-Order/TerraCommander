@@ -9,6 +9,7 @@ import type { AdapterFactory, StorageAdapter } from '../../ports/adapter';
 import { listLocalVolumes } from './local-volumes';
 
 const listSupported = { list: { support: 'supported' } } as const;
+const metadataBatchSize = 32;
 
 export function localSpace(connectionId: string, directory: string): Space {
   const path = normalize(directory);
@@ -71,9 +72,7 @@ class LocalAdapter implements StorageAdapter {
 
   async stat(ref: EntryRef, { signal }: OperationContext): Promise<Entry> {
     const { path, info } = await this.locate(ref, signal);
-    const entry = localEntry(ref, basename(path) || parse(path).root, info);
-    if (entry.kind === 'file' && Number.isSafeInteger(info.size)) entry.size = info.size;
-    return entry;
+    return localEntry(ref, basename(path) || parse(path).root, info);
   }
 
   async list(
@@ -91,9 +90,19 @@ class LocalAdapter implements StorageAdapter {
       const start = cursor === undefined ? 0 : items.findIndex(({ name }) => name > cursor);
       if (start < 0) return { entries: [] };
       const page = items.slice(start, start + pageSize);
-      const entries = page.map((item) =>
-        localEntry({ ...parent, locator: join(parent.locator, item.name) }, item.name, item),
-      );
+      const entries: Entry[] = [];
+      for (let offset = 0; offset < page.length; offset += metadataBatchSize) {
+        const batch = await Promise.all(
+          page.slice(offset, offset + metadataBatchSize).map(async (item) => {
+            const ref = { ...parent, locator: join(parent.locator, item.name) };
+            // A listed item can disappear or become inaccessible before metadata is read.
+            const info = await lstat(join(path, item.name)).catch(() => undefined);
+            return localEntry(ref, item.name, info ?? item);
+          }),
+        );
+        throwIfAborted(signal);
+        entries.push(...batch);
+      }
       const last = page.at(-1);
       return last && start + page.length < items.length
         ? { entries, nextCursor: last.name }
@@ -151,5 +160,12 @@ function localEntry(ref: EntryRef, name: string, info: Dirent | Stats): Entry {
   if (info.isDirectory()) kind = 'directory';
   else if (info.isSymbolicLink()) kind = 'link';
   else if (info.isFile()) kind = 'file';
-  return { ref, name, kind, capabilities: kind === 'directory' ? listSupported : {} };
+  const entry: Entry = { ref, name, kind, capabilities: kind === 'directory' ? listSupported : {} };
+  if ('mtime' in info) {
+    const year = info.mtime.getUTCFullYear();
+    if (year >= 0 && year <= 9999) entry.modifiedAt = info.mtime.toISOString();
+    if (kind === 'file' && Number.isSafeInteger(info.size) && info.size >= 0)
+      entry.size = info.size;
+  }
+  return entry;
 }

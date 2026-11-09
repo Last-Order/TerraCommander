@@ -1,4 +1,4 @@
-import { mkdir, mkdtempDisposable, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtempDisposable, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
@@ -26,7 +26,10 @@ it('restores a chosen folder and confines browsing to its saved root', async () 
   await mkdir(root);
   await mkdir(outside);
   await mkdir(join(root, 'nested'));
-  await writeFile(join(root, 'file.txt'), 'saved file');
+  const file = join(root, 'file.txt');
+  const modifiedAt = new Date('2026-01-02T03:04:06Z');
+  await writeFile(file, 'saved file');
+  await utimes(file, modifiedAt, modifiedAt);
   await symlink(outside, join(root, 'redirect'), process.platform === 'win32' ? 'junction' : 'dir');
 
   const snapshotStore = memorySnapshotStore();
@@ -55,10 +58,10 @@ it('restores a chosen folder and confines browsing to its saved root', async () 
       { id: localConnectionId, spaces: [space] },
     ]);
     const page = await restored.listDirectory(space.root);
-    expect(page.entries.map(({ name, kind }) => [name, kind])).toEqual([
-      ['file.txt', 'file'],
-      ['nested', 'directory'],
-      ['redirect', 'link'],
+    expect(page.entries).toMatchObject([
+      { name: 'file.txt', kind: 'file', size: 10, modifiedAt: modifiedAt.toISOString() },
+      { name: 'nested', kind: 'directory', modifiedAt: expect.any(String) },
+      { name: 'redirect', kind: 'link' },
     ]);
     const folder = page.entries.find(({ name }) => name === 'nested');
     if (!folder) throw new Error('Expected the nested folder');

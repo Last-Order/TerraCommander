@@ -124,7 +124,7 @@ it('adds a local folder to the same sidebar as Drive and browses both connection
   }
 });
 
-it('selects files and folders with a click and opens only folders with a double click', async () => {
+it('shows file details and keeps click and double-click actions on the whole row', async () => {
   const user = userEvent.setup();
   const space = {
     id: 'drive',
@@ -133,16 +133,26 @@ it('selects files and folders with a click and opens only folders with a double 
     root: { connectionId: localConnectionId, spaceId: 'drive', locator: '.' },
   } satisfies Space;
   const child = { ...space.root, locator: 'child' };
+  const modifiedAt = '2026-01-02T03:04:06.000Z';
   const listDirectory = vi.fn<StorageBrowserApi['listDirectory']>(async (ref) =>
     success({
       entries:
         ref.locator === space.root.locator
           ? [
-              { ref: child, name: '资料', kind: 'directory', capabilities: {} },
+              { ref: child, name: '资料', kind: 'directory', modifiedAt, capabilities: {} },
               {
                 ref: { ...ref, locator: 'file' },
                 name: '清单.txt',
                 kind: 'file',
+                size: 1536,
+                modifiedAt,
+                capabilities: {},
+              },
+              {
+                ref: { ...ref, locator: 'empty-file' },
+                name: '空文件.txt',
+                kind: 'file',
+                size: 0,
                 capabilities: {},
               },
             ]
@@ -158,20 +168,35 @@ it('selects files and folders with a click and opens only folders with a double 
   try {
     await renderWorkspace();
     await user.click(await screen.findByRole('button', { name: space.name }));
-    const folder = await screen.findByRole('button', { name: '资料' });
-    const file = screen.getByRole('button', { name: '清单.txt' });
+    const table = within(await screen.findByRole('table', { name: '文件和文件夹' }));
+    expect(table.getByRole('columnheader', { name: '修改时间' })).toBeInTheDocument();
+    expect(table.getByRole('columnheader', { name: '大小' })).toBeInTheDocument();
+    const folderRow = within(table.getByRole('row', { name: /资料/ }));
+    const fileRow = within(table.getByRole('row', { name: /清单\.txt/ }));
+    const emptyFile = within(table.getByRole('row', { name: /空文件\.txt/ }));
+    const folder = folderRow.getByRole('button', { name: '资料' });
+    const file = fileRow.getByRole('button', { name: '清单.txt' });
+    const displayedDate = new Intl.DateTimeFormat('zh-CN', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(Date.parse(modifiedAt));
+    const fileSize = fileRow.getByRole('cell', { name: '1.5 KiB' });
+    expect(fileRow.getByText(displayedDate)).toHaveAttribute('datetime', modifiedAt);
+    expect(folderRow.getByRole('cell', { name: '—' })).toBeInTheDocument();
+    expect(emptyFile.getByRole('cell', { name: '0 B' })).toBeInTheDocument();
+    expect(emptyFile.getByRole('cell', { name: '—' })).toBeInTheDocument();
 
     await user.click(folder);
     expect(folder).toHaveAttribute('aria-pressed', 'true');
     expect(listDirectory).toHaveBeenCalledExactlyOnceWith(space.root, undefined);
 
-    await user.click(file);
+    await user.click(fileSize);
     expect(file).toHaveAttribute('aria-pressed', 'true');
     expect(folder).toHaveAttribute('aria-pressed', 'false');
-    await user.dblClick(file);
+    await user.dblClick(fileSize);
     expect(listDirectory).toHaveBeenCalledTimes(1);
 
-    await user.dblClick(folder);
+    await user.dblClick(folderRow.getByText(displayedDate));
     await waitFor(() => expect(listDirectory).toHaveBeenLastCalledWith(child, undefined));
     const breadcrumb = screen.getByRole('navigation', { name: '当前目录' });
     expect(within(breadcrumb).getByText('资料')).toHaveAttribute('aria-current', 'page');

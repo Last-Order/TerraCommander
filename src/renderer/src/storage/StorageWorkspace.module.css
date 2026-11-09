@@ -84,7 +84,7 @@
 .connectionToggle:hover,
 .space:hover,
 .crumb button:hover,
-.entry:hover {
+.entryRow:hover {
   background: var(--storage-hover);
 }
 
@@ -149,7 +149,7 @@
 }
 
 .space[aria-current='location'],
-.entry[aria-pressed='true'] {
+.entryRow[data-selected='true'] {
   color: var(--storage-accent);
   background: var(--mantine-color-teal-light);
   font-weight: 600;
@@ -222,9 +222,47 @@
 }
 
 .entries {
-  list-style: none;
-  margin: 0 0 0.65rem;
+  width: 100%;
+  table-layout: fixed;
+  border-spacing: 0;
+  margin-block-end: 0.65rem;
+  font-size: var(--mantine-font-size-sm);
+}
+
+.entries th,
+.entries td {
+  padding: 0.35rem 0.6rem;
+}
+
+.entries th {
+  border-bottom: 1px solid var(--storage-border);
+  color: var(--mantine-color-dimmed);
+  font-weight: 600;
+  text-align: start;
+}
+
+.entryRow {
+  cursor: pointer;
+  user-select: none;
+}
+
+.entries .entryName {
   padding: 0;
+}
+
+.entryDate,
+.entrySize {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.entryDate {
+  width: 13rem;
+}
+
+.entries .entrySize {
+  width: 7rem;
+  text-align: end;
 }
 
 .entry {
@@ -234,8 +272,6 @@
   align-items: center;
   gap: 0.65rem;
   padding: 0.35rem 0.6rem;
-  font-size: var(--mantine-font-size-sm);
-  user-select: none;
 }
 
 .entry span {
