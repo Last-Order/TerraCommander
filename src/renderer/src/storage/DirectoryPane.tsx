@@ -8,6 +8,18 @@ import { errorKey, resultOf, StorageBrowserError } from './storage-client';
 import { formatStorageLabel } from './storage-labels';
 import classes from './StorageWorkspace.module.css';
 
+const sizeUnits = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+
+function formatSize(bytes: number, formatter: Intl.NumberFormat): string {
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < sizeUnits.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${formatter.format(value)} ${sizeUnits[unit]}`;
+}
+
 interface Location {
   ref: EntryRef;
   name: StorageLabel;
@@ -81,7 +93,7 @@ interface ListingProps {
 }
 
 function DirectoryListing({ parent, version, onOpen, onAuthRequired, children }: ListingProps) {
-  const { t } = useTranslation(['storage', 'common', 'errors']);
+  const { t, i18n } = useTranslation(['storage', 'common', 'errors']);
   const [selectedLocator, setSelectedLocator] = useState<string | null>(null);
   const {
     data: pages,
@@ -110,6 +122,11 @@ function DirectoryListing({ parent, version, onOpen, onAuthRequired, children }:
   const nextCursor = pages?.at(-1)?.nextCursor;
   const error = !loading && failure ? t(`errors:${errorKey(failure)}`) : null;
   const reload = () => void mutate();
+  const dateFormatter = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+  const sizeFormatter = new Intl.NumberFormat(i18n.resolvedLanguage, { maximumFractionDigits: 1 });
 
   return (
     <>
@@ -141,36 +158,69 @@ function DirectoryListing({ parent, version, onOpen, onAuthRequired, children }:
           <p className={classes.directoryStatus}>{t('emptyDirectory')}</p>
         )}
         {entries.size > 0 && (
-          <ul className={classes.entries} aria-label={t('filesAndFolders')}>
-            {[...entries.values()].map((entry) => {
-              const { locator } = entry.ref;
-              const isDirectory = entry.kind === 'directory';
-              const Icon = isDirectory ? Folder : entry.kind === 'link' ? Link2 : File;
+          <table className={classes.entries} aria-label={t('filesAndFolders')}>
+            <thead>
+              <tr>
+                <th scope="col">{t('entryName')}</th>
+                <th scope="col" className={classes.entryDate}>
+                  {t('entryModifiedAt')}
+                </th>
+                <th scope="col" className={classes.entrySize}>
+                  {t('entrySize')}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...entries.values()].map((entry) => {
+                const { locator } = entry.ref;
+                const isDirectory = entry.kind === 'directory';
+                const Icon = isDirectory ? Folder : entry.kind === 'link' ? Link2 : File;
+                const selected = selectedLocator === locator;
+                const modifiedAt = Date.parse(entry.modifiedAt ?? '');
 
-              return (
-                <li key={locator}>
-                  <button
-                    type="button"
-                    className={classes.entry}
-                    data-kind={entry.kind}
-                    aria-pressed={selectedLocator === locator}
+                return (
+                  <tr
+                    key={locator}
+                    className={classes.entryRow}
+                    data-selected={selected}
                     onClick={() => setSelectedLocator(locator)}
                     onDoubleClick={isDirectory ? () => onOpen(entry) : undefined}
-                    onKeyDown={(event) => {
-                      if (isDirectory && event.key === 'Enter') {
-                        event.preventDefault();
-                        onOpen(entry);
-                      }
-                    }}
                   >
-                    <Icon size={17} aria-hidden="true" />
-                    <span>{entry.name}</span>
-                    {isDirectory && <ChevronRight size={14} aria-hidden="true" />}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+                    <td className={classes.entryName}>
+                      <button
+                        type="button"
+                        className={classes.entry}
+                        data-kind={entry.kind}
+                        aria-pressed={selected}
+                        onKeyDown={(event) => {
+                          if (isDirectory && event.key === 'Enter') {
+                            event.preventDefault();
+                            onOpen(entry);
+                          }
+                        }}
+                      >
+                        <Icon size={17} aria-hidden="true" />
+                        <span>{entry.name}</span>
+                        {isDirectory && <ChevronRight size={14} aria-hidden="true" />}
+                      </button>
+                    </td>
+                    <td className={classes.entryDate}>
+                      {Number.isFinite(modifiedAt) ? (
+                        <time dateTime={entry.modifiedAt}>{dateFormatter.format(modifiedAt)}</time>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td className={classes.entrySize}>
+                      {!isDirectory && entry.size !== undefined
+                        ? formatSize(entry.size, sizeFormatter)
+                        : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
         {nextCursor && !error && (
           <Button
