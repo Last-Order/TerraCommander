@@ -39,10 +39,10 @@ button.entry > svg:first-child {
   padding: 0.75rem 0.625rem;
 }
 
-.languageControl {
+.sidebarFooter {
   flex: none;
   margin-block-start: auto;
-  padding: 0.75rem 1rem;
+  padding: 0.625rem;
   border-top: 1px solid var(--storage-border);
 }
 

@@ -2,13 +2,18 @@ import type { BrowserErrorCode } from '../../../shared/storage-browser';
 
 export const en = {
   common: {
-    language: 'Language',
-    systemLanguage: 'Follow system',
-    languageSaveFailed: 'Could not save the language. Try again.',
     retry: 'Retry',
     cancel: 'Cancel',
     close: 'Close',
     save: 'Save',
+  },
+  settings: {
+    title: 'Settings',
+    categories: 'Settings categories',
+    general: 'General',
+    language: 'Language',
+    systemLanguage: 'Follow system',
+    languageSaveFailed: 'Could not save the language. Try again.',
   },
   storage: {
     title: 'Storage',

@@ -2,13 +2,18 @@ import type { en } from './en';
 
 export const zhCN = {
   common: {
-    language: '语言',
-    systemLanguage: '跟随系统',
-    languageSaveFailed: '无法保存语言设置，请重试。',
     retry: '重试',
     cancel: '取消',
     close: '关闭',
     save: '保存',
+  },
+  settings: {
+    title: '设置',
+    categories: '设置分类',
+    general: '通用',
+    language: '语言',
+    systemLanguage: '跟随系统',
+    languageSaveFailed: '无法保存语言设置，请重试。',
   },
   storage: {
     title: '存储',
