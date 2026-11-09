@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { I18nextProvider } from 'react-i18next';
@@ -182,7 +182,7 @@ it('loads only the next directory page and refreshes the visible pages with the 
   }
 });
 
-it('translates My Drive and an existing error while keeping the current folder open', async () => {
+it('changes language in General settings and keeps the current folder open', async () => {
   const user = userEvent.setup();
   const drive: Space = {
     id: 'personal-root',
@@ -227,9 +227,18 @@ it('translates My Drive and an existing error while keeping the current folder o
     await user.click(await screen.findByRole('button', { name: '项目文件夹' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('没有权限访问这个位置。');
 
-    await user.selectOptions(screen.getByRole('combobox', { name: '语言' }), 'en');
+    const settingsEntry = screen.getByRole('button', { name: '设置' });
+    expect(screen.queryByRole('combobox', { name: '语言' })).not.toBeInTheDocument();
+    await user.click(settingsEntry);
+    const settings = within(await screen.findByRole('dialog', { name: '设置' }));
+    const categories = within(settings.getByRole('tablist', { name: '设置分类' }));
+    expect(categories.getByRole('tab', { name: '通用', selected: true })).toBeInTheDocument();
+    const general = within(settings.getByRole('tabpanel', { name: '通用' }));
+    await user.selectOptions(general.getByRole('combobox', { name: '语言' }), 'en');
     expect(setLanguage).toHaveBeenCalledExactlyOnceWith('en');
-    expect(await screen.findByRole('combobox', { name: 'Language' })).toHaveValue('en');
+    expect(await settings.findByRole('combobox', { name: 'Language' })).toHaveValue('en');
+    await user.click(settings.getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(screen.getByRole('alert')).toHaveTextContent(
       'You do not have permission to access this location.',
     );
@@ -245,6 +254,10 @@ it('translates My Drive and an existing error while keeping the current folder o
       [child, undefined],
     ]);
     expect(document.documentElement).toHaveAttribute('lang', 'en');
+
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    const reopened = within(await screen.findByRole('dialog', { name: 'Settings' }));
+    expect(await reopened.findByRole('combobox', { name: 'Language' })).toHaveValue('en');
   } finally {
     vi.unstubAllGlobals();
     document.documentElement.lang = previousLang;

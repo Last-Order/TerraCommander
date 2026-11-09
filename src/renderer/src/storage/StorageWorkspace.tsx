@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import useSWR from 'swr';
 import type { Space } from '../../../shared/storage';
@@ -9,7 +9,7 @@ import { StorageSidebar } from './StorageSidebar';
 import { errorKey, resultOf } from './storage-client';
 import classes from './StorageWorkspace.module.css';
 
-export function StorageWorkspace({ languageControl }: { languageControl: ReactNode }) {
+export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { t } = useTranslation('errors');
   const {
     data: connections = [],
@@ -32,7 +32,7 @@ export function StorageWorkspace({ languageControl }: { languageControl: ReactNo
         activeSpace={location?.space ?? null}
         loading={isValidating}
         error={!isValidating && error ? t(errorKey(error)) : null}
-        languageControl={languageControl}
+        onOpenSettings={onOpenSettings}
         onRetry={refresh}
         onAdd={() => setDialog({ kind: 'add' })}
         onManage={(connection) => setDialog({ kind: 'manage', connection })}

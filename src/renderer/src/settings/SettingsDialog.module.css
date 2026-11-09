@@ -1,0 +1,64 @@
+.content {
+  display: flex;
+  flex-direction: column;
+  block-size: 40rem;
+}
+
+.header {
+  flex: none;
+  padding: var(--mantine-spacing-md) var(--mantine-spacing-xl);
+  border-block-end: 1px solid var(--mantine-color-default-border);
+}
+
+.title {
+  font-size: var(--mantine-font-size-lg);
+  font-weight: 650;
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  min-block-size: 0;
+}
+
+.layout {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.categories {
+  flex: 0 0 clamp(8rem, 24%, 15rem);
+  flex-wrap: nowrap;
+  overflow-y: auto;
+  padding: var(--mantine-spacing-lg) var(--mantine-spacing-md);
+  background: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8));
+  border-inline-end: 1px solid var(--mantine-color-default-border);
+}
+
+.category[data-active] {
+  background: var(--mantine-primary-color-light);
+  color: var(--mantine-primary-color-light-color);
+  font-weight: 600;
+}
+
+.categoryLabel {
+  text-align: start;
+}
+
+.panel {
+  min-inline-size: 0;
+  overflow-y: auto;
+  padding: var(--mantine-spacing-lg) clamp(1rem, 3.5vw, 2.25rem);
+}
+
+.setting {
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, 14rem);
+  align-items: center;
+  gap: var(--mantine-spacing-xs) var(--mantine-spacing-md);
+  max-inline-size: 38rem;
+}
+
+.settingError {
+  grid-column: 2;
+}

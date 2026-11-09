@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useId, useState } from 'react';
 import { ActionIcon, Button, Loader } from '@mantine/core';
 import {
   ChevronDown,
@@ -7,6 +7,7 @@ import {
   Layers,
   Monitor,
   Plus,
+  Settings,
   SlidersHorizontal,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -20,7 +21,7 @@ interface SidebarProps {
   activeSpace: Space | null;
   loading: boolean;
   error: string | null;
-  languageControl: ReactNode;
+  onOpenSettings: () => void;
   onRetry: () => void;
   onAdd: () => void;
   onManage: (connection: StorageConnectionSummary) => void;
@@ -33,14 +34,14 @@ export function StorageSidebar({
   activeSpace,
   loading,
   error,
-  languageControl,
+  onOpenSettings,
   onRetry,
   onAdd,
   onManage,
   onReauthorize,
   onOpen,
 }: SidebarProps) {
-  const { t, i18n } = useTranslation(['storage', 'common']);
+  const { t, i18n } = useTranslation(['storage', 'common', 'settings']);
   const { compare } = new Intl.Collator(i18n.resolvedLanguage);
   const sorted = connections.toSorted((a, b) =>
     compare(formatStorageLabel(a.name, t), formatStorageLabel(b.name, t)),
@@ -86,7 +87,19 @@ export function StorageSidebar({
           />
         ))}
       </nav>
-      <div className={classes.languageControl}>{languageControl}</div>
+      <footer className={classes.sidebarFooter}>
+        <Button
+          fullWidth
+          justify="flex-start"
+          variant="subtle"
+          color="gray"
+          leftSection={<Settings size={17} aria-hidden="true" />}
+          aria-haspopup="dialog"
+          onClick={onOpenSettings}
+        >
+          {t('settings:title')}
+        </Button>
+      </footer>
     </aside>
   );
 }

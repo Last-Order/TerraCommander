@@ -18,7 +18,7 @@ export async function createRendererI18n(language: AppLanguage): Promise<i18n> {
     lng: language,
     fallbackLng: fallbackLanguage,
     supportedLngs: appLanguages,
-    ns: ['common', 'storage', 'errors'],
+    ns: ['common', 'settings', 'storage', 'errors'],
     defaultNS: 'common',
     resources: { en, 'zh-CN': zhCN },
     interpolation: { escapeValue: false },
