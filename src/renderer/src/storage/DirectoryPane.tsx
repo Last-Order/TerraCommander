@@ -187,6 +187,11 @@ function DirectoryListing({
     if (hasMorePages && !loading && pageCount === size) void setSize(size + 1);
   }, [hasMorePages, loading, pageCount, size, setSize]);
 
+  if (complete && !loading && selectedLocators.size > 0) {
+    const remaining = [...selectedLocators].filter((locator) => entries.has(locator));
+    if (remaining.length < selectedLocators.size) setSelectedLocators(new Set(remaining));
+  }
+
   const rows = Array.from(entries.values(), (entry): DirectoryRow => {
     const modifiedAt = Date.parse(entry.modifiedAt ?? '');
     return {

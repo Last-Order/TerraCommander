@@ -483,6 +483,61 @@ it('reuses directory pages when switching storage spaces and refreshes with the 
   }
 });
 
+it('drops missing selections after a complete directory refresh', async () => {
+  const user = userEvent.setup();
+  const space = {
+    id: 'drive',
+    connectionId: localConnectionId,
+    name: '项目盘',
+    root: { connectionId: localConnectionId, spaceId: 'drive', locator: '.' },
+  } satisfies Space;
+  const removed = {
+    ref: { ...space.root, locator: 'removed' },
+    name: '已删除.txt',
+    kind: 'file',
+    capabilities: {},
+  } as const;
+  const retained = { ...removed, ref: { ...space.root, locator: 'retained' }, name: '保留.txt' };
+  const updated = { ...retained, name: '保留-刷新后.txt' };
+  const listDirectory = vi
+    .fn<StorageBrowserApi['listDirectory']>()
+    .mockResolvedValueOnce(success({ entries: [removed, retained] }))
+    .mockResolvedValueOnce(success({ entries: [], nextCursor: 'next' }))
+    .mockResolvedValueOnce(success({ entries: [updated] }))
+    .mockResolvedValueOnce(success({ entries: [removed, updated] }));
+
+  vi.stubGlobal('desktop', {
+    storage: {
+      listConnections: async () => success([{ ...emptyLocalConnection, spaces: [space] }]),
+      listDirectory,
+    },
+  });
+  try {
+    await renderWorkspace();
+    await user.click(await screen.findByRole('button', { name: space.name }));
+    const removedButton = await screen.findByRole('button', { name: removed.name });
+    await user.click(removedButton);
+    await user.keyboard('{Control>}');
+    await user.click(screen.getByRole('button', { name: retained.name }));
+    await user.keyboard('{/Control}');
+
+    const refresh = screen.getByRole('button', { name: '刷新目录' });
+    await user.click(refresh);
+    const updatedButton = await screen.findByRole('button', { name: updated.name });
+    expect(removedButton).not.toBeInTheDocument();
+    expect(updatedButton).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(refresh);
+    expect(await screen.findByRole('button', { name: removed.name })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(updatedButton).toHaveAttribute('aria-pressed', 'true');
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 it('invalidates the authorized connection cache while another storage space is open', async () => {
   const user = userEvent.setup();
   const local = {
