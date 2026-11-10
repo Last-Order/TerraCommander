@@ -34,6 +34,11 @@ it('restores a chosen folder and confines browsing to its saved root', async () 
   await symlink(outside, join(root, 'redirect'), process.platform === 'win32' ? 'junction' : 'dir');
 
   const snapshotStore = memorySnapshotStore();
+  snapshotStore.write({
+    version: 2,
+    folders: [],
+    connections: [{ id: localConnectionId, discovered: [] }],
+  });
   const accounts = createAccountServices({
     store: new MemoryAccountStore(),
     cipher: new FakeAccountCipher(),
@@ -47,6 +52,7 @@ it('restores a chosen folder and confines browsing to its saved root', async () 
   let space;
   try {
     expect(await browser.listConnections()).toEqual([]);
+    expect(await browser.listSpaces(localConnectionId)).toEqual([]);
     space = await browser.addLocalFolder(root);
     await browser.saveSpaces(localConnectionId, [space.id]);
   } finally {
@@ -58,6 +64,7 @@ it('restores a chosen folder and confines browsing to its saved root', async () 
     expect(await restored.listConnections()).toMatchObject([
       { id: localConnectionId, spaces: [space] },
     ]);
+    expect(await restored.listSpaces(localConnectionId)).toEqual([{ space, available: true }]);
     const page = await restored.listDirectory(space.root);
     expect(page.entries).toMatchObject([
       {
@@ -86,12 +93,17 @@ it('restores a chosen folder and confines browsing to its saved root', async () 
   }
 });
 
-it('rebuilds My Drive, restores cached shared drives offline, and preserves an empty selection', async () => {
+it('persists discovered spaces separately from legacy selections and refreshes them explicitly', async () => {
   const snapshotStore = memorySnapshotStore();
   const { runtime } = accountFixture();
-  const request = vi
-    .fn<typeof fetch>()
-    .mockImplementation(async () => Response.json({ drives: [{ id: 'team', name: 'Team' }] }));
+  const request = vi.fn<typeof fetch>().mockImplementation(async () =>
+    Response.json({
+      drives: [
+        { id: 'team', name: 'Team' },
+        { id: 'archive', name: 'Archive' },
+      ],
+    }),
+  );
   vi.stubGlobal('fetch', request);
 
   function openBrowser() {
@@ -100,13 +112,10 @@ it('rebuilds My Drive, restores cached shared drives offline, and preserves an e
     });
   }
 
-  let browser = openBrowser();
+  let browser: StorageBrowser | undefined;
   try {
     const account = await runtime.accounts.add('google-drive', { method: 'browser' });
-    const choices = await browser.listSpaces(account.id);
-    const expectedSpaces = choices.map(({ space }) => space);
-    await browser.saveSpaces(account.id, ['my-drive', 'shared:team']);
-    expect(snapshotStore.read()).toEqual({
+    const saved = {
       version: 2,
       folders: [],
       connections: [
@@ -118,6 +127,24 @@ it('rebuilds My Drive, restores cached shared drives offline, and preserves an e
           ],
         },
       ],
+    };
+    snapshotStore.write(saved);
+    browser = openBrowser();
+    const [choices, concurrentChoices] = await Promise.all([
+      browser.listSpaces(account.id),
+      browser.listSpaces(account.id),
+    ]);
+    const expectedSpaces = choices.slice(0, 2).map(({ space }) => space);
+    expect(choices.map(({ space }) => space.id)).toEqual([
+      'my-drive',
+      'shared:team',
+      'shared:archive',
+    ]);
+    expect(concurrentChoices).toEqual(choices);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(snapshotStore.read()).toEqual({
+      ...saved,
+      connections: [{ ...saved.connections[0], discovered: choices.map(({ space }) => space) }],
     });
     await browser.dispose();
 
@@ -126,19 +153,31 @@ it('rebuilds My Drive, restores cached shared drives offline, and preserves an e
     expect(await browser.listConnections()).toMatchObject([
       { id: account.id, spaces: expectedSpaces },
     ]);
+    expect(await browser.listSpaces(account.id)).toEqual(choices);
     expect(request).not.toHaveBeenCalled();
-    await expect(browser.listSpaces(account.id)).rejects.toMatchObject({ code: 'NetworkError' });
-    expect(await browser.listConnections()).toMatchObject([
-      { id: account.id, spaces: expectedSpaces },
+    await expect(browser.listSpaces(account.id, true)).rejects.toMatchObject({
+      code: 'NetworkError',
+    });
+    expect(await browser.listSpaces(account.id)).toEqual(choices);
+    expect(request).toHaveBeenCalledTimes(1);
+
+    request.mockResolvedValueOnce(Response.json({ drives: [{ id: 'new', name: 'New' }] }));
+    const refreshed = await browser.listSpaces(account.id, true);
+    expect(refreshed.map(({ space, available }) => [space.id, available])).toEqual([
+      ['my-drive', true],
+      ['shared:new', true],
+      ['shared:team', false],
     ]);
     await browser.saveSpaces(account.id, []);
     await browser.dispose();
 
     browser = openBrowser();
     expect(await browser.listConnections()).toMatchObject([{ id: account.id, spaces: [] }]);
+    expect(await browser.listSpaces(account.id)).toEqual(refreshed.slice(0, 2));
+    expect(request).toHaveBeenCalledTimes(2);
   } finally {
     vi.unstubAllGlobals();
-    await browser.dispose();
+    await browser?.dispose();
     await runtime.dispose();
   }
 });

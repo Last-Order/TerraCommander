@@ -31,7 +31,7 @@ export type BrowserResult<T> = { ok: true; value: T } | { ok: false; code: Brows
 
 export interface StorageBrowserApi {
   listConnections(): Promise<BrowserResult<StorageConnectionSummary[]>>;
-  listSpaces(connectionId: string): Promise<BrowserResult<SpaceChoice[]>>;
+  listSpaces(connectionId: string, refresh?: boolean): Promise<BrowserResult<SpaceChoice[]>>;
   saveSpaces(connectionId: string, spaceIds: string[]): Promise<BrowserResult<void>>;
   chooseFolder(): Promise<BrowserResult<Space | null>>;
   addGoogleDrive(): Promise<BrowserResult<StorageConnectionSummary>>;
