@@ -1,0 +1,10 @@
+.spaceChoices {
+  display: grid;
+  gap: 0.7rem;
+  max-height: min(50vh, 22rem);
+  overflow: auto;
+}
+
+.spaceChoices:empty {
+  display: none;
+}

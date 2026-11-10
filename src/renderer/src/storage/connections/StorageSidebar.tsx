@@ -11,10 +11,10 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { Space } from '../../../shared/storage';
-import type { StorageConnectionSummary } from '../../../shared/storage-browser';
-import { formatStorageLabel } from './storage-labels';
-import classes from './StorageWorkspace.module.css';
+import type { Space } from '../../../../shared/storage';
+import type { StorageConnectionSummary } from '../../../../shared/storage-browser';
+import { formatStorageLabel } from '../storage-labels';
+import classes from './StorageSidebar.module.css';
 
 interface SidebarProps {
   connections: StorageConnectionSummary[];

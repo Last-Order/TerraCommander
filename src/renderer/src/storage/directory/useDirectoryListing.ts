@@ -1,7 +1,7 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import type { Entry, EntryRef } from '../../../shared/storage';
+import type { Entry, EntryRef } from '../../../../shared/storage';
+import { errorKey, resultOf, StorageBrowserError, type StorageErrorKey } from '../storage-client';
 import type { DirectoryCache, DirectoryEntries } from './directory-cache';
-import { errorKey, resultOf, StorageBrowserError, type StorageErrorKey } from './storage-client';
 
 type ListingState =
   | { phase: 'loading' | 'ready' | 'refreshing'; entries: DirectoryEntries }

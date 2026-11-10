@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { I18nextProvider } from 'react-i18next';
 import { defaultLanguageSettings } from '../../shared/language';
 import { App } from './app/App';
-import { createRendererI18n } from './i18n/i18n';
+import { createRendererI18n } from './i18n/create-renderer-i18n';
 
 async function start() {
   const root = document.getElementById('root');

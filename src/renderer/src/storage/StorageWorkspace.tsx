@@ -3,10 +3,10 @@ import { useTranslation } from 'react-i18next';
 import useSWR from 'swr';
 import type { Space } from '../../../shared/storage';
 import { localConnectionId } from '../../../shared/storage-browser';
-import { DirectoryPane, EmptyDirectoryPane } from './DirectoryPane';
-import { StorageSetupModal, type SetupIntent } from './StorageSetupModal';
-import { StorageSidebar } from './StorageSidebar';
-import { DirectoryCache } from './directory-cache';
+import { StorageSetupModal, type SetupIntent } from './connections/StorageSetupModal';
+import { StorageSidebar } from './connections/StorageSidebar';
+import { DirectoryCache } from './directory/directory-cache';
+import { DirectoryPane, EmptyDirectoryPane } from './directory/DirectoryPane';
 import { errorKey, resultOf } from './storage-client';
 import classes from './StorageWorkspace.module.css';
 

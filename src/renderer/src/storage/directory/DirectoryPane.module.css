@@ -1,0 +1,76 @@
+.emptyDirectory svg {
+  color: var(--storage-accent);
+}
+
+.crumb button {
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: var(--mantine-radius-sm);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.crumb button:hover {
+  background: var(--storage-hover);
+}
+
+.crumb svg {
+  flex: none;
+}
+
+.crumb span,
+.crumb button {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directory {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.breadcrumbs,
+.crumb {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.crumb button,
+.crumb span {
+  padding: 0.25rem 0.5rem;
+}
+
+.crumb span {
+  font-weight: 600;
+}
+
+.crumb svg {
+  color: var(--mantine-color-dimmed);
+}
+
+.emptyDirectory {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 0.45rem;
+  padding: 1.25rem;
+  text-align: center;
+}
+
+.emptyDirectory h1 {
+  margin: 0.35rem 0 0;
+  font-size: var(--mantine-font-size-lg);
+  font-weight: 600;
+}
+
+.emptyDirectory p {
+  margin: 0;
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-sm);
+}
