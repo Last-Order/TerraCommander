@@ -117,4 +117,12 @@ export function registerIpcHandlers(
     z.tuple([directory, z.string().min(1).max(65_536).optional()]),
     (browser, _window, parent, cursor?: string) => browser.listDirectory(parent, cursor),
   );
+  handleStorage(
+    channels.measureDirectorySize,
+    z.tuple([z.uuid(), z.array(directory).min(1)]),
+    (browser, _window, id, folders) => browser.measureDirectorySize(id, folders),
+  );
+  handleStorage(channels.cancelDirectoryMeasurement, z.tuple([z.uuid()]), (browser, _window, id) =>
+    browser.cancelDirectoryMeasurement(id),
+  );
 }

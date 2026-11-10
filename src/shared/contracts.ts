@@ -13,6 +13,8 @@ export const channels = {
   reauthorize: 'storage:reauthorize',
   cancelAuthorization: 'storage:cancel-authorization',
   listDirectory: 'storage:list-directory',
+  measureDirectorySize: 'storage:measure-directory-size',
+  cancelDirectoryMeasurement: 'storage:cancel-directory-measurement',
 } as const;
 
 export interface AppInfo {

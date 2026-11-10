@@ -72,7 +72,7 @@ class LocalAdapter implements StorageAdapter {
 
   async stat(ref: EntryRef, { signal }: OperationContext): Promise<Entry> {
     const { path, info } = await this.locate(ref, signal);
-    return localEntry(ref, basename(path) || parse(path).root, info);
+    return localEntry(ref, basename(path) || parse(path).root, path, info);
   }
 
   async list(
@@ -95,9 +95,10 @@ class LocalAdapter implements StorageAdapter {
         const batch = await Promise.all(
           page.slice(offset, offset + metadataBatchSize).map(async (item) => {
             const ref = { ...parent, locator: join(parent.locator, item.name) };
+            const displayPath = join(path, item.name);
             // A listed item can disappear or become inaccessible before metadata is read.
-            const info = await lstat(join(path, item.name)).catch(() => undefined);
-            return localEntry(ref, item.name, info ?? item);
+            const info = await lstat(displayPath).catch(() => undefined);
+            return localEntry(ref, item.name, displayPath, info ?? item);
           }),
         );
         throwIfAborted(signal);
@@ -155,12 +156,18 @@ class LocalAdapter implements StorageAdapter {
   }
 }
 
-function localEntry(ref: EntryRef, name: string, info: Dirent | Stats): Entry {
+function localEntry(ref: EntryRef, name: string, displayPath: string, info: Dirent | Stats): Entry {
   let kind: Entry['kind'] = 'other';
   if (info.isDirectory()) kind = 'directory';
   else if (info.isSymbolicLink()) kind = 'link';
   else if (info.isFile()) kind = 'file';
-  const entry: Entry = { ref, name, kind, capabilities: kind === 'directory' ? listSupported : {} };
+  const entry: Entry = {
+    ref,
+    name,
+    kind,
+    displayPath,
+    capabilities: kind === 'directory' ? listSupported : {},
+  };
   if ('mtime' in info) {
     const year = info.mtime.getUTCFullYear();
     if (year >= 0 && year <= 9999) entry.modifiedAt = info.mtime.toISOString();

@@ -25,6 +25,7 @@ export const entrySchema = z.strictObject({
   ref: entryRefSchema,
   name: z.string(),
   kind: z.enum(['file', 'directory', 'link', 'other']),
+  displayPath: identifier.optional(),
   size: byteCountSchema.optional(),
   modifiedAt: z.iso.datetime({ offset: true }).optional(),
   revision: identifier.optional(),

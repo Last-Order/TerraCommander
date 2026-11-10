@@ -38,4 +38,6 @@ export interface StorageBrowserApi {
   reauthorize(connectionId: string): Promise<BrowserResult<void>>;
   cancelAuthorization(): Promise<BrowserResult<void>>;
   listDirectory(parent: EntryRef, cursor?: string): Promise<BrowserResult<EntryPage>>;
+  measureDirectorySize(id: string, folders: EntryRef[]): Promise<BrowserResult<number | null>>;
+  cancelDirectoryMeasurement(id: string): Promise<BrowserResult<void>>;
 }

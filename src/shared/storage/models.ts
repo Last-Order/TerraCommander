@@ -75,6 +75,8 @@ export interface Entry {
   ref: EntryRef;
   name: string;
   kind: 'file' | 'directory' | 'link' | 'other';
+  /** A provider-supplied path for display only. Operations still use ref. */
+  displayPath?: string | undefined;
   size?: number | undefined;
   modifiedAt?: string | undefined;
   revision?: string | undefined;

@@ -94,6 +94,12 @@ it('adds a local folder to the same sidebar as Drive and browses both connection
         entries: [{ ref: { ...ref, locator: 'file' }, name, kind: 'file', capabilities: {} }],
       });
     },
+    async measureDirectorySize() {
+      return success(null);
+    },
+    async cancelDirectoryMeasurement() {
+      return success(undefined);
+    },
   };
 
   const listConnections = vi.spyOn(storage, 'listConnections');
@@ -217,6 +223,107 @@ it('shows file details and supports selection and opening from the whole row', a
       'aria-pressed',
       'false',
     );
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it('opens information for a right-clicked row and measures selected folders in the dialog', async () => {
+  const user = userEvent.setup();
+  const space = {
+    id: 'drive',
+    connectionId: localConnectionId,
+    name: '项目盘',
+    root: { connectionId: localConnectionId, spaceId: 'drive', locator: '.' },
+  } satisfies Space;
+  const file = { ...space.root, locator: 'file' };
+  const folder = { ...space.root, locator: 'folder' };
+  const modifiedAt = '2026-01-02T03:04:06.000Z';
+  const displayedDate = new Intl.DateTimeFormat('zh-CN', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(Date.parse(modifiedAt));
+  let finish!: (result: BrowserResult<number | null>) => void;
+  const calculation = new Promise<BrowserResult<number | null>>((resolve) => {
+    finish = resolve;
+  });
+  const measureDirectorySize = vi.fn<StorageBrowserApi['measureDirectorySize']>(() => calculation);
+  const cancelDirectoryMeasurement = vi.fn<StorageBrowserApi['cancelDirectoryMeasurement']>(
+    async () => success(undefined),
+  );
+  const listDirectory = vi.fn<StorageBrowserApi['listDirectory']>(async () =>
+    success({
+      entries: [
+        {
+          ref: file,
+          name: '清单.txt',
+          kind: 'file',
+          displayPath: 'C:\\项目盘\\清单.txt',
+          size: 512,
+          modifiedAt,
+          capabilities: {},
+        },
+        {
+          ref: folder,
+          name: '资料',
+          kind: 'directory',
+          displayPath: 'C:\\项目盘\\资料',
+          modifiedAt: '2026-01-01T03:04:06.000Z',
+          capabilities: {},
+        },
+      ],
+    }),
+  );
+  vi.stubGlobal('desktop', {
+    storage: {
+      listConnections: async () => success([{ ...emptyLocalConnection, spaces: [space] }]),
+      listDirectory,
+      measureDirectorySize,
+      cancelDirectoryMeasurement,
+    },
+  });
+  try {
+    await renderWorkspace();
+    await user.click(await screen.findByRole('button', { name: space.name }));
+    const fileButton = await screen.findByRole('button', { name: '清单.txt' });
+    const folderButton = screen.getByRole('button', { name: '资料' });
+    await user.click(folderButton);
+    await user.pointer({ keys: '[MouseRight]', target: fileButton });
+    expect(fileButton).toHaveAttribute('aria-pressed', 'true');
+    expect(folderButton).toHaveAttribute('aria-pressed', 'false');
+    await user.click(await screen.findByRole('menuitem', { name: '信息' }));
+    const single = within(await screen.findByRole('dialog', { name: '信息' }));
+    expect(single.getByText('清单.txt')).toBeInTheDocument();
+    expect(single.getByText('512 B')).toBeInTheDocument();
+    expect(single.getByText(displayedDate)).toBeInTheDocument();
+    expect(single.getByText('C:\\项目盘\\清单.txt')).toBeInTheDocument();
+    expect(measureDirectorySize).not.toHaveBeenCalled();
+
+    await user.click(single.getByRole('button', { name: '关闭' }));
+    await user.keyboard('{Control>}');
+    await user.click(folderButton);
+    await user.keyboard('{/Control}');
+    const folderRow = within(screen.getByRole('row', { name: /资料/ }));
+    await user.pointer({
+      keys: '[MouseRight]',
+      target: folderRow.getByRole('cell', { name: '—' }),
+    });
+    await user.click(await screen.findByRole('menuitem', { name: '信息' }));
+    const multiple = within(await screen.findByRole('dialog', { name: '信息' }));
+    expect(multiple.getByText('共 2 项')).toBeInTheDocument();
+    expect(multiple.getByText('C:\\项目盘\\')).toBeInTheDocument();
+    expect(multiple.getByText(displayedDate)).toBeInTheDocument();
+    expect(multiple.getByText('计算中…')).toBeInTheDocument();
+    expect(measureDirectorySize).toHaveBeenLastCalledWith(expect.any(String), [folder]);
+    finish(success(1536));
+    expect(await multiple.findByText('2 KiB')).toBeInTheDocument();
+    expect(multiple.queryByText('计算中…')).not.toBeInTheDocument();
+
+    await user.click(multiple.getByRole('button', { name: '关闭' }));
+    expect(cancelDirectoryMeasurement).toHaveBeenLastCalledWith(
+      measureDirectorySize.mock.lastCall?.[0],
+    );
+    expect(listDirectory).toHaveBeenCalledExactlyOnceWith(space.root, undefined);
   } finally {
     vi.unstubAllGlobals();
   }
