@@ -1,0 +1,15 @@
+.entryInformation {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.75rem 1rem;
+  margin: 0 0 1rem;
+}
+
+.entryInformation dt {
+  color: var(--mantine-color-dimmed);
+}
+
+.entryInformation dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

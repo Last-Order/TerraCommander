@@ -1,4 +1,4 @@
-import type { Entry, EntryRef } from '../../../shared/storage';
+import type { Entry, EntryRef } from '../../../../shared/storage';
 
 export type DirectoryEntries = ReadonlyMap<string, Entry>;
 

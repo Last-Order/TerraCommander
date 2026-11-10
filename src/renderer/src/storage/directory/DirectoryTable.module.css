@@ -1,0 +1,131 @@
+.entry[data-kind='directory'] > svg:first-child {
+  color: var(--storage-accent);
+}
+
+.sortHeader,
+.entry {
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: var(--mantine-radius-sm);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.sortHeader:hover,
+.entryRow:hover {
+  background: var(--storage-hover);
+}
+
+.entry svg {
+  flex: none;
+}
+
+.entryRow[data-selected='true'] {
+  color: var(--storage-accent);
+  background: var(--mantine-color-teal-light);
+}
+
+.entry svg:last-child {
+  color: var(--mantine-color-dimmed);
+}
+
+.entries {
+  --entry-date-width: 13rem;
+  --entry-size-width: 7rem;
+
+  width: 100%;
+  min-width: calc(6rem + var(--entry-date-width) + var(--entry-size-width));
+  table-layout: fixed;
+  border-spacing: 0;
+  margin-block-end: 0.65rem;
+  font-size: var(--mantine-font-size-sm);
+}
+
+.entries td {
+  padding: 0.35rem 0.6rem;
+}
+
+.entries th {
+  padding: 0;
+  border-bottom: 1px solid var(--storage-border);
+  color: var(--mantine-color-dimmed);
+  font-weight: 600;
+  text-align: start;
+}
+
+.sortHeader,
+.columnLabel {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.6rem;
+  white-space: nowrap;
+}
+
+.sortHeader svg {
+  flex: none;
+}
+
+.entrySize .sortHeader,
+.entrySize .columnLabel {
+  justify-content: flex-end;
+}
+
+.entries th[aria-sort] {
+  color: var(--storage-accent);
+}
+
+.entryRow {
+  cursor: pointer;
+  user-select: none;
+}
+
+.entries .entryName {
+  padding: 0;
+}
+
+.entryDate,
+.entrySize {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.entryDate {
+  width: var(--entry-date-width);
+}
+
+.entries .entrySize {
+  width: var(--entry-size-width);
+  text-align: end;
+}
+
+.entry,
+.entryPlaceholder {
+  display: flex;
+  width: 100%;
+  min-height: 2.3rem;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.35rem 0.6rem;
+}
+
+.entrySizePlaceholder {
+  margin-inline-start: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .placeholderRows [data-animate]::after {
+    animation: none;
+  }
+}
+
+.entry span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

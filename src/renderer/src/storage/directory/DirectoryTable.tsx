@@ -9,9 +9,9 @@ import {
   Link2,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { Entry } from '../../../shared/storage';
+import type { Entry } from '../../../../shared/storage';
+import classes from './DirectoryTable.module.css';
 import { formatSize } from './entry-format';
-import classes from './StorageWorkspace.module.css';
 
 const entryIconSize = 17;
 const columns = [

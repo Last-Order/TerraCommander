@@ -1,0 +1,147 @@
+.sidebar {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--sidebar-surface);
+  border-inline-end: 1px solid var(--storage-border);
+}
+
+.brand {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.55rem;
+  height: 3.5rem;
+  padding-inline: 1rem;
+  border-bottom: 1px solid var(--storage-border);
+  font-weight: 650;
+}
+
+.brand svg {
+  color: var(--storage-accent);
+}
+
+.navigation {
+  overflow: auto;
+  padding: 0.75rem 0.625rem;
+}
+
+.sidebarFooter {
+  flex: none;
+  margin-block-start: auto;
+  padding: 0.625rem;
+  border-top: 1px solid var(--storage-border);
+}
+
+.sidebarHeading,
+.connectionHeading {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.sidebarHeading {
+  justify-content: space-between;
+  padding-inline: 0.375rem;
+  margin-bottom: 0.75rem;
+}
+
+.sidebarHeading h2 {
+  margin: 0;
+  font-size: var(--mantine-font-size-sm);
+}
+
+.connection + .connection {
+  margin-top: 0.55rem;
+}
+
+.connectionToggle,
+.space {
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: var(--mantine-radius-sm);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.connectionToggle:hover,
+.space:hover {
+  background: var(--storage-hover);
+}
+
+.connectionToggle,
+.space {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.45rem;
+}
+
+.connectionToggle {
+  flex: 1;
+}
+
+.connectionToggle svg,
+.space svg {
+  flex: none;
+}
+
+.connectionToggle[aria-expanded='false'] .chevron {
+  transform: rotate(-90deg);
+}
+
+.connectionText {
+  display: grid;
+  min-width: 0;
+  font-size: var(--mantine-font-size-sm);
+}
+
+.connectionText small {
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-xs);
+}
+
+.connectionText > *,
+.space span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.authorization {
+  margin-inline-start: 1.95rem;
+}
+
+.spaces {
+  list-style: none;
+  padding-inline-start: 1.55rem;
+  margin: 0.2rem 0 0;
+}
+
+.space {
+  width: 100%;
+  min-height: 2rem;
+  font-size: var(--mantine-font-size-sm);
+}
+
+.space[aria-current='location'] {
+  color: var(--storage-accent);
+  background: var(--mantine-color-teal-light);
+}
+
+.space[aria-current='location'] {
+  font-weight: 600;
+}
+
+.sidebarStatus {
+  margin: 0.5rem 0.375rem;
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-sm);
+}
+
+.sidebarStatus p {
+  margin: 0 0 0.25rem;
+}

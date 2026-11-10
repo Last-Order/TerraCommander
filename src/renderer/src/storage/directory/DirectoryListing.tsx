@@ -2,12 +2,12 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { ActionIcon, Alert, Button, Group, Menu, VisuallyHidden } from '@mantine/core';
 import { Info, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { Entry, EntryRef } from '../../../shared/storage';
+import type { Entry, EntryRef } from '../../../../shared/storage';
+import classes from './DirectoryListing.module.css';
 import { DirectoryTable, type DirectoryRow, type DirectorySort } from './DirectoryTable';
 import { EntryInformationModal, type EntrySelection } from './EntryInformationModal';
 import type { DirectoryCache } from './directory-cache';
 import { useDirectoryListing } from './useDirectoryListing';
-import classes from './StorageWorkspace.module.css';
 
 function sortRows(rows: DirectoryRow[], { field, direction }: DirectorySort, locale?: string) {
   const { compare } = new Intl.Collator(locale, { numeric: true, sensitivity: 'base' });

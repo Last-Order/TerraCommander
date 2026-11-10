@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import type { Entry, EntryRef } from '../../../shared/storage';
+import type { Entry, EntryRef } from '../../../../shared/storage';
 import { DirectoryCache } from './directory-cache';
 
 function root(spaceId: string): EntryRef {
