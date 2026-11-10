@@ -626,7 +626,7 @@ it('enables local sorting only after the entire directory is loaded', async () =
     name: '项目盘',
     root: { connectionId: localConnectionId, spaceId: 'drive', locator: '.' },
   } satisfies Space;
-  function pauseLastPage() {
+  function pausePage() {
     let resolve!: () => void;
     const promise = new Promise<void>((finish) => {
       resolve = finish;
@@ -634,7 +634,8 @@ it('enables local sorting only after the entire directory is loaded', async () =
     return { promise, resolve };
   }
 
-  const finishLastPage = pauseLastPage();
+  const finishFirstPage = pausePage();
+  const finishLastPage = pausePage();
   const listDirectory = vi.fn<StorageBrowserApi['listDirectory']>(async (ref, cursor) => {
     if (ref.locator !== space.root.locator) return success({ entries: [] });
     if (cursor === 'next') return success({ entries: [], nextCursor: 'last' });
@@ -653,6 +654,7 @@ it('enables local sorting only after the entire directory is loaded', async () =
         ],
       });
     }
+    await finishFirstPage.promise;
     return success({
       entries: [
         {
@@ -682,7 +684,14 @@ it('enables local sorting only after the entire directory is loaded', async () =
   try {
     await renderWorkspace();
     await user.click(await screen.findByRole('button', { name: space.name }));
-    const table = within(await screen.findByRole('table', { name: '文件和文件夹' }));
+    const loadingTable = await screen.findByRole('table', { name: '文件和文件夹' });
+    expect(loadingTable.parentElement).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByRole('status')).toHaveTextContent('正在加载目录');
+    expect(within(loadingTable).getAllByRole('columnheader')).toHaveLength(3);
+    expect(within(loadingTable).getAllByRole('row')).toHaveLength(1);
+    expect(loadingTable.querySelectorAll('tbody tr').length).toBeGreaterThan(0);
+    finishFirstPage.resolve();
+    const table = within(loadingTable);
     const entryNames = () =>
       table
         .getAllByRole('row')
@@ -691,7 +700,7 @@ it('enables local sorting only after the entire directory is loaded', async () =
 
     await waitFor(() => expect(listDirectory).toHaveBeenLastCalledWith(space.root, 'last'));
     expect(entryNames()).toEqual(['file10', 'unknown']);
-    expect(screen.queryByLabelText('正在加载目录')).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '加载更多' })).not.toBeInTheDocument();
     for (const header of table.getAllByRole('columnheader')) {
       expect(within(header).queryByRole('button')).not.toBeInTheDocument();
@@ -742,6 +751,7 @@ it('enables local sorting only after the entire directory is loaded', async () =
     expect(reopenedTable.getByRole('button', { name: '名称' })).toBeInTheDocument();
     expect(listDirectory).toHaveBeenCalledTimes(4);
   } finally {
+    finishFirstPage.resolve();
     finishLastPage.resolve();
     vi.unstubAllGlobals();
   }

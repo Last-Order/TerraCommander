@@ -240,6 +240,7 @@
   min-height: 0;
   overflow: auto;
   padding: 0.9rem 1.25rem;
+  scrollbar-gutter: stable;
 }
 
 .entries {
@@ -313,13 +314,24 @@
   text-align: end;
 }
 
-.entry {
+.entry,
+.entryPlaceholder {
   display: flex;
   width: 100%;
   min-height: 2.3rem;
   align-items: center;
   gap: 0.65rem;
   padding: 0.35rem 0.6rem;
+}
+
+.entrySizePlaceholder {
+  margin-inline-start: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .placeholderRows [data-animate]::after {
+    animation: none;
+  }
 }
 
 .entry span {

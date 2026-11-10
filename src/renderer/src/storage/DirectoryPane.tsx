@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActionIcon, Alert, Button, Group, Loader, Menu } from '@mantine/core';
+import { ActionIcon, Alert, Button, Group, Menu, Skeleton, VisuallyHidden } from '@mantine/core';
 import {
   ChevronDown,
   ChevronRight,
@@ -23,6 +23,7 @@ import { formatStorageLabel } from './storage-labels';
 import classes from './StorageWorkspace.module.css';
 
 const temporaryFolderCache = { provider: () => new Map() };
+const entryIconSize = 17;
 const columns = [
   { field: 'name', label: 'entryName', className: undefined },
   { field: 'modifiedAt', label: 'entryModifiedAt', className: classes.entryDate },
@@ -122,6 +123,25 @@ export function EmptyDirectoryPane() {
       <p>{t('chooseSpaceHint')}</p>
     </main>
   );
+}
+
+function DirectorySkeletonRows() {
+  return Array.from({ length: 10 }, (_, index) => (
+    <tr key={index}>
+      <td className={classes.entryName}>
+        <div className={classes.entryPlaceholder}>
+          <Skeleton style={{ width: entryIconSize, height: entryIconSize, flex: 'none' }} />
+          <Skeleton width="min(55%, 14rem)" height="0.75rem" />
+        </div>
+      </td>
+      <td className={classes.entryDate}>
+        <Skeleton width="8.5rem" height="0.75rem" />
+      </td>
+      <td className={classes.entrySize}>
+        <Skeleton className={classes.entrySizePlaceholder} width="3rem" height="0.75rem" />
+      </td>
+    </tr>
+  ));
 }
 
 interface ListingProps {
@@ -252,8 +272,12 @@ function DirectoryListing({
           <RefreshCw size={16} aria-hidden="true" />
         </ActionIcon>
       </header>
+      {loadingFirstPage && (
+        <VisuallyHidden>
+          <output>{t('loadingDirectory')}</output>
+        </VisuallyHidden>
+      )}
       <div className={classes.directoryContents} aria-busy={loadingFirstPage}>
-        {loadingFirstPage && <Loader size="sm" aria-label={t('loadingDirectory')} />}
         {error && (
           <Alert color="red" role="alert">
             <Group justify="space-between">
@@ -267,7 +291,7 @@ function DirectoryListing({
         {complete && entries.size === 0 && (
           <p className={classes.directoryStatus}>{t('emptyDirectory')}</p>
         )}
-        {entries.size > 0 && (
+        {(loadingFirstPage || entries.size > 0) && (
           <Menu
             opened={menuEntries !== null}
             onChange={(opened) => {
@@ -308,8 +332,12 @@ function DirectoryListing({
                   })}
                 </tr>
               </thead>
-              <Menu.ContextMenu>
-                <tbody>
+              <Menu.ContextMenu disabled={loadingFirstPage}>
+                <tbody
+                  aria-hidden={loadingFirstPage || undefined}
+                  className={loadingFirstPage ? classes.placeholderRows : undefined}
+                >
+                  {loadingFirstPage && <DirectorySkeletonRows />}
                   {rows.map(({ entry, modifiedAt, size }) => {
                     const { locator } = entry.ref;
                     const isDirectory = entry.kind === 'directory';
@@ -344,7 +372,7 @@ function DirectoryListing({
                               }
                             }}
                           >
-                            <Icon size={17} aria-hidden="true" />
+                            <Icon size={entryIconSize} aria-hidden="true" />
                             <span title={entry.name}>{entry.name}</span>
                             {isDirectory && <ChevronRight size={14} aria-hidden="true" />}
                           </button>

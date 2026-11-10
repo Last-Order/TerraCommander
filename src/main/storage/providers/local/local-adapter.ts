@@ -77,9 +77,10 @@ class LocalAdapter implements StorageAdapter {
 
   async list(
     parent: EntryRef,
-    { pageSize = 100, cursor }: ListRequest,
+    { cursor }: ListRequest,
     { signal }: OperationContext,
   ): Promise<EntryPage> {
+    if (cursor !== undefined) throw new StorageError('InvalidArgument');
     const { path, info } = await this.locate(parent, signal);
     if (!info.isDirectory()) throw new StorageError('InvalidArgument');
 
@@ -87,13 +88,10 @@ class LocalAdapter implements StorageAdapter {
       const items = await readdir(path, { withFileTypes: true });
       throwIfAborted(signal);
       items.sort((a, b) => (a.name < b.name ? -1 : Number(a.name > b.name)));
-      const start = cursor === undefined ? 0 : items.findIndex(({ name }) => name > cursor);
-      if (start < 0) return { entries: [] };
-      const page = items.slice(start, start + pageSize);
       const entries: Entry[] = [];
-      for (let offset = 0; offset < page.length; offset += metadataBatchSize) {
+      for (let offset = 0; offset < items.length; offset += metadataBatchSize) {
         const batch = await Promise.all(
-          page.slice(offset, offset + metadataBatchSize).map(async (item) => {
+          items.slice(offset, offset + metadataBatchSize).map(async (item) => {
             const ref = { ...parent, locator: join(parent.locator, item.name) };
             const displayPath = join(path, item.name);
             // A listed item can disappear or become inaccessible before metadata is read.
@@ -104,10 +102,7 @@ class LocalAdapter implements StorageAdapter {
         throwIfAborted(signal);
         entries.push(...batch);
       }
-      const last = page.at(-1);
-      return last && start + page.length < items.length
-        ? { entries, nextCursor: last.name }
-        : { entries };
+      return { entries };
     } catch (error) {
       localFailure(error, signal);
     }
