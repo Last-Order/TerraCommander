@@ -210,7 +210,7 @@ it('shows file details and keeps click and double-click actions on the whole row
   }
 });
 
-it('loads only the next directory page and refreshes the visible pages with the new cursor', async () => {
+it('loads the remaining directory pages automatically and refreshes with the new cursor', async () => {
   const user = userEvent.setup();
   const space = {
     id: 'drive',
@@ -247,13 +247,12 @@ it('loads only the next directory page and refreshes the visible pages with the 
   try {
     await renderWorkspace();
     await user.click(await screen.findByRole('button', { name: space.name }));
-    expect(await screen.findByText('first-before')).toBeInTheDocument();
-    expect(listDirectory).toHaveBeenCalledExactlyOnceWith(space.root, undefined);
-
-    await user.click(screen.getByRole('button', { name: '加载更多' }));
     expect(await screen.findByText('second-before')).toBeInTheDocument();
-    expect(listDirectory).toHaveBeenCalledTimes(2);
-    expect(listDirectory).toHaveBeenLastCalledWith(space.root, 'before');
+    expect(screen.getByText('first-before')).toBeInTheDocument();
+    expect(listDirectory.mock.calls).toEqual([
+      [space.root, undefined],
+      [space.root, 'before'],
+    ]);
 
     revision = 'after';
     await user.click(screen.getByRole('button', { name: '刷新目录' }));
@@ -264,6 +263,137 @@ it('loads only the next directory page and refreshes the visible pages with the 
       [space.root, 'after'],
     ]);
   } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it('enables local sorting only after the entire directory is loaded', async () => {
+  const user = userEvent.setup();
+  const space = {
+    id: 'drive',
+    connectionId: localConnectionId,
+    name: '项目盘',
+    root: { connectionId: localConnectionId, spaceId: 'drive', locator: '.' },
+  } satisfies Space;
+  function pauseLastPage() {
+    let resolve!: () => void;
+    const promise = new Promise<void>((finish) => {
+      resolve = finish;
+    });
+    return { promise, resolve };
+  }
+
+  let finishLastPage = pauseLastPage();
+  const listDirectory = vi.fn<StorageBrowserApi['listDirectory']>(async (ref, cursor) => {
+    if (ref.locator !== space.root.locator) return success({ entries: [] });
+    if (cursor === 'next') return success({ entries: [], nextCursor: 'last' });
+    if (cursor === 'last') {
+      await finishLastPage.promise;
+      return success({
+        entries: [
+          {
+            ref: { ...ref, locator: 'file2' },
+            name: 'file2',
+            kind: 'file',
+            size: 0,
+            modifiedAt: '2026-01-01T01:00:00Z',
+            capabilities: {},
+          },
+        ],
+      });
+    }
+    return success({
+      entries: [
+        {
+          ref: { ...ref, locator: 'file10' },
+          name: 'file10',
+          kind: 'file',
+          size: 1536,
+          modifiedAt: '2026-01-01T02:00:00+02:00',
+          capabilities: {},
+        },
+        {
+          ref: { ...ref, locator: 'unknown' },
+          name: 'unknown',
+          kind: 'directory',
+          capabilities: {},
+        },
+      ],
+      nextCursor: 'next',
+    });
+  });
+  vi.stubGlobal('desktop', {
+    storage: {
+      listConnections: async () => success([{ ...emptyLocalConnection, spaces: [space] }]),
+      listDirectory,
+    },
+  });
+  try {
+    await renderWorkspace();
+    await user.click(await screen.findByRole('button', { name: space.name }));
+    const table = within(await screen.findByRole('table', { name: '文件和文件夹' }));
+    const entryNames = () =>
+      table
+        .getAllByRole('row')
+        .slice(1)
+        .map((row) => within(row).getByRole('button').textContent);
+
+    await waitFor(() => expect(listDirectory).toHaveBeenLastCalledWith(space.root, 'last'));
+    expect(entryNames()).toEqual(['file10', 'unknown']);
+    expect(screen.queryByLabelText('正在加载目录')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '加载更多' })).not.toBeInTheDocument();
+    for (const header of table.getAllByRole('columnheader')) {
+      expect(within(header).queryByRole('button')).not.toBeInTheDocument();
+      expect(header.querySelector('svg')).not.toBeInTheDocument();
+      expect(header).not.toHaveAttribute('aria-sort');
+    }
+
+    finishLastPage.resolve();
+    const name = await table.findByRole('button', { name: '名称' });
+    const modifiedAt = table.getByRole('button', { name: '修改时间' });
+    const size = table.getByRole('button', { name: '大小' });
+
+    await user.click(name);
+    expect(entryNames()).toEqual(['file2', 'file10', 'unknown']);
+    expect(table.getByRole('columnheader', { name: '名称' })).toHaveAttribute(
+      'aria-sort',
+      'ascending',
+    );
+    await user.click(name);
+    expect(entryNames()).toEqual(['unknown', 'file10', 'file2']);
+    expect(table.getByRole('columnheader', { name: '名称' })).toHaveAttribute(
+      'aria-sort',
+      'descending',
+    );
+
+    await user.click(modifiedAt);
+    expect(entryNames()).toEqual(['file10', 'file2', 'unknown']);
+    await user.click(modifiedAt);
+    expect(entryNames()).toEqual(['file2', 'file10', 'unknown']);
+
+    await user.click(size);
+    expect(entryNames()).toEqual(['file2', 'file10', 'unknown']);
+    await user.click(size);
+    expect(entryNames()).toEqual(['file10', 'file2', 'unknown']);
+    expect(listDirectory.mock.calls).toEqual([
+      [space.root, undefined],
+      [space.root, 'next'],
+      [space.root, 'last'],
+    ]);
+
+    await user.dblClick(table.getByRole('button', { name: 'unknown' }));
+    await screen.findByText('此文件夹为空。');
+    finishLastPage = pauseLastPage();
+    const breadcrumb = screen.getByRole('navigation', { name: '当前目录' });
+    await user.click(within(breadcrumb).getByRole('button', { name: space.name }));
+    const reopenedTable = within(await screen.findByRole('table', { name: '文件和文件夹' }));
+    expect(reopenedTable.getByRole('button', { name: 'file10' })).toBeInTheDocument();
+    expect(reopenedTable.queryByRole('button', { name: 'file2' })).not.toBeInTheDocument();
+    expect(reopenedTable.queryByRole('button', { name: '名称' })).not.toBeInTheDocument();
+    finishLastPage.resolve();
+    expect(await reopenedTable.findByRole('button', { name: '名称' })).toBeInTheDocument();
+  } finally {
+    finishLastPage.resolve();
     vi.unstubAllGlobals();
   }
 });
