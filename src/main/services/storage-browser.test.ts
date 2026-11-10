@@ -1,4 +1,4 @@
-import { mkdir, mkdtempDisposable, symlink, utimes, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtempDisposable, realpath, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
@@ -25,6 +25,7 @@ it('restores a chosen folder and confines browsing to its saved root', async () 
   const outside = join(temporary.path, 'outside');
   await mkdir(root);
   await mkdir(outside);
+  await writeFile(join(outside, 'ignored.txt'), 'outside the saved folder');
   await mkdir(join(root, 'nested'));
   const file = join(root, 'file.txt');
   const modifiedAt = new Date('2026-01-02T03:04:06Z');
@@ -59,13 +60,20 @@ it('restores a chosen folder and confines browsing to its saved root', async () 
     ]);
     const page = await restored.listDirectory(space.root);
     expect(page.entries).toMatchObject([
-      { name: 'file.txt', kind: 'file', size: 10, modifiedAt: modifiedAt.toISOString() },
+      {
+        name: 'file.txt',
+        kind: 'file',
+        displayPath: join(await realpath(root), 'file.txt'),
+        size: 10,
+        modifiedAt: modifiedAt.toISOString(),
+      },
       { name: 'nested', kind: 'directory', modifiedAt: expect.any(String) },
       { name: 'redirect', kind: 'link' },
     ]);
     const folder = page.entries.find(({ name }) => name === 'nested');
     if (!folder) throw new Error('Expected the nested folder');
     expect(await restored.listDirectory(folder.ref)).toEqual({ entries: [] });
+    expect(await restored.measureDirectorySize('size', [space.root])).toBe(10);
     await expect(restored.listDirectory({ ...space.root, locator: '..' })).rejects.toMatchObject({
       code: 'InvalidArgument',
     });

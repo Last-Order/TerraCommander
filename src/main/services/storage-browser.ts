@@ -19,6 +19,7 @@ import {
   localSpace,
 } from '../storage/providers/local/local-adapter';
 import type { AccountRuntime } from './application-services';
+import { measureDirectorySize } from './measure-directory-size';
 import type { StoragePreferences } from './storage-preferences';
 
 const localConnection: ConnectionDefinition = {
@@ -35,6 +36,7 @@ export class StorageBrowser {
   private readonly discovered = new Map<string, Map<string, Space>>();
   private readonly authorizationRequired = new Set<string>();
   private authorization: AbortController | undefined;
+  private directoryMeasurement: { id: string; controller: AbortController } | undefined;
 
   constructor(
     private readonly preferences: StoragePreferences,
@@ -141,21 +143,53 @@ export class StorageBrowser {
   }
 
   async listDirectory(parent: EntryRef, cursor?: string) {
-    return this.withConnection(parent.connectionId, () => {
-      const { connectionId, spaceId } = parent;
+    return this.withBrowsableSpace(parent, () => this.storage.list(parent, { cursor }));
+  }
+
+  async measureDirectorySize(id: string, folders: EntryRef[]): Promise<number | null> {
+    const first = folders[0];
+    if (
+      !first ||
+      folders.some(
+        ({ connectionId, spaceId }) =>
+          connectionId !== first.connectionId || spaceId !== first.spaceId,
+      )
+    ) {
+      throw new StorageError('InvalidArgument');
+    }
+
+    this.directoryMeasurement?.controller.abort();
+    const measurement = { id, controller: new AbortController() };
+    this.directoryMeasurement = measurement;
+    try {
+      return await this.withBrowsableSpace(first, () =>
+        measureDirectorySize(this.storage, folders, measurement.controller.signal),
+      );
+    } finally {
+      if (this.directoryMeasurement === measurement) this.directoryMeasurement = undefined;
+    }
+  }
+
+  cancelDirectoryMeasurement(id: string): void {
+    if (this.directoryMeasurement?.id === id) this.directoryMeasurement.controller.abort();
+  }
+
+  async dispose(): Promise<void> {
+    this.cancelAuthorization();
+    this.directoryMeasurement?.controller.abort();
+    await this.registry.dispose();
+  }
+
+  private async withBrowsableSpace<T>({ connectionId, spaceId }: EntryRef, run: () => Promise<T>) {
+    return this.withConnection(connectionId, () => {
       if (
         !this.discovered.get(connectionId)?.has(spaceId) &&
         !this.displayedSpaces(connectionId).some((space) => space.id === spaceId)
       ) {
         throw new StorageError('NotFound');
       }
-      return this.storage.list(parent, { cursor });
+      return run();
     });
-  }
-
-  async dispose(): Promise<void> {
-    this.cancelAuthorization();
-    await this.registry.dispose();
   }
 
   private displayedSpaces(id: string): Space[] {

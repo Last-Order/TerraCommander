@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActionIcon, Alert, Button, Group, Loader } from '@mantine/core';
+import { ActionIcon, Alert, Button, Group, Loader, Menu } from '@mantine/core';
 import {
   ChevronDown,
   ChevronRight,
@@ -8,6 +8,7 @@ import {
   File,
   Folder,
   FolderOpen,
+  Info,
   Link2,
   RefreshCw,
 } from 'lucide-react';
@@ -15,11 +16,12 @@ import { useTranslation } from 'react-i18next';
 import { SWRConfig } from 'swr';
 import useSWRInfinite from 'swr/infinite';
 import type { Entry, EntryPage, EntryRef, Space, StorageLabel } from '../../../shared/storage';
+import { EntryInformationModal, type EntrySelection } from './EntryInformationModal';
+import { formatSize } from './entry-format';
 import { errorKey, resultOf, StorageBrowserError } from './storage-client';
 import { formatStorageLabel } from './storage-labels';
 import classes from './StorageWorkspace.module.css';
 
-const sizeUnits = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
 const directoryCache = { provider: () => new Map() };
 const columns = [
   { field: 'name', label: 'entryName', className: undefined },
@@ -53,16 +55,6 @@ function sortRows(rows: DirectoryRow[], { field, direction }: DirectorySort, loc
   });
 }
 
-function formatSize(bytes: number, formatter: Intl.NumberFormat): string {
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < sizeUnits.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  return `${formatter.format(value)} ${sizeUnits[unit]}`;
-}
-
 interface Location {
   ref: EntryRef;
   name: StorageLabel;
@@ -84,6 +76,7 @@ export function DirectoryPane({ space, version, onAuthRequired }: DirectoryProps
       <SWRConfig key={JSON.stringify([current.ref, version])} value={directoryCache}>
         <DirectoryListing
           parent={current.ref}
+          directoryPath={trail.map(({ name }) => formatStorageLabel(name, t)).join(' / ')}
           onOpen={(entry) => setTrail([...trail, entry])}
           onAuthRequired={onAuthRequired}
         >
@@ -129,14 +122,23 @@ export function EmptyDirectoryPane() {
 
 interface ListingProps {
   parent: EntryRef;
+  directoryPath: string;
   onOpen: (entry: Entry) => void;
   onAuthRequired: () => void;
   children: ReactNode;
 }
 
-function DirectoryListing({ parent, onOpen, onAuthRequired, children }: ListingProps) {
+function DirectoryListing({
+  parent,
+  directoryPath,
+  onOpen,
+  onAuthRequired,
+  children,
+}: ListingProps) {
   const { t, i18n } = useTranslation(['storage', 'common', 'errors']);
   const [selectedLocators, setSelectedLocators] = useState(() => new Set<string>());
+  const [menuEntries, setMenuEntries] = useState<EntrySelection | null>(null);
+  const [informationEntries, setInformationEntries] = useState<EntrySelection | null>(null);
   const [sort, setSort] = useState<DirectorySort | null>(null);
   const {
     data: pages,
@@ -200,6 +202,17 @@ function DirectoryListing({ parent, onOpen, onAuthRequired, children }: ListingP
       return next;
     });
   };
+  const showEntryMenu = (entry: Entry) => {
+    const selection: EntrySelection = [entry];
+    if (selectedLocators.has(entry.ref.locator)) {
+      for (const other of entries.values()) {
+        if (other !== entry && selectedLocators.has(other.ref.locator)) selection.push(other);
+      }
+    } else {
+      selectEntry(entry.ref.locator, false);
+    }
+    setMenuEntries(selection);
+  };
   const changeSort = (field: DirectorySort['field']) =>
     setSort((previous) => ({
       field,
@@ -244,92 +257,126 @@ function DirectoryListing({ parent, onOpen, onAuthRequired, children }: ListingP
           <p className={classes.directoryStatus}>{t('emptyDirectory')}</p>
         )}
         {entries.size > 0 && (
-          <table className={classes.entries} aria-label={t('filesAndFolders')}>
-            <thead>
-              <tr>
-                {columns.map(({ field, label, className }) => {
-                  const direction = canSort && sort?.field === field ? sort.direction : undefined;
-                  const Icon =
-                    direction === 'ascending'
-                      ? ChevronUp
-                      : direction
-                        ? ChevronDown
-                        : ChevronsUpDown;
-                  return (
-                    <th key={field} scope="col" className={className} aria-sort={direction}>
-                      {canSort ? (
-                        <button
-                          type="button"
-                          className={classes.sortHeader}
-                          onClick={() => changeSort(field)}
-                        >
-                          {t(label)}
-                          <Icon size={14} aria-hidden="true" />
-                        </button>
-                      ) : (
-                        <span className={classes.columnLabel}>{t(label)}</span>
-                      )}
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(({ entry, modifiedAt, size }) => {
-                const { locator } = entry.ref;
-                const isDirectory = entry.kind === 'directory';
-                const Icon = isDirectory ? Folder : entry.kind === 'link' ? Link2 : File;
-                const selected = selectedLocators.has(locator);
+          <Menu
+            opened={menuEntries !== null}
+            onChange={(opened) => {
+              if (!opened) setMenuEntries(null);
+            }}
+            position="bottom-start"
+            floatingStrategy="fixed"
+            hideDetached={false}
+            transitionProps={{ duration: 0 }}
+          >
+            <table className={classes.entries} aria-label={t('filesAndFolders')}>
+              <thead>
+                <tr>
+                  {columns.map(({ field, label, className }) => {
+                    const direction = canSort && sort?.field === field ? sort.direction : undefined;
+                    const Icon =
+                      direction === 'ascending'
+                        ? ChevronUp
+                        : direction
+                          ? ChevronDown
+                          : ChevronsUpDown;
+                    return (
+                      <th key={field} scope="col" className={className} aria-sort={direction}>
+                        {canSort ? (
+                          <button
+                            type="button"
+                            className={classes.sortHeader}
+                            onClick={() => changeSort(field)}
+                          >
+                            {t(label)}
+                            <Icon size={14} aria-hidden="true" />
+                          </button>
+                        ) : (
+                          <span className={classes.columnLabel}>{t(label)}</span>
+                        )}
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <Menu.ContextMenu>
+                <tbody>
+                  {rows.map(({ entry, modifiedAt, size }) => {
+                    const { locator } = entry.ref;
+                    const isDirectory = entry.kind === 'directory';
+                    const Icon = isDirectory ? Folder : entry.kind === 'link' ? Link2 : File;
+                    const selected = selectedLocators.has(locator);
 
-                return (
-                  <tr
-                    key={locator}
-                    className={classes.entryRow}
-                    data-selected={selected}
-                    onClick={(event) => selectEntry(locator, event.ctrlKey)}
-                    onDoubleClick={
-                      isDirectory
-                        ? (event) => {
-                            if (!event.ctrlKey) onOpen(entry);
-                          }
-                        : undefined
-                    }
-                  >
-                    <td className={classes.entryName}>
-                      <button
-                        type="button"
-                        className={classes.entry}
-                        data-kind={entry.kind}
-                        aria-pressed={selected}
-                        onKeyDown={(event) => {
-                          if (isDirectory && event.key === 'Enter') {
-                            event.preventDefault();
-                            onOpen(entry);
-                          }
-                        }}
+                    return (
+                      <tr
+                        key={locator}
+                        className={classes.entryRow}
+                        data-selected={selected}
+                        onClick={(event) => selectEntry(locator, event.ctrlKey)}
+                        onContextMenu={() => showEntryMenu(entry)}
+                        onDoubleClick={
+                          isDirectory
+                            ? (event) => {
+                                if (!event.ctrlKey) onOpen(entry);
+                              }
+                            : undefined
+                        }
                       >
-                        <Icon size={17} aria-hidden="true" />
-                        <span title={entry.name}>{entry.name}</span>
-                        {isDirectory && <ChevronRight size={14} aria-hidden="true" />}
-                      </button>
-                    </td>
-                    <td className={classes.entryDate}>
-                      {modifiedAt !== undefined ? (
-                        <time dateTime={entry.modifiedAt}>{dateFormatter.format(modifiedAt)}</time>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td className={classes.entrySize}>
-                      {size !== undefined ? formatSize(size, sizeFormatter) : '—'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                        <td className={classes.entryName}>
+                          <button
+                            type="button"
+                            className={classes.entry}
+                            data-kind={entry.kind}
+                            aria-pressed={selected}
+                            onKeyDown={(event) => {
+                              if (isDirectory && event.key === 'Enter') {
+                                event.preventDefault();
+                                onOpen(entry);
+                              }
+                            }}
+                          >
+                            <Icon size={17} aria-hidden="true" />
+                            <span title={entry.name}>{entry.name}</span>
+                            {isDirectory && <ChevronRight size={14} aria-hidden="true" />}
+                          </button>
+                        </td>
+                        <td className={classes.entryDate}>
+                          {modifiedAt !== undefined ? (
+                            <time dateTime={entry.modifiedAt}>
+                              {dateFormatter.format(modifiedAt)}
+                            </time>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td className={classes.entrySize}>
+                          {size !== undefined ? formatSize(size, sizeFormatter) : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </Menu.ContextMenu>
+            </table>
+            <Menu.Dropdown>
+              <Menu.Item
+                leftSection={<Info size={16} aria-hidden="true" />}
+                onClick={() => setInformationEntries(menuEntries)}
+              >
+                {t('entryInformation')}
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
         )}
       </div>
+      {informationEntries && (
+        <EntryInformationModal
+          entries={informationEntries}
+          directoryPath={directoryPath}
+          dateFormatter={dateFormatter}
+          sizeFormatter={sizeFormatter}
+          onAuthRequired={onAuthRequired}
+          onClose={() => setInformationEntries(null)}
+        />
+      )}
     </>
   );
 }

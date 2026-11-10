@@ -16,6 +16,9 @@ const api: DesktopApi = {
     reauthorize: (id) => ipcRenderer.invoke(channels.reauthorize, id),
     cancelAuthorization: () => ipcRenderer.invoke(channels.cancelAuthorization),
     listDirectory: (parent, cursor) => ipcRenderer.invoke(channels.listDirectory, parent, cursor),
+    measureDirectorySize: (id, folders) =>
+      ipcRenderer.invoke(channels.measureDirectorySize, id, folders),
+    cancelDirectoryMeasurement: (id) => ipcRenderer.invoke(channels.cancelDirectoryMeasurement, id),
   },
 };
 
