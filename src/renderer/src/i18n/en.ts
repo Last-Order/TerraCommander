@@ -37,7 +37,6 @@ export const en = {
     entryName: 'Name',
     entryModifiedAt: 'Date modified',
     entrySize: 'Size',
-    loadMore: 'Load more',
     reauthorizeGoogleDrive: 'Reauthorize Google Drive',
     addGoogleDrive: 'Add Google Drive',
     reauthorizeInBrowser: 'In your browser, authorize the Google Account for {{name}}.',

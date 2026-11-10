@@ -37,7 +37,6 @@ export const zhCN = {
     entryName: '名称',
     entryModifiedAt: '修改时间',
     entrySize: '大小',
-    loadMore: '加载更多',
     reauthorizeGoogleDrive: '重新授权 Google Drive',
     addGoogleDrive: '添加 Google Drive',
     reauthorizeInBrowser: '请在浏览器中使用 {{name}} 对应的 Google 账号完成授权。',
