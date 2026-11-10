@@ -93,6 +93,31 @@ it('restores a chosen folder and confines browsing to its saved root', async () 
   }
 });
 
+it('lists a local directory beyond the default page size in one response', async () => {
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-storage-'));
+  const names = Array.from(
+    { length: 101 },
+    (_, index) => `file-${String(index).padStart(3, '0')}.txt`,
+  );
+  await Promise.all(names.map((name) => writeFile(join(temporary.path, name), '')));
+
+  const { runtime } = accountFixture();
+  const browser = new StorageBrowser(
+    new StoragePreferences(memorySnapshotStore()),
+    async () => runtime,
+    { event() {} },
+  );
+  try {
+    const space = await browser.addLocalFolder(temporary.path);
+    const page = await browser.listDirectory(space.root);
+    expect(page.entries.map(({ name }) => name)).toEqual(names);
+    expect(page.nextCursor).toBeUndefined();
+  } finally {
+    await browser.dispose();
+    await runtime.dispose();
+  }
+});
+
 it('persists discovered spaces separately from legacy selections and refreshes them explicitly', async () => {
   const snapshotStore = memorySnapshotStore();
   const { runtime } = accountFixture();

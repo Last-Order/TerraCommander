@@ -105,7 +105,7 @@ interface ResumableUploads {
 Contract rules:
 
 - `OperationContext` carries `AbortSignal`, correlation ID, and optional byte-progress callbacks.
-- `list` returns one page and an opaque cursor. Cursors are bound to the connection, parent, and request. Enumeration is not a transaction or a globally sorted snapshot.
+- `list` returns one page with an optional opaque continuation cursor. `pageSize` is a hint. The local adapter returns the entire directory in one page. Cursors are bound to the connection, parent, and request. Enumeration is not a transaction or a globally sorted snapshot.
 - `read` returns a backend-only Node.js readable stream, optional length/revision, and disposal. Ranges use `{ offset, length? }`; adapters translate native range conventions. Cancellation remains active for the stream lifetime. Unsupported ranges fail explicitly. Conditional reads accept an expected revision only when the adapter can enforce it. Consumers must dispose abandoned streams.
 - `ByteSource` opens a stream with backpressure. Its reopenable variant supplies known length, source descriptor, and range reopening for retries/recovery. A one-shot stream supports ordinary writes but cannot promise restart recovery. Validate this contract with synthetic streams; a filesystem-backed source is a future integration.
 - `WriteTarget` distinguishes creation under a parent from replacement of an exact reference. The caller explicitly selects create-only, unconditional replacement, or conditional replacement. Create-only never overwrites an existing resource; Drive may create another ID with the same name.

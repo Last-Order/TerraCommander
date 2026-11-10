@@ -97,6 +97,7 @@ export interface ReadOptions {
 }
 
 export interface ListRequest {
+  /** Preferred page size. An adapter may return the entire directory in one page. */
   pageSize?: number | undefined;
   cursor?: string | undefined;
 }
