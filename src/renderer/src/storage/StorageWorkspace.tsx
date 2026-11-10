@@ -6,6 +6,7 @@ import { localConnectionId } from '../../../shared/storage-browser';
 import { DirectoryPane, EmptyDirectoryPane } from './DirectoryPane';
 import { StorageSetupModal, type SetupIntent } from './StorageSetupModal';
 import { StorageSidebar } from './StorageSidebar';
+import { DirectoryCache } from './directory-cache';
 import { errorKey, resultOf } from './storage-client';
 import classes from './StorageWorkspace.module.css';
 
@@ -19,7 +20,7 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
   } = useSWR('storage/connections', () => resultOf(window.desktop.storage.listConnections()));
   const [dialog, setDialog] = useState<SetupIntent | null>(null);
   const [location, setLocation] = useState<{ space: Space; generation: number } | null>(null);
-  const [browseVersions, setBrowseVersions] = useState(() => new Map<string, number>());
+  const [directoryCache] = useState(() => new DirectoryCache());
 
   const refresh = useCallback(() => {
     void mutate();
@@ -45,7 +46,7 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
         <DirectoryPane
           key={location.generation}
           space={location.space}
-          version={browseVersions.get(location.space.connectionId) ?? 0}
+          cache={directoryCache}
           onAuthRequired={refresh}
         />
       ) : (
@@ -59,7 +60,7 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
           onChanged={refresh}
           onAuthorized={(id) => {
             refresh();
-            setBrowseVersions((previous) => new Map(previous).set(id, (previous.get(id) ?? 0) + 1));
+            directoryCache.invalidateConnection(id);
           }}
         />
       )}
