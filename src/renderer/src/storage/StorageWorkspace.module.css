@@ -154,6 +154,9 @@
 .entryRow[data-selected='true'] {
   color: var(--storage-accent);
   background: var(--mantine-color-teal-light);
+}
+
+.space[aria-current='location'] {
   font-weight: 600;
 }
 

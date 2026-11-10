@@ -136,7 +136,7 @@ interface ListingProps {
 
 function DirectoryListing({ parent, onOpen, onAuthRequired, children }: ListingProps) {
   const { t, i18n } = useTranslation(['storage', 'common', 'errors']);
-  const [selectedLocator, setSelectedLocator] = useState<string | null>(null);
+  const [selectedLocators, setSelectedLocators] = useState(() => new Set<string>());
   const [sort, setSort] = useState<DirectorySort | null>(null);
   const {
     data: pages,
@@ -190,6 +190,16 @@ function DirectoryListing({ parent, onOpen, onAuthRequired, children }: ListingP
   if (sort && complete) sortRows(rows, sort, i18n.resolvedLanguage);
 
   const reload = () => void mutate();
+  const selectEntry = (locator: string, toggle: boolean) => {
+    setSelectedLocators((previous) => {
+      if (!toggle) return new Set([locator]);
+
+      const next = new Set(previous);
+      if (next.has(locator)) next.delete(locator);
+      else next.add(locator);
+      return next;
+    });
+  };
   const changeSort = (field: DirectorySort['field']) =>
     setSort((previous) => ({
       field,
@@ -269,15 +279,21 @@ function DirectoryListing({ parent, onOpen, onAuthRequired, children }: ListingP
                 const { locator } = entry.ref;
                 const isDirectory = entry.kind === 'directory';
                 const Icon = isDirectory ? Folder : entry.kind === 'link' ? Link2 : File;
-                const selected = selectedLocator === locator;
+                const selected = selectedLocators.has(locator);
 
                 return (
                   <tr
                     key={locator}
                     className={classes.entryRow}
                     data-selected={selected}
-                    onClick={() => setSelectedLocator(locator)}
-                    onDoubleClick={isDirectory ? () => onOpen(entry) : undefined}
+                    onClick={(event) => selectEntry(locator, event.ctrlKey)}
+                    onDoubleClick={
+                      isDirectory
+                        ? (event) => {
+                            if (!event.ctrlKey) onOpen(entry);
+                          }
+                        : undefined
+                    }
                   >
                     <td className={classes.entryName}>
                       <button
