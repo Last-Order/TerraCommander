@@ -124,7 +124,7 @@ it('adds a local folder to the same sidebar as Drive and browses both connection
   }
 });
 
-it('shows file details and keeps click and double-click actions on the whole row', async () => {
+it('shows file details and supports selection and opening from the whole row', async () => {
   const user = userEvent.setup();
   const space = {
     id: 'drive',
@@ -189,6 +189,18 @@ it('shows file details and keeps click and double-click actions on the whole row
     await user.click(folder);
     expect(folder).toHaveAttribute('aria-pressed', 'true');
     expect(listDirectory).toHaveBeenCalledExactlyOnceWith(space.root, undefined);
+
+    await user.keyboard('{Control>}');
+    await user.click(fileSize);
+    expect(file).toHaveAttribute('aria-pressed', 'true');
+    expect(folder).toHaveAttribute('aria-pressed', 'true');
+    await user.click(fileSize);
+    expect(file).toHaveAttribute('aria-pressed', 'false');
+    expect(folder).toHaveAttribute('aria-pressed', 'true');
+    await user.dblClick(folderRow.getByText(displayedDate));
+    expect(listDirectory).toHaveBeenCalledTimes(1);
+    await user.click(fileSize);
+    await user.keyboard('{/Control}');
 
     await user.click(fileSize);
     expect(file).toHaveAttribute('aria-pressed', 'true');
