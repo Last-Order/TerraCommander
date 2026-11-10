@@ -1,6 +1,16 @@
 import { useRef, useState } from 'react';
-import { Alert, Button, Checkbox, Group, Loader, Modal, Stack, Text } from '@mantine/core';
-import { Cloud, FolderPlus, Monitor } from 'lucide-react';
+import {
+  ActionIcon,
+  Alert,
+  Button,
+  Checkbox,
+  Group,
+  Loader,
+  Modal,
+  Stack,
+  Text,
+} from '@mantine/core';
+import { Cloud, FolderPlus, Monitor, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import useSWR from 'swr';
 import {
@@ -162,7 +172,7 @@ function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }: Picke
   const {
     data: choices,
     error,
-    isValidating: loading,
+    isLoading: loading,
     mutate,
   } = useSWR(
     ['storage/spaces', connection.id] as const,
@@ -173,9 +183,9 @@ function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }: Picke
     },
   );
   const [selected, setSelected] = useState(() => new Set(connection.spaces.map(({ id }) => id)));
-  const [action, setAction] = useState<'folder' | 'save' | null>(null);
+  const [action, setAction] = useState<'folder' | 'refresh' | 'save' | null>(null);
   const [actionError, setActionError] = useState<StorageErrorKey | null>(null);
-  const discoveryError = !loading && error ? t(`errors:${errorKey(error)}`) : null;
+  const pickerError = actionError ?? (!loading && error ? errorKey(error) : null);
 
   function toggle(id: string, checked: boolean) {
     setSelected((previous) => {
@@ -184,6 +194,24 @@ function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }: Picke
       else next.delete(id);
       return next;
     });
+  }
+
+  async function refreshSpaces() {
+    setAction('refresh');
+    onBusy(true);
+    setActionError(null);
+    try {
+      const refreshed = await resultOf(window.desktop.storage.listSpaces(connection.id, true));
+      await mutate(refreshed, { revalidate: false });
+      const refreshedIds = new Set(refreshed.map(({ space }) => space.id));
+      setSelected((previous) => new Set([...previous].filter((id) => refreshedIds.has(id))));
+    } catch (failure) {
+      setActionError(errorKey(failure));
+    } finally {
+      onChanged();
+      setAction(null);
+      onBusy(false);
+    }
   }
 
   async function chooseFolder() {
@@ -217,7 +245,8 @@ function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }: Picke
     try {
       await resultOf(window.desktop.storage.saveSpaces(connection.id, [...selected]));
       await mutate(
-        choices.filter(({ space, available }) => available || selected.has(space.id)),
+        (previous = choices) =>
+          previous.filter(({ space, available }) => available || selected.has(space.id)),
         { revalidate: false },
       );
       onSaved();
@@ -231,26 +260,28 @@ function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }: Picke
 
   return (
     <Stack gap="md">
-      <Text size="sm" c="dimmed">
-        {formatStorageLabel(connection.detail ?? connection.name, t)}
-      </Text>
+      <Group justify="space-between" gap="xs">
+        <Text size="sm" c="dimmed">
+          {formatStorageLabel(connection.detail ?? connection.name, t)}
+        </Text>
+        <ActionIcon
+          variant="subtle"
+          aria-label={t('refreshSpaces')}
+          title={t('refreshSpaces')}
+          loading={action === 'refresh'}
+          disabled={loading || action !== null}
+          onClick={() => void refreshSpaces()}
+        >
+          <RefreshCw size={16} aria-hidden="true" />
+        </ActionIcon>
+      </Group>
       {loading && <Loader size="sm" aria-label={t('discoveringSpaces')} />}
-      {discoveryError && (
+      {pickerError && (
         <Alert color="red" role="alert">
-          <Group justify="space-between">
-            {discoveryError}
-            <Button
-              size="compact-sm"
-              variant="subtle"
-              onClick={() => void mutate()}
-              disabled={action !== null}
-            >
-              {t('common:retry')}
-            </Button>
-          </Group>
+          {t(`errors:${pickerError}`)}
         </Alert>
       )}
-      {!loading && !discoveryError && choices.length === 0 && (
+      {!loading && !pickerError && choices.length === 0 && (
         <Text size="sm" c="dimmed">
           {t('noAvailableSpaces')}
         </Text>
@@ -272,16 +303,11 @@ function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }: Picke
           variant="light"
           leftSection={<FolderPlus size={16} />}
           loading={action === 'folder'}
-          disabled={loading || action === 'save'}
+          disabled={loading || action !== null}
           onClick={() => void chooseFolder()}
         >
           {t('chooseFolder')}
         </Button>
-      )}
-      {actionError && (
-        <Alert color="red" role="alert">
-          {t(`errors:${actionError}`)}
-        </Alert>
       )}
       <Group justify="flex-end">
         <Button variant="default" disabled={action !== null} onClick={onCancel}>
@@ -289,7 +315,7 @@ function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }: Picke
         </Button>
         <Button
           loading={action === 'save'}
-          disabled={loading || action === 'folder'}
+          disabled={loading || action !== null}
           onClick={() => void save()}
         >
           {t('common:save')}

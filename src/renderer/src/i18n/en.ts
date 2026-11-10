@@ -53,6 +53,7 @@ export const en = {
     cancelAuthorization: 'Cancel authorization',
     authorizeInBrowser: 'Authorize in browser',
     chooseType: 'Choose a storage type',
+    refreshSpaces: 'Refresh locations',
     discoveringSpaces: 'Finding storage locations',
     noAvailableSpaces: 'No storage locations found.',
     spaceUnavailable: 'Currently unavailable',

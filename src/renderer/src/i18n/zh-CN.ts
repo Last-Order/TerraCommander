@@ -53,6 +53,7 @@ export const zhCN = {
     cancelAuthorization: '取消授权',
     authorizeInBrowser: '在浏览器中授权',
     chooseType: '选择存储类型',
+    refreshSpaces: '刷新空间列表',
     discoveringSpaces: '正在查找空间',
     noAvailableSpaces: '未找到可用空间。',
     spaceUnavailable: '当前不可用',

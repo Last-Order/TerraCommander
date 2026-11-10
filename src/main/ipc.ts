@@ -89,8 +89,10 @@ export function registerIpcHandlers(
   }
 
   handleStorage(channels.listConnections, noArguments, (browser) => browser.listConnections());
-  handleStorage(channels.listSpaces, z.tuple([connectionId]), (browser, _window, id) =>
-    browser.listSpaces(id),
+  handleStorage(
+    channels.listSpaces,
+    z.tuple([connectionId, z.boolean().optional()]),
+    (browser, _window, id, refresh?: boolean) => browser.listSpaces(id, refresh),
   );
   handleStorage(
     channels.saveSpaces,

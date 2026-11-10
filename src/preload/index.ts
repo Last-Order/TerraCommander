@@ -9,7 +9,7 @@ const api: DesktopApi = {
   },
   storage: {
     listConnections: () => ipcRenderer.invoke(channels.listConnections),
-    listSpaces: (id) => ipcRenderer.invoke(channels.listSpaces, id),
+    listSpaces: (id, refresh) => ipcRenderer.invoke(channels.listSpaces, id, refresh),
     saveSpaces: (id, spaces) => ipcRenderer.invoke(channels.saveSpaces, id, spaces),
     chooseFolder: () => ipcRenderer.invoke(channels.chooseFolder),
     addGoogleDrive: () => ipcRenderer.invoke(channels.addGoogleDrive),

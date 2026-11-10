@@ -34,6 +34,7 @@ export class StorageBrowser {
   private readonly storage: StorageAccess;
   private readonly connections = new Map<string, Promise<void>>();
   private readonly discovered = new Map<string, Map<string, Space>>();
+  private readonly spaceDiscovery = new Map<string, Promise<void>>();
   private readonly authorizationRequired = new Set<string>();
   private authorization: AbortController | undefined;
   private directoryMeasurement: { id: string; controller: AbortController } | undefined;
@@ -77,24 +78,25 @@ export class StorageBrowser {
     return result;
   }
 
-  async listSpaces(id: string): Promise<SpaceChoice[]> {
-    return this.withConnection(id, async () => {
-      const available = await this.storage.listSpaces(id);
-      const known = new Map(available.map((space) => [space.id, space]));
-      this.discovered.set(id, known);
-      const choices = available.map((space) => ({ space, available: true }));
-      for (const space of this.displayedSpaces(id)) {
-        if (!known.has(space.id)) choices.push({ space, available: false });
-      }
-      return choices;
-    });
+  async listSpaces(id: string, refresh = false): Promise<SpaceChoice[]> {
+    if (refresh || this.preferences.discoveredSpaces(id) === undefined) {
+      await this.discoverSpaces(id);
+    } else {
+      await this.definition(id);
+    }
+    const known = this.knownSpaces(id);
+    const choices = Array.from(known.values(), (space) => ({ space, available: true }));
+    for (const space of this.displayedSpaces(id)) {
+      if (!known.has(space.id)) choices.push({ space, available: false });
+    }
+    return choices;
   }
 
   async saveSpaces(id: string, spaceIds: string[]): Promise<void> {
     await this.definition(id);
     const builtIn = this.builtInSpace(id);
     const spaces = new Map(this.displayedSpaces(id).map((space) => [space.id, space]));
-    for (const [spaceId, space] of this.discovered.get(id) ?? []) spaces.set(spaceId, space);
+    for (const [spaceId, space] of this.knownSpaces(id)) spaces.set(spaceId, space);
     const selected = spaceIds.map((spaceId) => {
       const space = spaces.get(spaceId);
       if (!space) throw new StorageError('InvalidArgument');
@@ -111,9 +113,7 @@ export class StorageBrowser {
       if (!(await stat(folder)).isDirectory()) throw new StorageError('InvalidArgument');
       this.preferences.addFolder(folder);
       const space = localSpace(localConnectionId, folder);
-      const spaces = this.discovered.get(localConnectionId) ?? new Map<string, Space>();
-      spaces.set(space.id, space);
-      this.discovered.set(localConnectionId, spaces);
+      this.discovered.get(localConnectionId)?.set(space.id, space);
       return space;
     } catch (error) {
       localFailure(error);
@@ -183,7 +183,7 @@ export class StorageBrowser {
   private async withBrowsableSpace<T>({ connectionId, spaceId }: EntryRef, run: () => Promise<T>) {
     return this.withConnection(connectionId, () => {
       if (
-        !this.discovered.get(connectionId)?.has(spaceId) &&
+        !this.knownSpaces(connectionId).has(spaceId) &&
         !this.displayedSpaces(connectionId).some((space) => space.id === spaceId)
       ) {
         throw new StorageError('NotFound');
@@ -192,14 +192,42 @@ export class StorageBrowser {
     });
   }
 
+  private discoverSpaces(id: string): Promise<void> {
+    let pending = this.spaceDiscovery.get(id);
+    if (!pending) {
+      pending = this.withConnection(id, async () => {
+        const spaces = await this.storage.listSpaces(id);
+        this.preferences.saveDiscoveredSpaces(id, spaces);
+        this.discovered.delete(id);
+      }).finally(() => this.spaceDiscovery.delete(id));
+      this.spaceDiscovery.set(id, pending);
+    }
+    return pending;
+  }
+
+  private knownSpaces(id: string): Map<string, Space> {
+    let known = this.discovered.get(id);
+    if (!known) {
+      known = new Map(this.preferences.discoveredSpaces(id)?.map((space) => [space.id, space]));
+      if (id === localConnectionId) {
+        for (const folder of this.preferences.folders()) {
+          const space = localSpace(id, folder);
+          known.set(space.id, space);
+        }
+      }
+      this.discovered.set(id, known);
+    }
+    return known;
+  }
+
   private displayedSpaces(id: string): Space[] {
     const saved = this.preferences.selectedSpaces(id);
     const builtIn = this.builtInSpace(id);
     if (!saved) return builtIn ? [builtIn] : [];
 
-    const discovered = this.discovered.get(id);
+    const known = this.knownSpaces(id);
     return saved.map(({ id: spaceId, cached }) => {
-      const latest = discovered?.get(spaceId);
+      const latest = known.get(spaceId);
       if (latest) return latest;
       if (builtIn?.id === spaceId) return builtIn;
       if (!cached) throw new StorageError('OutcomeUnknown');
