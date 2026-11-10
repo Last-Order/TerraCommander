@@ -22,7 +22,7 @@ import { errorKey, resultOf, StorageBrowserError } from './storage-client';
 import { formatStorageLabel } from './storage-labels';
 import classes from './StorageWorkspace.module.css';
 
-const directoryCache = { provider: () => new Map() };
+const temporaryFolderCache = { provider: () => new Map() };
 const columns = [
   { field: 'name', label: 'entryName', className: undefined },
   { field: 'modifiedAt', label: 'entryModifiedAt', className: classes.entryDate },
@@ -73,9 +73,13 @@ export function DirectoryPane({ space, version, onAuthRequired }: DirectoryProps
 
   return (
     <main className={classes.directory}>
-      <SWRConfig key={JSON.stringify([current.ref, version])} value={directoryCache}>
+      <SWRConfig
+        key={JSON.stringify([current.ref, version])}
+        value={trail.length > 1 ? temporaryFolderCache : {}}
+      >
         <DirectoryListing
           parent={current.ref}
+          version={version}
           directoryPath={trail.map(({ name }) => formatStorageLabel(name, t)).join(' / ')}
           onOpen={(entry) => setTrail([...trail, entry])}
           onAuthRequired={onAuthRequired}
@@ -122,6 +126,7 @@ export function EmptyDirectoryPane() {
 
 interface ListingProps {
   parent: EntryRef;
+  version: number;
   directoryPath: string;
   onOpen: (entry: Entry) => void;
   onAuthRequired: () => void;
@@ -130,6 +135,7 @@ interface ListingProps {
 
 function DirectoryListing({
   parent,
+  version,
   directoryPath,
   onOpen,
   onAuthRequired,
@@ -150,11 +156,11 @@ function DirectoryListing({
   } = useSWRInfinite(
     (index, previous: EntryPage | null) => {
       if (index > 0 && !previous?.nextCursor) return null;
-      return ['storage/directory', parent, previous?.nextCursor] as const;
+      return ['storage/directory', parent, version, previous?.nextCursor] as const;
     },
-    ([, ref, cursor]) => resultOf(window.desktop.storage.listDirectory(ref, cursor)),
+    ([, ref, , cursor]) => resultOf(window.desktop.storage.listDirectory(ref, cursor)),
     {
-      revalidateOnMount: true,
+      revalidateIfStale: false,
       revalidateFirstPage: false,
       onError(error: unknown) {
         if (error instanceof StorageBrowserError && error.code === 'AuthRequired') onAuthRequired();

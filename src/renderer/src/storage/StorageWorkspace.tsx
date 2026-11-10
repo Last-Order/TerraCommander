@@ -19,7 +19,7 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
   } = useSWR('storage/connections', () => resultOf(window.desktop.storage.listConnections()));
   const [dialog, setDialog] = useState<SetupIntent | null>(null);
   const [location, setLocation] = useState<{ space: Space; generation: number } | null>(null);
-  const [browseVersion, setBrowseVersion] = useState(0);
+  const [browseVersions, setBrowseVersions] = useState(() => new Map<string, number>());
 
   const refresh = useCallback(() => {
     void mutate();
@@ -45,7 +45,7 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
         <DirectoryPane
           key={location.generation}
           space={location.space}
-          version={browseVersion}
+          version={browseVersions.get(location.space.connectionId) ?? 0}
           onAuthRequired={refresh}
         />
       ) : (
@@ -59,7 +59,7 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
           onChanged={refresh}
           onAuthorized={(id) => {
             refresh();
-            if (location?.space.connectionId === id) setBrowseVersion((previous) => previous + 1);
+            setBrowseVersions((previous) => new Map(previous).set(id, (previous.get(id) ?? 0) + 1));
           }}
         />
       )}
