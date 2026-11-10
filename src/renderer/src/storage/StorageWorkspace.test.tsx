@@ -1,10 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { I18nextProvider } from 'react-i18next';
 import { SWRConfig } from 'swr';
 import { expect, it, vi } from 'vitest';
-import type { Space } from '../../../shared/storage';
+import type { EntryPage, Space } from '../../../shared/storage';
 import {
   emptyLocalConnection,
   localConnectionId,
@@ -17,6 +17,14 @@ import { createRendererI18n } from '../i18n/i18n';
 
 function success<T>(value: T): BrowserResult<T> {
   return { ok: true, value };
+}
+
+function pausePage<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((finish) => {
+    resolve = finish;
+  });
+  return { promise, resolve };
 }
 
 async function renderWorkspace() {
@@ -422,6 +430,7 @@ it('reuses directory pages when switching storage spaces and refreshes with the 
     },
   ];
   let revision = 'before';
+  const abandonedRefresh = pausePage<BrowserResult<EntryPage>>();
   const listDirectory = vi.fn<StorageBrowserApi['listDirectory']>(async (ref, cursor) => {
     if (ref.spaceId === otherSpace.id) return success({ entries: [] });
     if (cursor) expect(cursor).toBe(revision);
@@ -478,7 +487,20 @@ it('reuses directory pages when switching storage spaces and refreshes with the 
     expect(screen.getByText('first-after')).toBeInTheDocument();
     expect(screen.getByText('second-after')).toBeInTheDocument();
     expect(listDirectory).toHaveBeenCalledTimes(5);
+
+    listDirectory.mockReturnValueOnce(abandonedRefresh.promise);
+    await user.click(screen.getByRole('button', { name: '刷新目录' }));
+    await user.click(otherDrive);
+    await act(async () => {
+      abandonedRefresh.resolve(success({ entries: [], nextCursor: 'abandoned' }));
+      await abandonedRefresh.promise;
+    });
+    expect(screen.getByText('此文件夹为空。')).toBeInTheDocument();
+    await user.click(drive);
+    expect(screen.getByText('second-after')).toBeInTheDocument();
+    expect(listDirectory).toHaveBeenCalledTimes(6);
   } finally {
+    abandonedRefresh.resolve(success({ entries: [] }));
     vi.unstubAllGlobals();
   }
 });
@@ -534,6 +556,63 @@ it('drops missing selections after a complete directory refresh', async () => {
     );
     expect(updatedButton).toHaveAttribute('aria-pressed', 'true');
   } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it('keeps the completed listing and selection when a refresh fails on a later page', async () => {
+  const user = userEvent.setup();
+  const space = {
+    id: 'drive',
+    connectionId: localConnectionId,
+    name: '项目盘',
+    root: { connectionId: localConnectionId, spaceId: 'drive', locator: '.' },
+  } satisfies Space;
+  const retained = {
+    ref: { ...space.root, locator: 'retained' },
+    name: '保留.txt',
+    kind: 'file',
+    capabilities: {},
+  } as const;
+  const partial = { ...retained, ref: { ...space.root, locator: 'partial' }, name: '新分页.txt' };
+  const refreshed = { ...retained, name: '刷新后.txt' };
+  const laterPage = pausePage<BrowserResult<EntryPage>>();
+  const listDirectory = vi
+    .fn<StorageBrowserApi['listDirectory']>()
+    .mockResolvedValueOnce(success({ entries: [retained] }))
+    .mockResolvedValueOnce(success({ entries: [partial], nextCursor: 'next' }))
+    .mockReturnValueOnce(laterPage.promise)
+    .mockResolvedValueOnce(success({ entries: [refreshed] }));
+
+  vi.stubGlobal('desktop', {
+    storage: {
+      listConnections: async () => success([{ ...emptyLocalConnection, spaces: [space] }]),
+      listDirectory,
+    },
+  });
+  try {
+    await renderWorkspace();
+    await user.click(await screen.findByRole('button', { name: space.name }));
+    const selected = await screen.findByRole('button', { name: retained.name });
+    await user.click(selected);
+    await user.click(screen.getByRole('button', { name: '刷新目录' }));
+
+    await waitFor(() => expect(listDirectory).toHaveBeenLastCalledWith(space.root, 'next'));
+    expect(selected).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: partial.name })).not.toBeInTheDocument();
+    laterPage.resolve({ ok: false, code: 'NetworkError' });
+    const error = await screen.findByRole('alert');
+    expect(selected).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: partial.name })).not.toBeInTheDocument();
+
+    await user.click(within(error).getByRole('button', { name: '重试' }));
+    expect(await screen.findByRole('button', { name: refreshed.name })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(listDirectory).toHaveBeenLastCalledWith(space.root, undefined);
+  } finally {
+    laterPage.resolve(success({ entries: [] }));
     vi.unstubAllGlobals();
   }
 });
@@ -618,6 +697,74 @@ it('invalidates the authorized connection cache while another storage space is o
   }
 });
 
+it('ignores a late directory page after reauthorizing the active connection', async () => {
+  const user = userEvent.setup();
+  const drive = {
+    id: 'my-drive',
+    connectionId: 'studio',
+    name: '云端盘',
+    root: { connectionId: 'studio', spaceId: 'my-drive', locator: 'root' },
+  } satisfies Space;
+  const stale = {
+    ref: { ...drive.root, locator: 'file' },
+    name: '旧资料',
+    kind: 'file',
+    capabilities: {},
+  } as const;
+  const fresh = { ...stale, name: '已授权资料' };
+  const oldRequest = pausePage<BrowserResult<EntryPage>>();
+  const listDirectory = vi
+    .fn<StorageBrowserApi['listDirectory']>()
+    .mockReturnValueOnce(oldRequest.promise)
+    .mockResolvedValue(success({ entries: [fresh] }));
+  let needsAuthorization = true;
+  vi.stubGlobal('desktop', {
+    storage: {
+      listConnections: async () =>
+        success([
+          {
+            id: drive.connectionId,
+            provider: 'google-drive',
+            name: '工作室',
+            needsAuthorization,
+            spaces: [drive],
+          },
+        ]),
+      listDirectory,
+      reauthorize: async () => {
+        needsAuthorization = false;
+        return success(undefined);
+      },
+    },
+  });
+  try {
+    await renderWorkspace();
+    const cloudLink = await screen.findByRole('button', { name: drive.name });
+    await user.click(cloudLink);
+    expect(listDirectory).toHaveBeenCalledExactlyOnceWith(drive.root, undefined);
+
+    await user.click(screen.getByRole('button', { name: '重新授权' }));
+    const dialog = within(screen.getByRole('dialog'));
+    await user.click(dialog.getByRole('button', { name: '在浏览器中授权' }));
+    expect(await screen.findByRole('button', { name: fresh.name })).toBeInTheDocument();
+
+    await act(async () => {
+      oldRequest.resolve(success({ entries: [stale], nextCursor: 'old-next' }));
+      await oldRequest.promise;
+    });
+    expect(screen.queryByRole('button', { name: stale.name })).not.toBeInTheDocument();
+    await user.click(cloudLink);
+    expect(screen.getByRole('button', { name: fresh.name })).toBeInTheDocument();
+    expect(listDirectory.mock.calls).toEqual([
+      [drive.root, undefined],
+      [drive.root, undefined],
+    ]);
+  } finally {
+    oldRequest.resolve(success({ entries: [] }));
+    vi.unstubAllGlobals();
+  }
+});
+
 it('enables local sorting only after the entire directory is loaded', async () => {
   const user = userEvent.setup();
   const space = {
@@ -626,18 +773,11 @@ it('enables local sorting only after the entire directory is loaded', async () =
     name: '项目盘',
     root: { connectionId: localConnectionId, spaceId: 'drive', locator: '.' },
   } satisfies Space;
-  function pausePage() {
-    let resolve!: () => void;
-    const promise = new Promise<void>((finish) => {
-      resolve = finish;
-    });
-    return { promise, resolve };
-  }
-
-  const finishFirstPage = pausePage();
-  const finishLastPage = pausePage();
+  const finishFirstPage = pausePage<void>();
+  const finishLastPage = pausePage<void>();
   const listDirectory = vi.fn<StorageBrowserApi['listDirectory']>(async (ref, cursor) => {
     if (ref.locator !== space.root.locator) return success({ entries: [] });
+    if (cursor === undefined) return success({ entries: [], nextCursor: 'first' });
     if (cursor === 'next') return success({ entries: [], nextCursor: 'last' });
     if (cursor === 'last') {
       await finishLastPage.promise;
@@ -685,6 +825,7 @@ it('enables local sorting only after the entire directory is loaded', async () =
     await renderWorkspace();
     await user.click(await screen.findByRole('button', { name: space.name }));
     const loadingTable = await screen.findByRole('table', { name: '文件和文件夹' });
+    await waitFor(() => expect(listDirectory).toHaveBeenLastCalledWith(space.root, 'first'));
     expect(loadingTable.parentElement).toHaveAttribute('aria-busy', 'true');
     expect(screen.getByRole('status')).toHaveTextContent('正在加载目录');
     expect(within(loadingTable).getAllByRole('columnheader')).toHaveLength(3);
@@ -737,6 +878,7 @@ it('enables local sorting only after the entire directory is loaded', async () =
     expect(entryNames()).toEqual(['file10', 'file2', 'unknown']);
     expect(listDirectory.mock.calls).toEqual([
       [space.root, undefined],
+      [space.root, 'first'],
       [space.root, 'next'],
       [space.root, 'last'],
     ]);
@@ -749,7 +891,7 @@ it('enables local sorting only after the entire directory is loaded', async () =
     expect(reopenedTable.getByRole('button', { name: 'file10' })).toBeInTheDocument();
     expect(reopenedTable.getByRole('button', { name: 'file2' })).toBeInTheDocument();
     expect(reopenedTable.getByRole('button', { name: '名称' })).toBeInTheDocument();
-    expect(listDirectory).toHaveBeenCalledTimes(4);
+    expect(listDirectory).toHaveBeenCalledTimes(5);
   } finally {
     finishFirstPage.resolve();
     finishLastPage.resolve();
