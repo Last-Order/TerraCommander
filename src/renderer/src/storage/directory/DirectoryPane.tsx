@@ -41,7 +41,7 @@ export function DirectoryPane({ space, cache, onAuthRequired }: DirectoryProps) 
             const name = formatStorageLabel(location.name, t);
             return (
               <div className={classes.crumb} key={index}>
-                {index > 0 && <ChevronRight size={14} aria-hidden="true" />}
+                {index > 0 && <ChevronRight size={16} strokeWidth={1.5} aria-hidden="true" />}
                 {index === trail.length - 1 ? (
                   <span aria-current="page" title={name}>
                     {name}

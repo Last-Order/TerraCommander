@@ -1,18 +1,19 @@
 .content {
   display: flex;
   flex-direction: column;
-  block-size: 40rem;
 }
 
 .header {
   flex: none;
-  padding: var(--mantine-spacing-md) var(--mantine-spacing-xl);
+  min-block-size: 3.5rem;
+  padding: 0.75rem 1.5rem;
   border-block-end: 1px solid var(--mantine-color-default-border);
 }
 
 .title {
   font-size: var(--mantine-font-size-lg);
-  font-weight: 650;
+  font-weight: 600;
+  line-height: 1.5rem;
 }
 
 .body {
@@ -23,22 +24,29 @@
 
 .layout {
   flex: 1;
+  min-block-size: 12rem;
   min-inline-size: 0;
 }
 
 .categories {
-  flex: 0 0 clamp(8rem, 24%, 15rem);
+  flex: 0 0 11rem;
   flex-wrap: nowrap;
   overflow-y: auto;
-  padding: var(--mantine-spacing-lg) var(--mantine-spacing-md);
+  padding: 1rem 0.75rem;
   background: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8));
   border-inline-end: 1px solid var(--mantine-color-default-border);
 }
 
+.category {
+  min-block-size: 2.25rem;
+  padding: 0.5rem 0.75rem;
+  line-height: 1.25rem;
+}
+
 .category[data-active] {
-  background: var(--mantine-primary-color-light);
-  color: var(--mantine-primary-color-light-color);
-  font-weight: 600;
+  background: light-dark(rgb(8 127 91 / 8%), rgb(99 230 190 / 10%));
+  color: light-dark(var(--mantine-color-teal-9), var(--mantine-color-teal-3));
+  font-weight: 500;
 }
 
 .categoryLabel {
@@ -48,14 +56,14 @@
 .panel {
   min-inline-size: 0;
   overflow-y: auto;
-  padding: var(--mantine-spacing-lg) clamp(1rem, 3.5vw, 2.25rem);
+  padding: 1.5rem;
 }
 
 .setting {
   display: grid;
-  grid-template-columns: minmax(max-content, 1fr) minmax(0, 14rem);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 13rem);
   align-items: center;
-  gap: var(--mantine-spacing-xs) var(--mantine-spacing-md);
+  gap: 0.5rem 1rem;
   max-inline-size: 38rem;
 }
 

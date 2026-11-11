@@ -129,7 +129,7 @@ export function StorageSetupModal({
           <Button
             justify="flex-start"
             variant="default"
-            leftSection={<Monitor size={18} />}
+            leftSection={<Monitor size={16} strokeWidth={1.5} aria-hidden="true" />}
             onClick={() => setConnection(localConnection ?? emptyLocalConnection)}
           >
             {t('localFileSystem')}
@@ -137,7 +137,7 @@ export function StorageSetupModal({
           <Button
             justify="flex-start"
             variant="default"
-            leftSection={<Cloud size={18} />}
+            leftSection={<Cloud size={16} strokeWidth={1.5} aria-hidden="true" />}
             onClick={() => setShowAuthorization(true)}
           >
             Google Drive

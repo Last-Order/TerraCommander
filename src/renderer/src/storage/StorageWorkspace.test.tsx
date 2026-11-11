@@ -166,7 +166,7 @@ it('reuses directory pages when switching storage spaces and refreshes with the 
 
     revision = 'after';
     await user.click(otherDrive);
-    expect(await screen.findByText('此文件夹为空。')).toBeInTheDocument();
+    expect(await screen.findByText('此文件夹为空')).toBeInTheDocument();
     expect(screen.queryByText('first-before')).not.toBeInTheDocument();
     await user.click(drive);
     expect(screen.getByText('first-before')).toBeInTheDocument();
@@ -183,7 +183,7 @@ it('reuses directory pages when switching storage spaces and refreshes with the 
     ]);
 
     await user.click(otherDrive);
-    expect(screen.getByText('此文件夹为空。')).toBeInTheDocument();
+    expect(screen.getByText('此文件夹为空')).toBeInTheDocument();
     await user.click(drive);
     expect(screen.getByText('first-after')).toBeInTheDocument();
     expect(screen.getByText('second-after')).toBeInTheDocument();
@@ -196,7 +196,7 @@ it('reuses directory pages when switching storage spaces and refreshes with the 
       abandonedRefresh.resolve(success({ entries: [], nextCursor: 'abandoned' }));
       await abandonedRefresh.promise;
     });
-    expect(screen.getByText('此文件夹为空。')).toBeInTheDocument();
+    expect(screen.getByText('此文件夹为空')).toBeInTheDocument();
     await user.click(drive);
     expect(screen.getByText('second-after')).toBeInTheDocument();
     expect(listDirectory).toHaveBeenCalledTimes(6);
@@ -263,7 +263,7 @@ it('invalidates the authorized connection cache while another storage space is o
     await user.dblClick(await screen.findByRole('button', { name: folderName }));
     const authorizeLink = await screen.findByRole('button', { name: '重新授权' });
     await user.click(localLink);
-    await screen.findByText('此文件夹为空。');
+    await screen.findByText('此文件夹为空');
 
     await user.click(authorizeLink);
     const dialog = within(screen.getByRole('dialog'));
@@ -274,7 +274,7 @@ it('invalidates the authorized connection cache while another storage space is o
     await user.click(cloudLink);
     expect(await screen.findByRole('button', { name: '更新后的资料' })).toBeInTheDocument();
     await user.click(localLink);
-    expect(screen.getByText('此文件夹为空。')).toBeInTheDocument();
+    expect(screen.getByText('此文件夹为空')).toBeInTheDocument();
     expect(listDirectory.mock.calls).toEqual([
       [drive.root, undefined],
       [child, undefined],
