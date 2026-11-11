@@ -1,12 +1,12 @@
 .emptyDirectory svg {
-  color: var(--storage-accent);
+  color: var(--storage-muted);
 }
 
 .crumb button {
   color: inherit;
   background: transparent;
   border: 0;
-  border-radius: var(--mantine-radius-sm);
+  border-radius: var(--mantine-radius-md);
   font: inherit;
   text-align: start;
   cursor: pointer;
@@ -47,30 +47,30 @@
 }
 
 .crumb span {
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .crumb svg {
-  color: var(--mantine-color-dimmed);
+  color: var(--storage-muted);
 }
 
 .emptyDirectory {
   display: grid;
   align-content: center;
   justify-items: center;
-  gap: 0.45rem;
-  padding: 1.25rem;
+  gap: 0.5rem;
+  padding: 1.5rem;
   text-align: center;
 }
 
 .emptyDirectory h1 {
-  margin: 0.35rem 0 0;
+  margin: 0.5rem 0 0;
   font-size: var(--mantine-font-size-lg);
   font-weight: 600;
 }
 
 .emptyDirectory p {
   margin: 0;
-  color: var(--mantine-color-dimmed);
+  color: var(--storage-secondary);
   font-size: var(--mantine-font-size-sm);
 }

@@ -50,11 +50,10 @@ export function SettingsDialog({ opened, onClose, initialPreference }: SettingsD
         title: classes.title,
         body: classes.body,
       }}
-      size="64rem"
+      size="50rem"
       xOffset="clamp(1rem, 4vw, 3rem)"
       yOffset="clamp(1rem, 4dvh, 3rem)"
       padding={0}
-      radius="md"
       centered
     >
       <Tabs
@@ -68,7 +67,7 @@ export function SettingsDialog({ opened, onClose, initialPreference }: SettingsD
             className={classes.category}
             classNames={{ tabLabel: classes.categoryLabel }}
             value="general"
-            leftSection={<SlidersHorizontal size={16} aria-hidden="true" />}
+            leftSection={<SlidersHorizontal size={16} strokeWidth={1.5} aria-hidden="true" />}
             data-autofocus
           >
             {t('general')}

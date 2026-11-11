@@ -441,7 +441,7 @@ it('enables local sorting only after the entire directory is loaded', async () =
     ]);
 
     await user.dblClick(table.getByRole('button', { name: 'unknown' }));
-    await screen.findByText('此文件夹为空。');
+    await screen.findByText('此文件夹为空');
     const breadcrumb = screen.getByRole('navigation', { name: '当前目录' });
     await user.click(within(breadcrumb).getByRole('button', { name: space.name }));
     const reopenedTable = within(await screen.findByRole('table', { name: '文件和文件夹' }));

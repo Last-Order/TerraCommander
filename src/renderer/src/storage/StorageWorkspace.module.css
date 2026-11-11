@@ -2,9 +2,18 @@
   --sidebar-surface: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7));
   --storage-border: light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
   --storage-hover: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6));
-  --storage-accent: var(--mantine-color-teal-light-color);
+  --storage-accent: light-dark(var(--mantine-color-teal-9), var(--mantine-color-teal-3));
+  --storage-selection: light-dark(rgb(8 127 91 / 8%), rgb(99 230 190 / 10%));
+  --storage-secondary: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1));
+  --storage-muted: light-dark(#68717a, var(--mantine-color-dark-2));
+  --storage-focus: var(--storage-accent);
 
   display: grid;
   grid-template-columns: 17rem minmax(0, 1fr);
   height: 100dvh;
+}
+
+.workspace :where(button):focus-visible {
+  outline: 2px solid var(--storage-focus);
+  outline-offset: 2px;
 }

@@ -13,7 +13,7 @@ import type { Entry } from '../../../../shared/storage';
 import classes from './DirectoryTable.module.css';
 import { formatSize } from './entry-format';
 
-const entryIconSize = 17;
+const entryIconSize = 16;
 const columns = [
   { field: 'name', label: 'entryName', className: undefined },
   { field: 'modifiedAt', label: 'entryModifiedAt', className: classes.entryDate },
@@ -96,7 +96,7 @@ export function DirectoryTable({
                     onClick={() => onSort(field)}
                   >
                     {t(label)}
-                    <Icon size={14} aria-hidden="true" />
+                    <Icon size={16} strokeWidth={1.5} aria-hidden="true" />
                   </button>
                 ) : (
                   <span className={classes.columnLabel}>{t(label)}</span>
@@ -146,9 +146,9 @@ export function DirectoryTable({
                       }
                     }}
                   >
-                    <Icon size={entryIconSize} aria-hidden="true" />
+                    <Icon size={entryIconSize} strokeWidth={1.5} aria-hidden="true" />
                     <span title={entry.name}>{entry.name}</span>
-                    {isDirectory && <ChevronRight size={14} aria-hidden="true" />}
+                    {isDirectory && <ChevronRight size={16} strokeWidth={1.5} aria-hidden="true" />}
                   </button>
                 </td>
                 <td className={classes.entryDate}>

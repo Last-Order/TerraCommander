@@ -50,7 +50,7 @@ export function StorageSidebar({
   return (
     <aside className={classes.sidebar}>
       <header className={classes.brand}>
-        <Layers size={19} aria-hidden="true" /> TerraCommander
+        <Layers size={16} strokeWidth={1.5} aria-hidden="true" /> TerraCommander
       </header>
       <nav className={classes.navigation} aria-label={t('title')}>
         <div className={classes.sidebarHeading}>
@@ -58,7 +58,7 @@ export function StorageSidebar({
           <Button
             size="compact-sm"
             variant="light"
-            leftSection={<Plus size={15} />}
+            leftSection={<Plus size={16} strokeWidth={1.5} aria-hidden="true" />}
             onClick={onAdd}
           >
             {t('add')}
@@ -93,7 +93,7 @@ export function StorageSidebar({
           justify="flex-start"
           variant="subtle"
           color="gray"
-          leftSection={<Settings size={17} aria-hidden="true" />}
+          leftSection={<Settings size={16} strokeWidth={1.5} aria-hidden="true" />}
           aria-haspopup="dialog"
           onClick={onOpenSettings}
         >
@@ -130,8 +130,8 @@ function ConnectionGroup({ connection, activeSpace, onManage, onReauthorize, onO
           aria-controls={spaceListId}
           onClick={() => setExpanded(!expanded)}
         >
-          <ChevronDown size={14} aria-hidden="true" className={classes.chevron} />
-          <Icon size={17} aria-hidden="true" />
+          <ChevronDown size={16} strokeWidth={1.5} aria-hidden="true" className={classes.chevron} />
+          <Icon size={16} strokeWidth={1.5} aria-hidden="true" />
           <span className={classes.connectionText}>
             <strong title={name}>{name}</strong>
             {detail && <small title={detail}>{detail}</small>}
@@ -144,7 +144,7 @@ function ConnectionGroup({ connection, activeSpace, onManage, onReauthorize, onO
           title={t('manageSpaces')}
           onClick={() => onManage(connection)}
         >
-          <SlidersHorizontal size={16} aria-hidden="true" />
+          <SlidersHorizontal size={16} strokeWidth={1.5} aria-hidden="true" />
         </ActionIcon>
       </div>
       {connection.needsAuthorization && (
@@ -176,7 +176,7 @@ function ConnectionGroup({ connection, activeSpace, onManage, onReauthorize, onO
                 }
                 onClick={() => onOpen(space)}
               >
-                <HardDrive size={16} aria-hidden="true" />
+                <HardDrive size={16} strokeWidth={1.5} aria-hidden="true" />
                 <span>{label}</span>
               </button>
             </li>

@@ -133,7 +133,7 @@ export function DirectoryListing({
           disabled={loading}
           onClick={reload}
         >
-          <RefreshCw size={16} aria-hidden="true" />
+          <RefreshCw size={16} strokeWidth={1.5} aria-hidden="true" />
         </ActionIcon>
       </header>
       {loadingWithoutEntries && (
@@ -179,7 +179,7 @@ export function DirectoryListing({
             />
             <Menu.Dropdown>
               <Menu.Item
-                leftSection={<Info size={16} aria-hidden="true" />}
+                leftSection={<Info size={16} strokeWidth={1.5} aria-hidden="true" />}
                 onClick={showInformation}
               >
                 {t('entryInformation')}

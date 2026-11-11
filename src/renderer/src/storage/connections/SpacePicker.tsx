@@ -121,7 +121,7 @@ export function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }
           disabled={loading || action !== null}
           onClick={() => void refreshSpaces()}
         >
-          <RefreshCw size={16} aria-hidden="true" />
+          <RefreshCw size={16} strokeWidth={1.5} aria-hidden="true" />
         </ActionIcon>
       </Group>
       {loading && <Loader size="sm" aria-label={t('discoveringSpaces')} />}
@@ -150,7 +150,7 @@ export function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }
       {connection.provider === 'local' && (
         <Button
           variant="light"
-          leftSection={<FolderPlus size={16} />}
+          leftSection={<FolderPlus size={16} strokeWidth={1.5} aria-hidden="true" />}
           loading={action === 'folder'}
           disabled={loading || action !== null}
           onClick={() => void chooseFolder()}
