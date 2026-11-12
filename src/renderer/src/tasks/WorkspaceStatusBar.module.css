@@ -1,0 +1,52 @@
+.bar {
+  display: flex;
+  grid-column: 1 / -1;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--storage-border);
+  background: var(--sidebar-surface);
+  color: var(--storage-secondary);
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.summary {
+  padding-inline: 0.75rem;
+  color: var(--storage-muted);
+}
+
+.toggle {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0 0.75rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.toggle:hover {
+  background: var(--storage-hover);
+}
+
+.toggle[aria-expanded='true'] {
+  background: var(--storage-selection);
+  color: var(--storage-accent);
+}
+
+.count {
+  font-variant-numeric: tabular-nums;
+}
+
+.failed {
+  color: light-dark(var(--mantine-color-red-8), var(--mantine-color-red-3));
+}
+
+.bar .toggle:focus-visible {
+  outline-offset: -2px;
+}

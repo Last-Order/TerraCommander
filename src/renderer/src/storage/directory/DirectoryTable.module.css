@@ -94,6 +94,10 @@
   user-select: none;
 }
 
+.entryRow[data-disabled='true'] {
+  opacity: 0.6;
+}
+
 .entries .entryName {
   padding: 0;
 }

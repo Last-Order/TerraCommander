@@ -7,6 +7,7 @@ import {
   File,
   Folder,
   Link2,
+  LockKeyhole,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Entry } from '../../../../shared/storage';
@@ -27,6 +28,8 @@ export interface DirectorySort {
 
 export interface DirectoryRow {
   entry: Entry;
+  name: string;
+  disabled: boolean;
   modifiedAt: number | undefined;
   size: number | undefined;
 }
@@ -112,7 +115,7 @@ export function DirectoryTable({
           className={loadingWithoutEntries ? classes.placeholderRows : undefined}
         >
           {loadingWithoutEntries && <DirectorySkeletonRows />}
-          {rows.map(({ entry, modifiedAt, size }) => {
+          {rows.map(({ entry, name, disabled, modifiedAt, size }) => {
             const { locator } = entry.ref;
             const isDirectory = entry.kind === 'directory';
             const Icon = isDirectory ? Folder : entry.kind === 'link' ? Link2 : File;
@@ -123,6 +126,8 @@ export function DirectoryTable({
                 key={locator}
                 className={classes.entryRow}
                 data-selected={selected}
+                data-disabled={disabled || undefined}
+                aria-busy={disabled || undefined}
                 onClick={(event) => onSelect(locator, event.ctrlKey)}
                 onContextMenu={() => onContextMenu(entry)}
                 onDoubleClick={
@@ -139,6 +144,7 @@ export function DirectoryTable({
                     className={classes.entry}
                     data-kind={entry.kind}
                     aria-pressed={selected}
+                    title={disabled ? t('entryWriteLocked') : undefined}
                     onKeyDown={(event) => {
                       if (isDirectory && event.key === 'Enter') {
                         event.preventDefault();
@@ -147,7 +153,8 @@ export function DirectoryTable({
                     }}
                   >
                     <Icon size={entryIconSize} strokeWidth={1.5} aria-hidden="true" />
-                    <span title={entry.name}>{entry.name}</span>
+                    <span title={name}>{name}</span>
+                    {disabled && <LockKeyhole size={14} strokeWidth={1.5} aria-hidden="true" />}
                     {isDirectory && <ChevronRight size={16} strokeWidth={1.5} aria-hidden="true" />}
                   </button>
                 </td>

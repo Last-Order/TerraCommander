@@ -15,8 +15,11 @@
 }
 
 .directoryContents {
+  flex: 1;
   min-height: 0;
   overflow: auto;
   padding: 1rem 1.5rem;
+  padding-block-end: calc(var(--task-panel-height) + 1rem);
+  scroll-padding-block-end: calc(var(--task-panel-height) + 1rem);
   scrollbar-gutter: stable;
 }
