@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Menu, Skeleton } from '@mantine/core';
 import { ChevronDown, ChevronsUpDown, ChevronUp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -25,6 +25,11 @@ export interface DirectoryRow {
   disabled: boolean;
   modifiedAt: number | undefined;
   size: number | undefined;
+}
+
+export interface DirectorySelectionModifiers {
+  toggle: boolean;
+  range: boolean;
 }
 
 function DirectorySkeletonRows() {
@@ -56,7 +61,8 @@ interface DirectoryTableProps {
   dateFormatter: Intl.DateTimeFormat;
   sizeFormatter: Intl.NumberFormat;
   onSort: (field: DirectorySort['field']) => void;
-  onSelect: (locator: string, toggle: boolean) => void;
+  onSelect: (locator: string, modifiers: DirectorySelectionModifiers) => void;
+  onSelectAll: () => void;
   onContextMenu: (entry: Entry) => void;
   onOpen: (entry: Entry) => void;
 }
@@ -72,12 +78,33 @@ export function DirectoryTable({
   sizeFormatter,
   onSort,
   onSelect,
+  onSelectAll,
   onContextMenu,
   onOpen,
 }: DirectoryTableProps) {
   const { t } = useTranslation('storage');
+  const [tabNavigation, setTabNavigation] = useState(false);
   const { tableRef, enabled, scrollMargin, virtualizer, onFocus, onBlur, onKeyDown } =
     useDirectoryVirtualizer(rows, scrollElement, canSort);
+
+  useEffect(() => {
+    const document = tableRef.current?.ownerDocument;
+    if (!document) return;
+
+    const showTabFocus = (event: KeyboardEvent) => {
+      if (event.key === 'Tab' && !event.altKey && !event.ctrlKey && !event.metaKey) {
+        setTabNavigation(true);
+      }
+    };
+    const hideTabFocus = () => setTabNavigation(false);
+    document.addEventListener('keydown', showTabFocus, true);
+    document.addEventListener('pointerdown', hideTabFocus, true);
+    return () => {
+      document.removeEventListener('keydown', showTabFocus, true);
+      document.removeEventListener('pointerdown', hideTabFocus, true);
+    };
+  }, [tableRef]);
+
   const virtualRows = virtualizer.getVirtualItems();
   const lastRowEnd = (virtualRows.at(-1)?.end ?? scrollMargin) - scrollMargin;
   const paddingBottom = Math.max(0, virtualizer.getTotalSize() - lastRowEnd);
@@ -100,11 +127,19 @@ export function DirectoryTable({
     <table
       ref={tableRef}
       className={classes.entries}
+      data-tab-navigation={tabNavigation || undefined}
       aria-label={t('filesAndFolders')}
       aria-rowcount={rows.length + 1}
       onFocusCapture={onFocus}
       onBlurCapture={onBlur}
-      onKeyDownCapture={onKeyDown}
+      onKeyDownCapture={(event) => {
+        if (event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'a') {
+          event.preventDefault();
+          onSelectAll();
+          return;
+        }
+        onKeyDown(event);
+      }}
     >
       <thead>
         <tr>

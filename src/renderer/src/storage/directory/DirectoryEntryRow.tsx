@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { ChevronRight, File, Folder, Link2, LockKeyhole } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Entry } from '../../../../shared/storage';
-import type { DirectoryRow } from './DirectoryTable';
+import type { DirectoryRow, DirectorySelectionModifiers } from './DirectoryTable';
 import classes from './DirectoryTable.module.css';
 import { formatSize } from './entry-format';
 
@@ -12,7 +12,7 @@ interface DirectoryEntryRowProps extends DirectoryRow {
   dateFormatter: Intl.DateTimeFormat;
   sizeFormatter: Intl.NumberFormat;
   measure: ((element: HTMLTableRowElement | null) => void) | undefined;
-  onSelect: (locator: string, toggle: boolean) => void;
+  onSelect: (locator: string, modifiers: DirectorySelectionModifiers) => void;
   onContextMenu: (entry: Entry) => void;
   onOpen: (entry: Entry) => void;
 }
@@ -46,12 +46,15 @@ export const DirectoryEntryRow = memo(function DirectoryEntryRow({
       data-selected={selected}
       data-disabled={disabled || undefined}
       aria-busy={disabled || undefined}
-      onClick={(event) => onSelect(locator, event.ctrlKey)}
+      onClick={(event) => {
+        event.currentTarget.querySelector('button')?.focus({ preventScroll: true });
+        onSelect(locator, { toggle: event.ctrlKey, range: event.shiftKey });
+      }}
       onContextMenu={() => onContextMenu(entry)}
       onDoubleClick={
         isDirectory
           ? (event) => {
-              if (!event.ctrlKey) onOpen(entry);
+              if (!event.ctrlKey && !event.shiftKey) onOpen(entry);
             }
           : undefined
       }
