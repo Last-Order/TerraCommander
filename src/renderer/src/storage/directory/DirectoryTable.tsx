@@ -1,18 +1,11 @@
+import { Fragment } from 'react';
 import { Menu, Skeleton } from '@mantine/core';
-import {
-  ChevronDown,
-  ChevronRight,
-  ChevronsUpDown,
-  ChevronUp,
-  File,
-  Folder,
-  Link2,
-  LockKeyhole,
-} from 'lucide-react';
+import { ChevronDown, ChevronsUpDown, ChevronUp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Entry } from '../../../../shared/storage';
 import classes from './DirectoryTable.module.css';
-import { formatSize } from './entry-format';
+import { DirectoryEntryRow } from './DirectoryEntryRow';
+import { useDirectoryVirtualizer } from './useDirectoryVirtualizer';
 
 const entryIconSize = 16;
 const columns = [
@@ -54,6 +47,7 @@ function DirectorySkeletonRows() {
 }
 
 interface DirectoryTableProps {
+  scrollElement: HTMLDivElement | null;
   rows: readonly DirectoryRow[];
   sort: DirectorySort | null;
   canSort: boolean;
@@ -68,6 +62,7 @@ interface DirectoryTableProps {
 }
 
 export function DirectoryTable({
+  scrollElement,
   rows,
   sort,
   canSort,
@@ -81,9 +76,36 @@ export function DirectoryTable({
   onOpen,
 }: DirectoryTableProps) {
   const { t } = useTranslation('storage');
+  const { tableRef, enabled, scrollMargin, virtualizer, onFocus, onBlur, onKeyDown } =
+    useDirectoryVirtualizer(rows, scrollElement, canSort);
+  const virtualRows = virtualizer.getVirtualItems();
+  const lastRowEnd = (virtualRows.at(-1)?.end ?? scrollMargin) - scrollMargin;
+  const paddingBottom = Math.max(0, virtualizer.getTotalSize() - lastRowEnd);
+  const renderRow = (row: DirectoryRow, index: number) => (
+    <DirectoryEntryRow
+      key={row.entry.ref.locator}
+      {...row}
+      index={index}
+      selected={selectedLocators.has(row.entry.ref.locator)}
+      dateFormatter={dateFormatter}
+      sizeFormatter={sizeFormatter}
+      measure={enabled ? virtualizer.measureElement : undefined}
+      onSelect={onSelect}
+      onContextMenu={onContextMenu}
+      onOpen={onOpen}
+    />
+  );
 
   return (
-    <table className={classes.entries} aria-label={t('filesAndFolders')}>
+    <table
+      ref={tableRef}
+      className={classes.entries}
+      aria-label={t('filesAndFolders')}
+      aria-rowcount={rows.length + 1}
+      onFocusCapture={onFocus}
+      onBlurCapture={onBlur}
+      onKeyDownCapture={onKeyDown}
+    >
       <thead>
         <tr>
           {columns.map(({ field, label, className }) => {
@@ -115,64 +137,35 @@ export function DirectoryTable({
           className={loadingWithoutEntries ? classes.placeholderRows : undefined}
         >
           {loadingWithoutEntries && <DirectorySkeletonRows />}
-          {rows.map(({ entry, name, disabled, modifiedAt, size }) => {
-            const { locator } = entry.ref;
-            const isDirectory = entry.kind === 'directory';
-            const Icon = isDirectory ? Folder : entry.kind === 'link' ? Link2 : File;
-            const selected = selectedLocators.has(locator);
-
-            return (
-              <tr
-                key={locator}
-                className={classes.entryRow}
-                data-selected={selected}
-                data-disabled={disabled || undefined}
-                aria-busy={disabled || undefined}
-                onClick={(event) => onSelect(locator, event.ctrlKey)}
-                onContextMenu={() => onContextMenu(entry)}
-                onDoubleClick={
-                  isDirectory
-                    ? (event) => {
-                        if (!event.ctrlKey) onOpen(entry);
-                      }
-                    : undefined
-                }
-              >
-                <td className={classes.entryName}>
-                  <button
-                    type="button"
-                    className={classes.entry}
-                    data-kind={entry.kind}
-                    aria-pressed={selected}
-                    title={disabled ? t('entryWriteLocked') : undefined}
-                    onKeyDown={(event) => {
-                      if (isDirectory && event.key === 'Enter') {
-                        event.preventDefault();
-                        onOpen(entry);
-                      }
-                    }}
-                  >
-                    <Icon size={entryIconSize} strokeWidth={1.5} aria-hidden="true" />
-                    <span title={name}>{name}</span>
-                    {disabled && <LockKeyhole size={14} strokeWidth={1.5} aria-hidden="true" />}
-                    {isDirectory && <ChevronRight size={16} strokeWidth={1.5} aria-hidden="true" />}
-                  </button>
-                </td>
-                <td className={classes.entryDate}>
-                  {modifiedAt !== undefined ? (
-                    <time dateTime={entry.modifiedAt}>{dateFormatter.format(modifiedAt)}</time>
-                  ) : (
-                    '—'
-                  )}
-                </td>
-                <td className={classes.entrySize}>
-                  {size !== undefined ? formatSize(size, sizeFormatter) : '—'}
-                </td>
-              </tr>
-            );
-          })}
+          {enabled
+            ? virtualRows.map((virtualRow, index) => {
+                const row = rows[virtualRow.index];
+                if (!row) return null;
+                const gap = virtualRow.start - (virtualRows[index - 1]?.end ?? scrollMargin);
+                return (
+                  <Fragment key={row.entry.ref.locator}>
+                    {gap > 0 && <DirectorySpacer height={gap} />}
+                    {renderRow(row, virtualRow.index)}
+                  </Fragment>
+                );
+              })
+            : rows.map(renderRow)}
+          {enabled && paddingBottom > 0 && <DirectorySpacer height={paddingBottom} />}
         </tbody>
       </Menu.ContextMenu>
     </table>
+  );
+}
+
+function DirectorySpacer({ height }: { height: number }) {
+  return (
+    <tr aria-hidden="true">
+      <td
+        aria-hidden="true"
+        colSpan={columns.length}
+        className={classes.spacer}
+        style={{ height }}
+      />
+    </tr>
   );
 }

@@ -58,6 +58,11 @@
   padding: 0.5rem 0.75rem;
 }
 
+.entries .spacer {
+  padding: 0;
+  border: 0;
+}
+
 .entries th {
   padding: 0;
   border-bottom: 1px solid var(--storage-border);
