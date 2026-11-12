@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActionIcon, Alert, Button, Group, Menu, VisuallyHidden } from '@mantine/core';
 import { Info, RefreshCw, SquarePen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -6,7 +6,12 @@ import { useStore } from 'zustand';
 import type { Entry, EntryRef } from '../../../../shared/storage';
 import { useKeyboardShortcuts } from '../../shortcuts/useKeyboardShortcuts';
 import classes from './DirectoryListing.module.css';
-import { DirectoryTable, type DirectoryRow, type DirectorySort } from './DirectoryTable';
+import {
+  DirectoryTable,
+  type DirectoryRow,
+  type DirectorySelectionModifiers,
+  type DirectorySort,
+} from './DirectoryTable';
 import { EntryInformationModal, type EntrySelection } from './EntryInformationModal';
 import { EntryRenameModal } from './EntryRenameModal';
 import type { DirectoryCache } from './directory-cache';
@@ -52,11 +57,13 @@ export function DirectoryListing({
   const { t, i18n } = useTranslation(['storage', 'common', 'errors']);
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const [selectedLocators, setSelectedLocators] = useState(() => new Set<string>());
+  const selectionAnchor = useRef<string | null>(null);
   const [menuLocator, setMenuLocator] = useState<string | null>(null);
   const [informationEntries, setInformationEntries] = useState<EntrySelection | null>(null);
   const [renameEntry, setRenameEntry] = useState<Entry | null>(null);
   const [sort, setSort] = useState<DirectorySort | null>(null);
   const onEntryRenamed = useCallback((previous: string, locator: string) => {
+    if (selectionAnchor.current === previous) selectionAnchor.current = locator;
     setSelectedLocators((selection) => {
       if (!selection.has(previous)) return selection;
       const updated = new Set(selection);
@@ -81,6 +88,16 @@ export function DirectoryListing({
   const loadingWithoutEntries = phase === 'loading' && entries.size === 0;
   const menuEntry = menuLocator === null ? undefined : entries.get(menuLocator);
 
+  useEffect(() => {
+    if (
+      phase === 'ready' &&
+      selectionAnchor.current !== null &&
+      !entries.has(selectionAnchor.current)
+    ) {
+      selectionAnchor.current = null;
+    }
+  }, [entries, phase]);
+
   if (phase === 'ready' && selectedLocators.size > 0) {
     const remaining = [...selectedLocators].filter((locator) => entries.has(locator));
     if (remaining.length < selectedLocators.size) setSelectedLocators(new Set(remaining));
@@ -104,17 +121,40 @@ export function DirectoryListing({
     return rows;
   }, [entries, sort, snapshot, locale, pendingEntries]);
 
-  const selectEntry = useCallback((locator: string, toggle: boolean) => {
-    setSelectedLocators((previous) => {
-      if (!toggle) return new Set([locator]);
+  const selectEntry = useCallback(
+    (locator: string, { toggle, range }: DirectorySelectionModifiers) => {
+      const anchor = selectionAnchor.current;
+      const start = range ? rows.findIndex(({ entry }) => entry.ref.locator === anchor) : -1;
+      const end = rows.findIndex(({ entry }) => entry.ref.locator === locator);
+      if (end < 0) return;
+      if (start < 0) selectionAnchor.current = locator;
 
-      const next = new Set(previous);
-      if (next.has(locator)) next.delete(locator);
-      else next.add(locator);
-      return next;
-    });
-  }, []);
+      setSelectedLocators((previous) => {
+        if (start >= 0) {
+          const next = toggle ? new Set(previous) : new Set<string>();
+          for (const { entry } of rows.slice(Math.min(start, end), Math.max(start, end) + 1)) {
+            next.add(entry.ref.locator);
+          }
+          return next;
+        }
+        if (!toggle) return new Set([locator]);
+
+        const next = new Set(previous);
+        if (!range && next.has(locator)) next.delete(locator);
+        else next.add(locator);
+        return next;
+      });
+    },
+    [rows],
+  );
+  const selectAll = useCallback(() => {
+    if (!rows.some(({ entry }) => entry.ref.locator === selectionAnchor.current)) {
+      selectionAnchor.current = rows[0]?.entry.ref.locator ?? null;
+    }
+    setSelectedLocators(new Set(rows.map(({ entry }) => entry.ref.locator)));
+  }, [rows]);
   const showEntryMenu = useCallback(({ ref: { locator } }: Entry) => {
+    selectionAnchor.current = locator;
     setSelectedLocators((previous) => (previous.has(locator) ? previous : new Set([locator])));
     setMenuLocator(locator);
   }, []);
@@ -210,6 +250,7 @@ export function DirectoryListing({
               sizeFormatter={sizeFormatter}
               onSort={changeSort}
               onSelect={selectEntry}
+              onSelectAll={selectAll}
               onContextMenu={showEntryMenu}
               onOpen={onOpen}
             />

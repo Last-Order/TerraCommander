@@ -5,8 +5,14 @@ import { useCallback, useState, type ComponentProps } from 'react';
 import type { i18n } from 'i18next';
 import { I18nextProvider } from 'react-i18next';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { localConnectionId } from '../../../../shared/storage-browser';
+import {
+  emptyLocalConnection,
+  localConnectionId,
+  type StorageBrowserApi,
+} from '../../../../shared/storage-browser';
 import { createRendererI18n } from '../../i18n/create-renderer-i18n';
+import { renderWorkspace } from '../../testing/render-app';
+import { success } from '../../testing/storage-browser-fixtures';
 import { DirectoryTable, type DirectoryRow } from './DirectoryTable';
 
 const rowHeight = 36;
@@ -41,7 +47,9 @@ beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (
     this: HTMLElement,
   ) {
-    return this.dataset.testid === 'directory-scroll' ? viewportHeight : 0;
+    return this.dataset.testid === 'directory-scroll' || this.matches('div[aria-busy]')
+      ? viewportHeight
+      : 0;
   });
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
   vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (
@@ -52,7 +60,7 @@ beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
     this: HTMLElement,
   ) {
-    const scroll = this.closest<HTMLElement>('[data-testid="directory-scroll"]');
+    const scroll = this.closest<HTMLElement>('[data-testid="directory-scroll"], div[aria-busy]');
     return this.tagName === 'THEAD'
       ? new DOMRect(0, headerOffset - rowHeight - (scroll?.scrollTop ?? 0), 800, rowHeight)
       : new DOMRect(0, 0, 800, viewportHeight);
@@ -123,6 +131,7 @@ async function renderTable(rows = createRows(10_000)) {
     dateFormatter,
     sizeFormatter,
     onSelect: vi.fn(),
+    onSelectAll: vi.fn(),
     onSort: vi.fn(),
     onContextMenu: vi.fn(),
     onOpen: vi.fn(),
@@ -154,7 +163,7 @@ it('bounds mounted rows for 10,000 files and reaches the middle and last file', 
   expect(screen.queryByRole('button', { name: 'file0.txt' })).not.toBeInTheDocument();
   expect(mountedRows().length).toBeLessThan(40);
   fireEvent.click(middle, { ctrlKey: true });
-  expect(props.onSelect).toHaveBeenCalledExactlyOnceWith('5000', true);
+  expect(props.onSelect).toHaveBeenCalledExactlyOnceWith('5000', { toggle: true, range: false });
   fireEvent.contextMenu(middle);
   expect(props.onContextMenu).toHaveBeenCalledWith(props.rows[5000]?.entry);
 
@@ -240,4 +249,53 @@ it('renders updated sort order and switches back to a small listing after refres
     expect(screen.getByRole('button', { name: row.name })).toBeInTheDocument();
   }
   expect(screen.getByRole('table').querySelector('tbody tr[aria-hidden]')).toBeNull();
+});
+
+it('selects ranges and all entries across unmounted rows in a 10,000-file directory', async () => {
+  const rows = createRows(10_000);
+  const root = { connectionId: localConnectionId, spaceId: 'drive', locator: '.' };
+  const listDirectory = vi.fn<StorageBrowserApi['listDirectory']>(async () =>
+    success({ entries: rows.map(({ entry }) => entry) }),
+  );
+  vi.stubGlobal('desktop', {
+    storage: {
+      listConnections: async () =>
+        success([
+          {
+            ...emptyLocalConnection,
+            spaces: [{ id: 'drive', connectionId: localConnectionId, name: '项目盘', root }],
+          },
+        ]),
+      listDirectory,
+    },
+  });
+  const user = userEvent.setup();
+  await renderWorkspace();
+  await user.click(await screen.findByRole('button', { name: '项目盘' }));
+  const first = await screen.findByRole('button', { name: 'file0.txt' });
+  const table = screen.getByRole('table', { name: '文件和文件夹' });
+  const scroll = table.parentElement;
+  const scrollToRow = (index: number) =>
+    fireEvent.scroll(scroll!, { target: { scrollTop: headerOffset + index * rowHeight } });
+  const item = (index: number) => screen.getByRole('button', { name: `file${index}.txt` });
+  const mountedRows = () => table.querySelectorAll('tbody tr[data-index]');
+
+  await user.click(first);
+  scrollToRow(5000);
+  expect(screen.queryByRole('button', { name: 'file2500.txt' })).not.toBeInTheDocument();
+  fireEvent.click(item(5000), { shiftKey: true });
+  expect(item(5000)).toHaveAttribute('aria-pressed', 'true');
+  expect(item(5001)).toHaveAttribute('aria-pressed', 'false');
+  expect(mountedRows().length).toBeLessThan(40);
+  scrollToRow(2500);
+  expect(item(2500)).toHaveAttribute('aria-pressed', 'true');
+  scrollToRow(0);
+  expect(item(0)).toHaveAttribute('aria-pressed', 'true');
+
+  act(() => item(0).focus());
+  expect(fireEvent.keyDown(item(0), { key: 'a', ctrlKey: true })).toBe(false);
+  scrollToRow(9990);
+  expect(item(9999)).toHaveAttribute('aria-pressed', 'true');
+  expect(mountedRows().length).toBeLessThan(40);
+  expect(listDirectory).toHaveBeenCalledExactlyOnceWith(root, undefined);
 });

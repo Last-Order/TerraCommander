@@ -84,6 +84,9 @@ it('renames a single right-clicked file in place without reloading the listing',
   await waitFor(() => expect(input).toHaveFocus());
   expect(input).toHaveProperty('selectionStart', 0);
   expect(input).toHaveProperty('selectionEnd', file.name.lastIndexOf('.'));
+  await user.keyboard('{Control>}a{/Control}');
+  expect(input).toHaveProperty('selectionEnd', file.name.length);
+  expect(screen.getByRole('button', { name: other.name })).toHaveAttribute('aria-pressed', 'false');
   expect(dialog.getByRole('button', { name: '保存' })).toBeDisabled();
   await user.clear(input);
   expect(dialog.getByRole('button', { name: '保存' })).toBeDisabled();
@@ -102,6 +105,11 @@ it('renames a single right-clicked file in place without reloading the listing',
       .map((row) => within(row).getByRole('button').textContent),
   ).toEqual(['新笔记.txt', other.name]);
   expect(listDirectory).toHaveBeenCalledTimes(1);
+  await user.keyboard('{Shift>}');
+  await user.click(table.getByRole('button', { name: other.name }));
+  await user.keyboard('{/Shift}');
+  expect(table.getByRole('button', { name: '新笔记.txt' })).toHaveAttribute('aria-pressed', 'true');
+  expect(table.getByRole('button', { name: other.name })).toHaveAttribute('aria-pressed', 'true');
 });
 
 it('finishes an in-flight refresh without allowing its older result to undo the rename', async () => {
