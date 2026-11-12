@@ -7,6 +7,7 @@ import {
   Layers,
   Monitor,
   Plus,
+  RefreshCw,
   Settings,
   SlidersHorizontal,
 } from 'lucide-react';
@@ -137,26 +138,30 @@ function ConnectionGroup({ connection, activeSpace, onManage, onReauthorize, onO
             {detail && <small title={detail}>{detail}</small>}
           </span>
         </button>
-        <ActionIcon
-          variant="subtle"
-          color="gray"
-          aria-label={t('manageConnectionSpaces', { name })}
-          title={t('manageSpaces')}
-          onClick={() => onManage(connection)}
-        >
-          <SlidersHorizontal size={16} strokeWidth={1.5} aria-hidden="true" />
-        </ActionIcon>
+        {connection.needsAuthorization ? (
+          <ActionIcon
+            variant="subtle"
+            color="red"
+            aria-label={t('reauthorize')}
+            title={t('reauthorize')}
+            aria-haspopup="dialog"
+            onClick={() => onReauthorize(connection)}
+          >
+            <RefreshCw size={16} strokeWidth={1.5} aria-hidden="true" />
+          </ActionIcon>
+        ) : (
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            aria-label={t('manageConnectionSpaces', { name })}
+            title={t('manageSpaces')}
+            aria-haspopup="dialog"
+            onClick={() => onManage(connection)}
+          >
+            <SlidersHorizontal size={16} strokeWidth={1.5} aria-hidden="true" />
+          </ActionIcon>
+        )}
       </div>
-      {connection.needsAuthorization && (
-        <Button
-          size="compact-xs"
-          variant="subtle"
-          className={classes.authorization}
-          onClick={() => onReauthorize(connection)}
-        >
-          {t('reauthorize')}
-        </Button>
-      )}
       <ul className={classes.spaces} id={spaceListId} hidden={!expanded}>
         {connection.spaces.length === 0 && (
           <li className={classes.sidebarStatus}>{t('noDisplayedSpaces')}</li>
@@ -169,6 +174,7 @@ function ConnectionGroup({ connection, activeSpace, onManage, onReauthorize, onO
                 type="button"
                 className={classes.space}
                 title={label}
+                disabled={connection.needsAuthorization}
                 aria-current={
                   activeSpace?.connectionId === connection.id && activeSpace.id === space.id
                     ? 'location'

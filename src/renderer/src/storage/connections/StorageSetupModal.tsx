@@ -102,6 +102,11 @@ export function StorageSetupModal({
         />
       ) : showAuthorization ? (
         <Stack gap="md">
+          {existing && (
+            <Text size="sm">
+              {t('reauthorizeConfirmation', { name: formatStorageLabel(existing.name, t) })}
+            </Text>
+          )}
           <Text size="sm" c="dimmed">
             {existing
               ? t('reauthorizeInBrowser', { name: formatStorageLabel(existing.name, t) })
@@ -117,7 +122,7 @@ export function StorageSetupModal({
               {authorizing ? t('cancelAuthorization') : t('common:cancel')}
             </Button>
             <Button loading={authorizing} onClick={() => void authorize()}>
-              {t('authorizeInBrowser')}
+              {existing ? t('reauthorize') : t('authorizeInBrowser')}
             </Button>
           </Group>
         </Stack>

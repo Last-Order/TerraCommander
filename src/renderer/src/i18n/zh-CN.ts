@@ -26,6 +26,7 @@ export const zhCN = {
     manageSpaces: '管理显示的空间',
     manageConnectionSpaces: '管理 {{name}} 显示的空间',
     reauthorize: '重新授权',
+    reauthorizeConfirmation: '“{{name}}” 的授权已失效，是否重新授权？',
     noDisplayedSpaces: '暂无显示的空间',
     currentDirectory: '当前目录',
     chooseSpace: '选择一个存储空间',
