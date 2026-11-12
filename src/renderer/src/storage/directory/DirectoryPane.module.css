@@ -29,6 +29,7 @@
 
 .directory {
   display: flex;
+  flex: 1;
   min-height: 0;
   flex-direction: column;
 }
@@ -56,6 +57,8 @@
 
 .emptyDirectory {
   display: grid;
+  min-height: 0;
+  flex: 1;
   align-content: center;
   justify-items: center;
   gap: 0.5rem;

@@ -1,20 +1,23 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { ActionIcon, Alert, Button, Group, Menu, VisuallyHidden } from '@mantine/core';
-import { Info, RefreshCw } from 'lucide-react';
+import { Info, RefreshCw, SquarePen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useStore } from 'zustand';
 import type { Entry, EntryRef } from '../../../../shared/storage';
 import classes from './DirectoryListing.module.css';
 import { DirectoryTable, type DirectoryRow, type DirectorySort } from './DirectoryTable';
 import { EntryInformationModal, type EntrySelection } from './EntryInformationModal';
-import type { DirectoryCache } from './directory-cache';
+import { EntryRenameModal } from './EntryRenameModal';
+import { directoryKey, type DirectoryCache } from './directory-cache';
 import { useDirectoryListing } from './useDirectoryListing';
+import { useTaskQueue } from '../../tasks/task-queue-context';
 
 function sortRows(rows: DirectoryRow[], { field, direction }: DirectorySort, locale?: string) {
   const { compare } = new Intl.Collator(locale, { numeric: true, sensitivity: 'base' });
   const order = direction === 'ascending' ? 1 : -1;
 
   rows.sort((a, b) => {
-    const byName = compare(a.entry.name, b.entry.name);
+    const byName = compare(a.name, b.name);
     if (field === 'name') return byName * order;
     const left = a[field];
     const right = b[field];
@@ -49,14 +52,41 @@ export function DirectoryListing({
   const [selectedLocators, setSelectedLocators] = useState(() => new Set<string>());
   const [menuLocator, setMenuLocator] = useState<string | null>(null);
   const [informationEntries, setInformationEntries] = useState<EntrySelection | null>(null);
+  const [renameEntry, setRenameEntry] = useState<Entry | null>(null);
   const [sort, setSort] = useState<DirectorySort | null>(null);
+  const onEntryRenamed = useCallback((previous: string, locator: string) => {
+    setSelectedLocators((selection) => {
+      if (!selection.has(previous)) return selection;
+      const updated = new Set(selection);
+      updated.delete(previous);
+      updated.add(locator);
+      return updated;
+    });
+  }, []);
   const { entries, phase, snapshot, error, refresh } = useDirectoryListing({
     parent,
     cache,
     cacheable,
     version,
     onAuthRequired,
+    onEntryRenamed,
   });
+  const queue = useTaskQueue();
+  const tasks = useStore(queue.store, (state) => state.tasks);
+  const pendingEntries = useMemo(
+    () =>
+      new Map(
+        tasks
+          .filter(
+            (task) =>
+              (task.status === 'queued' || task.status === 'running') &&
+              directoryKey(task.request.parent) === directoryKey(parent),
+          )
+          .map((task) => [task.request.entry.ref.locator, task.request]),
+      ),
+    [tasks, parent],
+  );
+  const menuEntryPending = menuLocator !== null && pendingEntries.has(menuLocator);
   const loading = phase === 'loading' || phase === 'refreshing';
   const loadingWithoutEntries = phase === 'loading' && entries.size === 0;
   const menuEntry = menuLocator === null ? undefined : entries.get(menuLocator);
@@ -71,15 +101,18 @@ export function DirectoryListing({
   const rows = useMemo(() => {
     const rows = Array.from(entries.values(), (entry): DirectoryRow => {
       const modifiedAt = Date.parse(entry.modifiedAt ?? '');
+      const pending = pendingEntries.get(entry.ref.locator);
       return {
         entry,
+        name: pending?.name ?? entry.name,
+        disabled: pending !== undefined,
         modifiedAt: Number.isFinite(modifiedAt) ? modifiedAt : undefined,
         size: entry.kind === 'directory' ? undefined : entry.size,
       };
     });
     if (sort && snapshot) sortRows(rows, sort, locale);
     return rows;
-  }, [entries, sort, snapshot, locale]);
+  }, [entries, sort, snapshot, locale, pendingEntries]);
 
   const selectEntry = (locator: string, toggle: boolean) => {
     setSelectedLocators((previous) => {
@@ -178,6 +211,17 @@ export function DirectoryListing({
               onOpen={onOpen}
             />
             <Menu.Dropdown>
+              {selectedLocators.size === 1 &&
+                menuEntry &&
+                menuEntry.capabilities.rename?.support !== 'unsupported' && (
+                  <Menu.Item
+                    disabled={menuEntryPending}
+                    leftSection={<SquarePen size={16} strokeWidth={1.5} aria-hidden="true" />}
+                    onClick={() => setRenameEntry(menuEntry)}
+                  >
+                    {t('renameEntry')}
+                  </Menu.Item>
+                )}
               <Menu.Item
                 leftSection={<Info size={16} strokeWidth={1.5} aria-hidden="true" />}
                 onClick={showInformation}
@@ -188,6 +232,14 @@ export function DirectoryListing({
           </Menu>
         )}
       </div>
+      {renameEntry && (
+        <EntryRenameModal
+          entry={renameEntry}
+          parent={parent}
+          directoryPath={directoryPath}
+          onClose={() => setRenameEntry(null)}
+        />
+      )}
       {informationEntries && (
         <EntryInformationModal
           entries={informationEntries}

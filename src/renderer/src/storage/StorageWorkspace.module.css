@@ -7,9 +7,15 @@
   --storage-secondary: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1));
   --storage-muted: light-dark(#68717a, var(--mantine-color-dark-2));
   --storage-focus: var(--storage-accent);
+  --status-bar-height: 1.5rem;
+  --task-panel-height: min(
+    clamp(10rem, 28dvh, 18rem),
+    calc((100dvh - var(--status-bar-height)) / 2)
+  );
 
   display: grid;
   grid-template-columns: 17rem minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) var(--status-bar-height);
   height: 100dvh;
 }
 

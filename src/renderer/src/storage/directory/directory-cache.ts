@@ -2,6 +2,20 @@ import type { Entry, EntryRef } from '../../../../shared/storage';
 
 export type DirectoryEntries = ReadonlyMap<string, Entry>;
 
+export interface EntryRenamed {
+  parent: EntryRef;
+  previous: EntryRef;
+  entry: Entry;
+}
+
+export function replaceRenamedEntry(entries: DirectoryEntries, locator: string, renamed: Entry) {
+  return new Map(
+    Array.from(entries, ([key, entry]) =>
+      key === locator ? [renamed.ref.locator, renamed] : [key, entry],
+    ),
+  );
+}
+
 const maxDirectories = 16;
 const maxEntries = 20_000;
 
@@ -16,6 +30,7 @@ export class DirectoryCache {
   >();
   private readonly versions = new Map<string, number>();
   private readonly listeners = new Set<() => void>();
+  private readonly renameListeners = new Set<(change: EntryRenamed) => void>();
   private entryCount = 0;
 
   peek(ref: EntryRef): DirectoryEntries | undefined {
@@ -47,6 +62,20 @@ export class DirectoryCache {
 
   version(connectionId: string): number {
     return this.versions.get(connectionId) ?? 0;
+  }
+
+  rename(change: EntryRenamed): void {
+    const cached = this.peek(change.parent);
+    if (cached)
+      this.save(change.parent, replaceRenamedEntry(cached, change.previous.locator, change.entry));
+    for (const listener of this.renameListeners) listener(change);
+  }
+
+  subscribeRenames(listener: (change: EntryRenamed) => void): () => void {
+    this.renameListeners.add(listener);
+    return () => {
+      this.renameListeners.delete(listener);
+    };
   }
 
   invalidateConnection(connectionId: string): void {

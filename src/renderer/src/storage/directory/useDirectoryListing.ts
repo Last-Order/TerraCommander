@@ -1,7 +1,12 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type { Entry, EntryRef } from '../../../../shared/storage';
 import { errorKey, resultOf, StorageBrowserError, type StorageErrorKey } from '../storage-client';
-import type { DirectoryCache, DirectoryEntries } from './directory-cache';
+import {
+  directoryKey,
+  replaceRenamedEntry,
+  type DirectoryCache,
+  type DirectoryEntries,
+} from './directory-cache';
 
 type ListingState =
   | { phase: 'loading' | 'ready' | 'refreshing'; entries: DirectoryEntries }
@@ -18,6 +23,7 @@ interface ListingOptions {
   cacheable: boolean;
   version: number;
   onAuthRequired: () => void;
+  onEntryRenamed: (previous: string, locator: string) => void;
 }
 
 const emptyEntries: DirectoryEntries = new Map();
@@ -28,6 +34,7 @@ export function useDirectoryListing({
   cacheable,
   version,
   onAuthRequired,
+  onEntryRenamed,
 }: ListingOptions) {
   const [listing, setListing] = useState<ListingState>(() => {
     const cached = cacheable ? cache.peek(parent) : undefined;
@@ -104,6 +111,25 @@ export function useDirectoryListing({
 
   const { phase, entries } = listing;
   const snapshot = phase === 'error' ? listing.snapshot : phase === 'loading' ? undefined : entries;
+
+  useLayoutEffect(
+    () =>
+      cache.subscribeRenames((change) => {
+        if (directoryKey(change.parent) !== directoryKey(parent)) return;
+        const { previous, entry } = change;
+        if (currentRequest.current !== null || snapshot === undefined) {
+          void load(replaceRenamedEntry(entries, previous.locator, entry));
+        } else {
+          setListing((current) => ({
+            phase: 'ready',
+            entries: replaceRenamedEntry(current.entries, previous.locator, entry),
+          }));
+        }
+        onEntryRenamed(previous.locator, entry.ref.locator);
+      }),
+    [cache, parent, snapshot, entries, load, onEntryRenamed],
+  );
+
   return {
     phase,
     entries,
