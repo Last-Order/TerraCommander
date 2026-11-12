@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Dirent, Stats } from 'node:fs';
-import { lstat, readdir } from 'node:fs/promises';
-import { basename, join, normalize, parse, sep } from 'node:path';
+import { lstat, readdir, rename } from 'node:fs/promises';
+import { basename, dirname, join, normalize, parse, sep } from 'node:path';
 import type { Entry, EntryPage, EntryRef, ListRequest, Space } from '../../../../shared/storage';
 import type { OperationContext } from '../../core/contracts';
 import { StorageError, throwIfAborted } from '../../core/errors';
@@ -9,6 +9,7 @@ import type { AdapterFactory, StorageAdapter } from '../../ports/adapter';
 import { listLocalVolumes } from './local-volumes';
 
 const listSupported = { list: { support: 'supported' } } as const;
+const renameSupported = { rename: { support: 'supported' } } as const;
 const metadataBatchSize = 32;
 
 export function localSpace(connectionId: string, directory: string): Space {
@@ -29,6 +30,10 @@ export function localFailure(error: unknown, signal?: AbortSignal): never {
   if (code === 'EACCES' || code === 'EPERM') {
     throw new StorageError('PermissionDenied', { cause: error });
   }
+  if (code === 'EEXIST' || code === 'ENOTEMPTY')
+    throw new StorageError('AlreadyExists', { cause: error });
+  if (code === 'EINVAL' || code === 'ENAMETOOLONG')
+    throw new StorageError('InvalidArgument', { cause: error });
   throw error;
 }
 
@@ -67,7 +72,7 @@ class LocalAdapter implements StorageAdapter {
   }
 
   async capabilities() {
-    return listSupported;
+    return { ...listSupported, ...renameSupported };
   }
 
   async stat(ref: EntryRef, { signal }: OperationContext): Promise<Entry> {
@@ -103,6 +108,44 @@ class LocalAdapter implements StorageAdapter {
         entries.push(...batch);
       }
       return { entries };
+    } catch (error) {
+      localFailure(error, signal);
+    }
+  }
+
+  async rename(ref: EntryRef, name: string, { signal }: OperationContext): Promise<Entry> {
+    if (
+      ref.locator === '.' ||
+      !name.trim() ||
+      name === '.' ||
+      name === '..' ||
+      name.includes('/') ||
+      name.includes('\0') ||
+      (sep === '\\' &&
+        (/[<>:"\\|?*]|[. ]$/.test(name) ||
+          Array.from(name).some((character) => character.charCodeAt(0) < 32) ||
+          /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)))
+    ) {
+      throw new StorageError('InvalidArgument');
+    }
+    const { path, info } = await this.locate(ref, signal);
+    if (basename(path) === name) return localEntry(ref, name, path, info);
+    const target = join(dirname(path), name);
+    try {
+      const existing = await lstat(target).catch((error: unknown) => {
+        if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')
+          return undefined;
+        throw error;
+      });
+      const caseOnly =
+        sep === '\\' &&
+        basename(path).toLowerCase() === name.toLowerCase() &&
+        existing?.dev === info.dev &&
+        existing?.ino === info.ino;
+      if (existing && !caseOnly) throw new StorageError('AlreadyExists');
+      throwIfAborted(signal);
+      await rename(path, target);
+      return await this.stat({ ...ref, locator: join(dirname(ref.locator), name) }, {});
     } catch (error) {
       localFailure(error, signal);
     }
@@ -161,7 +204,12 @@ function localEntry(ref: EntryRef, name: string, displayPath: string, info: Dire
     name,
     kind,
     displayPath,
-    capabilities: kind === 'directory' ? listSupported : {},
+    capabilities:
+      ref.locator === '.'
+        ? kind === 'directory'
+          ? listSupported
+          : {}
+        : { ...renameSupported, ...(kind === 'directory' ? listSupported : {}) },
   };
   if ('mtime' in info) {
     const year = info.mtime.getUTCFullYear();

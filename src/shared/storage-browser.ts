@@ -1,5 +1,5 @@
 import type { AccountErrorCode } from './accounts';
-import type { EntryPage, EntryRef, Space, StorageErrorCode, StorageLabel } from './storage';
+import type { Entry, EntryPage, EntryRef, Space, StorageErrorCode, StorageLabel } from './storage';
 
 export const localConnectionId = 'local';
 export type StorageProvider = 'local' | 'google-drive';
@@ -38,6 +38,7 @@ export interface StorageBrowserApi {
   reauthorize(connectionId: string): Promise<BrowserResult<void>>;
   cancelAuthorization(): Promise<BrowserResult<void>>;
   listDirectory(parent: EntryRef, cursor?: string): Promise<BrowserResult<EntryPage>>;
+  renameEntry(ref: EntryRef, name: string): Promise<BrowserResult<Entry>>;
   measureDirectorySize(id: string, folders: EntryRef[]): Promise<BrowserResult<number | null>>;
   cancelDirectoryMeasurement(id: string): Promise<BrowserResult<void>>;
 }

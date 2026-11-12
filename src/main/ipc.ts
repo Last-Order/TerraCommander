@@ -12,7 +12,7 @@ import {
 } from './services/language-preferences';
 import type { StorageBrowser } from './services/storage-browser';
 import { normalizeStorageError } from './storage/core/errors';
-import { entryRefSchema } from './storage/core/validation';
+import { entryNameSchema, entryRefSchema } from './storage/core/validation';
 
 const connectionId = z.union([z.literal(localConnectionId), z.uuid()]);
 const spaceId = z.string().min(1).max(1024);
@@ -118,6 +118,11 @@ export function registerIpcHandlers(
     channels.listDirectory,
     z.tuple([directory, z.string().min(1).max(65_536).optional()]),
     (browser, _window, parent, cursor?: string) => browser.listDirectory(parent, cursor),
+  );
+  handleStorage(
+    channels.renameEntry,
+    z.tuple([directory, entryNameSchema]),
+    (browser, _window, ref, name) => browser.renameEntry(ref, name),
   );
   handleStorage(
     channels.measureDirectorySize,

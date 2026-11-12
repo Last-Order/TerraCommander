@@ -25,6 +25,7 @@ import { normalizeStorageError, StorageError, throwIfAborted } from '../core/err
 import { managedRead, scopeSource } from '../core/streams';
 import {
   createTargetSchema,
+  entryNameSchema,
   entryRefSchema,
   listRequestSchema,
   parse,
@@ -231,6 +232,16 @@ export class StorageAccess {
     context: OperationContext = {},
   ): Promise<Entry> {
     return this.runNativeMutation('moveWithin', ref, target, context);
+  }
+
+  async rename(input: EntryRef, inputName: string, context: OperationContext = {}): Promise<Entry> {
+    const ref = parse(entryRefSchema, input);
+    const name = parse(entryNameSchema, inputName);
+    return this.withConnection(ref.connectionId, context, async ({ adapter, context }) => {
+      await requireCapabilities(adapter, ref, [{ operation: 'rename' }], context);
+      if (!adapter.rename) throw new StorageError('Unsupported');
+      return checkedEntry(await adapter.rename(ref, name, context), ref.connectionId, ref.spaceId);
+    });
   }
 
   private async runNativeMutation(

@@ -14,6 +14,11 @@ export const entryRefSchema = z.strictObject({
   spaceId: identifier,
   locator: z.string(),
 });
+export const entryNameSchema = z
+  .string()
+  .min(1)
+  .max(32_768)
+  .refine((name) => name.trim().length > 0 && !name.includes('\0'));
 export const capabilitySchema = z.strictObject({
   support: z.enum(['supported', 'unsupported', 'unknown']),
   guarantees: z

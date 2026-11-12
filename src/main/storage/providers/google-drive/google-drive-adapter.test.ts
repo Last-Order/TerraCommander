@@ -2,6 +2,83 @@ import { expect, it, vi } from 'vitest';
 import { AdapterRegistry, StorageAccess } from '../..';
 import { googleDriveAdapterFactory } from './google-drive-adapter';
 
+it.each([
+  { spaceId: 'my-drive', driveId: undefined },
+  { spaceId: 'shared:team', driveId: 'team' },
+])(
+  'renames Drive entries by ID in $spaceId and enforces permissions and ownership',
+  async ({ spaceId, driveId }) => {
+    let canRename = true;
+    let forbidden = false;
+    const file = {
+      id: 'file-id',
+      name: 'before.txt',
+      mimeType: 'text/plain',
+      driveId,
+    };
+    const request = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      expect(url.pathname).toBe('/drive/v3/files/file-id');
+      expect(url.searchParams.get('supportsAllDrives')).toBe('true');
+      if (init?.method === 'PATCH') {
+        expect(new Headers(init.headers).get('content-type')).toBe('application/json');
+        expect(init.body).toBe(JSON.stringify({ name: 'after.txt' }));
+        if (forbidden) return Response.json({}, { status: 403 });
+        return Response.json({ ...file, name: 'after.txt', capabilities: { canRename } });
+      }
+      return Response.json({ ...file, capabilities: { canRename } });
+    });
+    const registry = new AdapterRegistry({
+      credentials: {
+        async resolve() {
+          return {
+            provider: 'google-drive',
+            connectionId: 'account',
+            subject: 'subject',
+            oauthClientId: 'client',
+            getAccessToken: async () => 'test-access-token',
+          };
+        },
+      },
+      logger: { event() {} },
+    });
+    registry.register(googleDriveAdapterFactory(request));
+    const storage = new StorageAccess(registry, { async load() {}, async save() {} });
+    const ref = { connectionId: 'account', spaceId, locator: file.id };
+    try {
+      await registry.connect({
+        id: 'account',
+        provider: 'google-drive',
+        configuration: { subject: 'subject', oauthClientId: 'client' },
+        credentialRef: 'ref',
+      });
+      expect(await storage.rename(ref, 'after.txt')).toMatchObject({ name: 'after.txt', ref });
+      request.mockClear();
+      canRename = false;
+      await expect(storage.rename(ref, 'after.txt')).rejects.toMatchObject({
+        code: 'PermissionDenied',
+      });
+      expect(request.mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(false);
+      canRename = true;
+      forbidden = true;
+      await expect(storage.rename(ref, 'after.txt')).rejects.toMatchObject({
+        code: 'PermissionDenied',
+      });
+      request.mockClear();
+      await expect(
+        storage.rename({ ...ref, locator: driveId ?? 'root' }, 'after.txt'),
+      ).rejects.toMatchObject({ code: 'InvalidArgument' });
+      expect(request).not.toHaveBeenCalled();
+      await expect(
+        storage.rename({ ...ref, spaceId: driveId ? 'my-drive' : 'shared:team' }, 'after.txt'),
+      ).rejects.toMatchObject({ code: 'NotFound' });
+      expect(request.mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(false);
+    } finally {
+      await registry.dispose();
+    }
+  },
+);
+
 it('discovers all shared drives and lists a selected drive through its own corpus', async () => {
   const token = vi.fn(async () => 'test-access-token');
   const request = vi.fn<typeof fetch>(async (input, init) => {
