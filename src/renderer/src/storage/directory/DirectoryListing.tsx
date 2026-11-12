@@ -18,13 +18,12 @@ function sortRows(rows: DirectoryRow[], { field, direction }: DirectorySort, loc
   const order = direction === 'ascending' ? 1 : -1;
 
   rows.sort((a, b) => {
-    const byName = compare(a.name, b.name);
-    if (field === 'name') return byName * order;
+    if (field === 'name') return compare(a.name, b.name) * order;
     const left = a[field];
     const right = b[field];
-    if (left === undefined) return right === undefined ? byName : 1;
+    if (left === undefined) return right === undefined ? compare(a.name, b.name) : 1;
     if (right === undefined) return -1;
-    return (left - right) * order || byName;
+    return (left - right) * order || compare(a.name, b.name);
   });
 }
 
@@ -50,6 +49,7 @@ export function DirectoryListing({
   children,
 }: ListingProps) {
   const { t, i18n } = useTranslation(['storage', 'common', 'errors']);
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const [selectedLocators, setSelectedLocators] = useState(() => new Set<string>());
   const [menuLocator, setMenuLocator] = useState<string | null>(null);
   const [informationEntries, setInformationEntries] = useState<EntrySelection | null>(null);
@@ -103,7 +103,7 @@ export function DirectoryListing({
     return rows;
   }, [entries, sort, snapshot, locale, pendingEntries]);
 
-  const selectEntry = (locator: string, toggle: boolean) => {
+  const selectEntry = useCallback((locator: string, toggle: boolean) => {
     setSelectedLocators((previous) => {
       if (!toggle) return new Set([locator]);
 
@@ -112,11 +112,11 @@ export function DirectoryListing({
       else next.add(locator);
       return next;
     });
-  };
-  const showEntryMenu = ({ ref: { locator } }: Entry) => {
-    if (!selectedLocators.has(locator)) selectEntry(locator, false);
+  }, []);
+  const showEntryMenu = useCallback(({ ref: { locator } }: Entry) => {
+    setSelectedLocators((previous) => (previous.has(locator) ? previous : new Set([locator])));
     setMenuLocator(locator);
-  };
+  }, []);
   const showInformation = () => {
     if (!menuEntry) return;
     const selection: EntrySelection = [menuEntry];
@@ -138,11 +138,14 @@ export function DirectoryListing({
           ? 'descending'
           : 'ascending',
     }));
-  const dateFormatter = new Intl.DateTimeFormat(locale, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-  const sizeFormatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
+  const dateFormatter = useMemo(
+    () => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }),
+    [locale],
+  );
+  const sizeFormatter = useMemo(
+    () => new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }),
+    [locale],
+  );
 
   return (
     <>
@@ -163,7 +166,11 @@ export function DirectoryListing({
           <output>{t('loadingDirectory')}</output>
         </VisuallyHidden>
       )}
-      <div className={classes.directoryContents} aria-busy={loadingWithoutEntries}>
+      <div
+        ref={setScrollElement}
+        className={classes.directoryContents}
+        aria-busy={loadingWithoutEntries}
+      >
         {error && (
           <Alert color="red" role="alert">
             <Group justify="space-between">
@@ -187,6 +194,7 @@ export function DirectoryListing({
             transitionProps={{ duration: 0 }}
           >
             <DirectoryTable
+              scrollElement={scrollElement}
               rows={rows}
               sort={sort}
               canSort={snapshot !== undefined && !loading}
