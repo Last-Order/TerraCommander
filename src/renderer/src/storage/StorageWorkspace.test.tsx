@@ -265,14 +265,34 @@ it('invalidates the authorized connection cache while another storage space is o
     await user.click(cloudLink);
     await user.dblClick(await screen.findByRole('button', { name: folderName }));
     const authorizeLink = await screen.findByRole('button', { name: '重新授权' });
+    expect(cloudLink).toBeDisabled();
+    expect(localLink).toBeEnabled();
+    expect(
+      screen.queryByRole('button', { name: '管理 工作室 显示的空间' }),
+    ).not.toBeInTheDocument();
     await user.click(localLink);
     await screen.findByText('此文件夹为空');
+    await user.click(cloudLink);
+    expect(screen.getByText('此文件夹为空')).toBeInTheDocument();
+    expect(listDirectory).toHaveBeenCalledTimes(3);
 
     await user.click(authorizeLink);
-    const dialog = within(screen.getByRole('dialog'));
-    await user.click(dialog.getByRole('button', { name: '在浏览器中授权' }));
+    let dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByText('“工作室” 的授权已失效，是否重新授权？')).toBeInTheDocument();
+    expect(reauthorize).not.toHaveBeenCalled();
+    await user.click(dialog.getByRole('button', { name: '取消' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(reauthorize).not.toHaveBeenCalled();
+    await user.click(authorizeLink);
+    dialog = within(screen.getByRole('dialog'));
+    await user.click(dialog.getByRole('button', { name: '重新授权' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(reauthorize).toHaveBeenCalledExactlyOnceWith(drive.connectionId);
+    expect(
+      await screen.findByRole('button', { name: '管理 工作室 显示的空间' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '重新授权' })).not.toBeInTheDocument();
+    expect(cloudLink).toBeEnabled();
 
     await user.click(cloudLink);
     expect(await screen.findByRole('button', { name: '更新后的资料' })).toBeInTheDocument();
@@ -309,7 +329,7 @@ it('ignores a late directory page after reauthorizing the active connection', as
     .fn<StorageBrowserApi['listDirectory']>()
     .mockReturnValueOnce(oldRequest.promise)
     .mockResolvedValue(success({ entries: [fresh] }));
-  let needsAuthorization = true;
+  let needsAuthorization = false;
   vi.stubGlobal('desktop', {
     storage: {
       listConnections: async () =>
@@ -323,6 +343,10 @@ it('ignores a late directory page after reauthorizing the active connection', as
           },
         ]),
       listDirectory,
+      listSpaces: async () => {
+        needsAuthorization = true;
+        return { ok: false, code: 'AuthRequired' };
+      },
       reauthorize: async () => {
         needsAuthorization = false;
         return success(undefined);
@@ -335,9 +359,15 @@ it('ignores a late directory page after reauthorizing the active connection', as
     await user.click(cloudLink);
     expect(listDirectory).toHaveBeenCalledExactlyOnceWith(drive.root, undefined);
 
-    await user.click(screen.getByRole('button', { name: '重新授权' }));
+    await user.click(screen.getByRole('button', { name: '管理 工作室 显示的空间' }));
+    const picker = within(screen.getByRole('dialog'));
+    await picker.findByRole('alert');
+    await user.click(picker.getByRole('button', { name: '取消' }));
+    const authorizeLink = await screen.findByRole('button', { name: '重新授权' });
+    expect(cloudLink).toBeDisabled();
+    await user.click(authorizeLink);
     const dialog = within(screen.getByRole('dialog'));
-    await user.click(dialog.getByRole('button', { name: '在浏览器中授权' }));
+    await user.click(dialog.getByRole('button', { name: '重新授权' }));
     expect(await screen.findByRole('button', { name: fresh.name })).toBeInTheDocument();
 
     await act(async () => {

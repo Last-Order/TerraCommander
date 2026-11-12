@@ -26,6 +26,8 @@ export const en = {
     manageSpaces: 'Manage displayed locations',
     manageConnectionSpaces: 'Manage displayed locations for {{name}}',
     reauthorize: 'Reauthorize',
+    reauthorizeConfirmation:
+      'Authorization for “{{name}}” is no longer valid. Reauthorize this account?',
     noDisplayedSpaces: 'No locations to display',
     currentDirectory: 'Current directory',
     chooseSpace: 'Choose a storage location',
