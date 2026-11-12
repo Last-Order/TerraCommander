@@ -8,12 +8,13 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import type { DirectoryRow } from './DirectoryTable';
+import type { DirectoryRevealTarget, DirectoryRow } from './DirectoryTable';
 
 export function useDirectoryVirtualizer(
   rows: readonly DirectoryRow[],
   scrollElement: HTMLDivElement | null,
   canSort: boolean,
+  revealTarget: DirectoryRevealTarget | null = null,
 ) {
   const tableRef = useRef<HTMLTableElement>(null);
   const enabled = rows.length > 100;
@@ -32,15 +33,23 @@ export function useDirectoryVirtualizer(
       focusTarget === null ? -1 : rows.findIndex(({ entry }) => entry.ref.locator === focusTarget),
     [rows, focusTarget],
   );
+  const revealIndex = useMemo(
+    () =>
+      revealTarget === null
+        ? -1
+        : rows.findIndex(({ entry }) => entry.ref.locator === revealTarget.locator),
+    [rows, revealTarget],
+  );
   const rangeExtractor = useCallback(
     (range: Range) => {
       // Keep keyboard focus mounted even when the user scrolls it out of view.
       const indexes = new Set(defaultRangeExtractor(range));
       if (focusedIndex >= 0) indexes.add(focusedIndex);
       if (targetIndex >= 0) indexes.add(targetIndex);
+      if (revealIndex >= 0) indexes.add(revealIndex);
       return [...indexes].sort((a, b) => a - b);
     },
-    [focusedIndex, targetIndex],
+    [focusedIndex, targetIndex, revealIndex],
   );
   // oxlint-disable-next-line react/incompatible-library -- React Compiler is not enabled in this app.
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLTableRowElement>({
@@ -77,6 +86,17 @@ export function useDirectoryVirtualizer(
     }
     return () => observer.disconnect();
   }, [enabled, rows, scrollElement, canSort]);
+
+  useLayoutEffect(() => {
+    if (revealIndex < 0) return;
+    if (enabled) {
+      virtualizer.scrollToIndex(revealIndex, { align: 'center' });
+    } else {
+      tableRef.current
+        ?.querySelector<HTMLTableRowElement>(`tr[data-index="${revealIndex}"]`)
+        ?.scrollIntoView({ block: 'center', inline: 'nearest' });
+    }
+  }, [revealTarget, revealIndex, enabled, virtualizer]);
 
   useLayoutEffect(() => {
     if (focusTarget === null) return;

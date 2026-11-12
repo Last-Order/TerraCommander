@@ -1,4 +1,5 @@
 .directoryStatus {
+  display: block;
   margin: 0.5rem 0.75rem;
   color: var(--storage-secondary);
   font-size: var(--mantine-font-size-sm);
@@ -15,11 +16,30 @@
   border-bottom: 1px solid var(--storage-border);
 }
 
+.directoryBody {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
 .directoryContents {
+  --directory-cell-padding-block: 0.5rem;
+  --directory-cell-padding-inline: 0.75rem;
+  --directory-line-height: 1.25rem;
+
   flex: 1;
   min-height: 0;
   overflow: auto;
   padding-block-end: calc(var(--task-panel-height) + 1rem);
   scroll-padding-block-end: calc(var(--task-panel-height) + 1rem);
   scrollbar-gutter: stable;
+}
+
+.searchOverlay {
+  position: sticky;
+  z-index: 2;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  height: 0;
 }

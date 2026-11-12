@@ -26,6 +26,7 @@ class ResizeObserverMock {
 
 window.ResizeObserver = ResizeObserverMock;
 window.HTMLElement.prototype.scrollIntoView = vi.fn();
+window.HTMLElement.prototype.scrollTo = vi.fn();
 
 const originalGetComputedStyle = window.getComputedStyle;
 window.getComputedStyle = (element) => originalGetComputedStyle(element);

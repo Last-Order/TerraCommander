@@ -235,6 +235,26 @@ it('updates the visible window when the scroll viewport grows', async () => {
   expect(mountedRows().length).toBeLessThan(50);
 });
 
+it('reveals and selects a distant search match without moving keyboard focus', async () => {
+  const { rerender, props, scroll, mountedRows } = await renderTable();
+  vi.spyOn(scroll, 'scrollHeight', 'get').mockReturnValue(headerOffset + 10_000 * rowHeight);
+  const after = screen.getByRole('button', { name: 'After listing' });
+  act(() => after.focus());
+  rerender({ ...props, revealTarget: { locator: '9999' }, selectedLocators: new Set(['9999']) });
+  expect(screen.getByRole('button', { name: 'file9999.txt' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  expect(scroll.scrollTop).toBeGreaterThan(9000 * rowHeight);
+  expect(after).toHaveFocus();
+  expect(mountedRows().length).toBeLessThan(40);
+
+  rerender({ ...props, revealTarget: { locator: '0' }, selectedLocators: new Set(['0']) });
+  expect(screen.getByRole('button', { name: 'file0.txt' })).toHaveAttribute('aria-pressed', 'true');
+  expect(scroll.scrollTop).toBe(0);
+  expect(after).toHaveFocus();
+});
+
 it('renders updated sort order and switches back to a small listing after refresh', async () => {
   const { rows, rerender, props, scrollToRow, mountedRows } = await renderTable();
   rerender({ ...props, rows: rows.toReversed() });
