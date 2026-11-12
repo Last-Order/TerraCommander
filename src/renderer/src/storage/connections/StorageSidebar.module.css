@@ -6,21 +6,6 @@
   border-inline-end: 1px solid var(--storage-border);
 }
 
-.brand {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 0.5rem;
-  height: 3.5rem;
-  padding-inline: 1rem;
-  border-bottom: 1px solid var(--storage-border);
-  font-weight: 600;
-}
-
-.brand svg {
-  color: var(--storage-secondary);
-}
-
 .navigation {
   overflow: auto;
   padding: 1rem 0.75rem;

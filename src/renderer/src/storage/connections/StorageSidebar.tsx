@@ -4,7 +4,6 @@ import {
   ChevronDown,
   Cloud,
   HardDrive,
-  Layers,
   Monitor,
   Plus,
   RefreshCw,
@@ -50,20 +49,19 @@ export function StorageSidebar({
 
   return (
     <aside className={classes.sidebar}>
-      <header className={classes.brand}>
-        <Layers size={16} strokeWidth={1.5} aria-hidden="true" /> TerraCommander
-      </header>
       <nav className={classes.navigation} aria-label={t('title')}>
         <div className={classes.sidebarHeading}>
           <h2>{t('title')}</h2>
-          <Button
-            size="compact-sm"
-            variant="light"
-            leftSection={<Plus size={16} strokeWidth={1.5} aria-hidden="true" />}
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            aria-label={t('add')}
+            title={t('add')}
+            aria-haspopup="dialog"
             onClick={onAdd}
           >
-            {t('add')}
-          </Button>
+            <Plus size={16} strokeWidth={1.5} aria-hidden="true" />
+          </ActionIcon>
         </div>
         {loading && <Loader size="sm" aria-label={t('loading')} />}
         {error && (
