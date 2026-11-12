@@ -4,6 +4,7 @@ import { Info, RefreshCw, SquarePen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
 import type { Entry, EntryRef } from '../../../../shared/storage';
+import { useKeyboardShortcuts } from '../../shortcuts/useKeyboardShortcuts';
 import classes from './DirectoryListing.module.css';
 import { DirectoryTable, type DirectoryRow, type DirectorySort } from './DirectoryTable';
 import { EntryInformationModal, type EntrySelection } from './EntryInformationModal';
@@ -130,6 +131,9 @@ export function DirectoryListing({
     setMenuLocator(null);
     refresh();
   };
+  useKeyboardShortcuts([
+    { key: 'F5', onTrigger: reload, enabled: !loading, allowInEditable: true },
+  ]);
   const changeSort = (field: DirectorySort['field']) =>
     setSort((previous) => ({
       field,
@@ -155,6 +159,8 @@ export function DirectoryListing({
           variant="subtle"
           color="gray"
           aria-label={t('refreshDirectory')}
+          aria-keyshortcuts="F5"
+          title={`${t('refreshDirectory')} (F5)`}
           disabled={loading}
           onClick={reload}
         >
