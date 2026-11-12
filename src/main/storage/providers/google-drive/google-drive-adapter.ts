@@ -14,7 +14,7 @@ const sharedPrefix = 'shared:';
 const listSupported = { list: { support: 'supported' } } as const;
 const identifier = z.string().regex(/^[A-Za-z0-9_-]+$/);
 const token = z.string().min(1);
-const fileFields = 'id,name,mimeType,driveId,trashed,size,modifiedTime';
+const fileFields = 'id,name,mimeType,driveId,trashed,size,modifiedTime,capabilities(canRename)';
 const fileSchema = z.object({
   id: identifier,
   name: z.string(),
@@ -23,6 +23,7 @@ const fileSchema = z.object({
   trashed: z.boolean().optional(),
   size: z.string().regex(/^\d+$/).optional(),
   modifiedTime: z.iso.datetime({ offset: true }).optional(),
+  capabilities: z.object({ canRename: z.boolean().optional() }).optional(),
 });
 const filesSchema = z.object({
   files: z.array(fileSchema).default([]),
@@ -75,7 +76,7 @@ class GoogleDriveAdapter implements StorageAdapter {
         pageSize: '100',
       });
       if (pageToken) params.set('pageToken', pageToken);
-      const page = await this.get('drives', params, drivesSchema, context);
+      const page = await this.requestJson('drives', params, drivesSchema, context);
       for (const { id, name } of page.drives) {
         spaces.push(driveSpace(this.connectionId, sharedPrefix + id, name, id));
       }
@@ -87,14 +88,14 @@ class GoogleDriveAdapter implements StorageAdapter {
   }
 
   async capabilities() {
-    return listSupported;
+    return { ...listSupported, rename: { support: 'supported' } } as const;
   }
 
   async stat(ref: EntryRef, context: OperationContext): Promise<Entry> {
     const id = parse(identifier, ref.locator);
     const driveId = this.sharedDriveId(ref.spaceId);
     const params = new URLSearchParams({ fields: fileFields, supportsAllDrives: 'true' });
-    const file = await this.get('files/' + id, params, fileSchema, context);
+    const file = await this.requestJson('files/' + id, params, fileSchema, context);
     if (file.trashed || (file.driveId !== driveId && file.id !== driveId)) {
       throw new StorageError('NotFound');
     }
@@ -123,10 +124,28 @@ class GoogleDriveAdapter implements StorageAdapter {
     });
     if (driveId) params.set('driveId', driveId);
     if (cursor) params.set('pageToken', cursor);
-    const page = await this.get('files', params, filesSchema, context);
+    const page = await this.requestJson('files', params, filesSchema, context);
     if (page.incompleteSearch) throw new StorageError('OutcomeUnknown');
     const entries = page.files.map((file) => fileEntry({ ...parent, locator: file.id }, file));
     return page.nextPageToken ? { entries, nextCursor: page.nextPageToken } : { entries };
+  }
+
+  async rename(ref: EntryRef, name: string, context: OperationContext): Promise<Entry> {
+    const id = parse(identifier, ref.locator);
+    const driveId = this.sharedDriveId(ref.spaceId);
+    if (id === 'root' || id === driveId) throw new StorageError('InvalidArgument');
+    const entry = await this.stat(ref, context);
+    if (entry.capabilities.rename?.support === 'unsupported')
+      throw new StorageError('PermissionDenied');
+    if (entry.name === name) return entry;
+    const params = new URLSearchParams({ fields: fileFields, supportsAllDrives: 'true' });
+    const file = await this.requestJson('files/' + id, params, fileSchema, context, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    });
+    if (file.id !== id || file.trashed || file.driveId !== driveId)
+      throw new StorageError('OutcomeUnknown');
+    return fileEntry(ref, file);
   }
 
   async dispose() {}
@@ -137,11 +156,12 @@ class GoogleDriveAdapter implements StorageAdapter {
     return parse(identifier, spaceId.slice(sharedPrefix.length));
   }
 
-  private async get<T>(
+  private async requestJson<T>(
     path: string,
     params: URLSearchParams,
     schema: z.ZodType<T>,
     context: OperationContext,
+    update: Pick<RequestInit, 'method' | 'body'> = {},
   ): Promise<T> {
     throwIfAborted(context.signal);
     const accessToken = await this.authorization.getAccessToken(context);
@@ -152,7 +172,11 @@ class GoogleDriveAdapter implements StorageAdapter {
       response = await this.request(
         `https://www.googleapis.com/drive/v3/${path}?${params.toString()}`,
         {
-          headers: { Authorization: 'Bearer ' + accessToken },
+          ...update,
+          headers: {
+            Authorization: 'Bearer ' + accessToken,
+            ...(update.body ? { 'Content-Type': 'application/json' } : {}),
+          },
           redirect: 'error',
           signal,
         },
@@ -185,7 +209,17 @@ function fileEntry(ref: EntryRef, file: z.infer<typeof fileSchema>): Entry {
     mediaType: file.mimeType,
     modifiedAt: file.modifiedTime,
     size: Number.isSafeInteger(size) ? size : undefined,
-    capabilities: kind === 'directory' ? listSupported : {},
+    capabilities: {
+      ...(kind === 'directory' ? listSupported : {}),
+      rename: {
+        support:
+          file.capabilities?.canRename === undefined
+            ? 'unknown'
+            : file.capabilities.canRename
+              ? 'supported'
+              : 'unsupported',
+      },
+    },
   };
 }
 

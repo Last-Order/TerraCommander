@@ -146,6 +146,10 @@ export class StorageBrowser {
     return this.withBrowsableSpace(parent, () => this.storage.list(parent, { cursor }));
   }
 
+  async renameEntry(ref: EntryRef, name: string) {
+    return this.withBrowsableSpace(ref, () => this.storage.rename(ref, name));
+  }
+
   async measureDirectorySize(id: string, folders: EntryRef[]): Promise<number | null> {
     const first = folders[0];
     if (

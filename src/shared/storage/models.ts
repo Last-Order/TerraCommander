@@ -40,6 +40,7 @@ export const operations = [
   'remove',
   'copyWithin',
   'moveWithin',
+  'rename',
   'rangeRead',
   'conditionalRead',
   'conditionalWrite',

@@ -29,6 +29,7 @@ export interface StorageAdapter {
   remove?(ref: EntryRef, ctx: OperationContext): Promise<void>;
   copyWithin?(ref: EntryRef, target: CreateTarget, ctx: OperationContext): Promise<Entry>;
   moveWithin?(ref: EntryRef, target: CreateTarget, ctx: OperationContext): Promise<Entry>;
+  rename?(ref: EntryRef, name: string, ctx: OperationContext): Promise<Entry>;
   dispose(): Promise<void>;
 }
 

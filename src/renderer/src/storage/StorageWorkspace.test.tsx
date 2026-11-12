@@ -35,6 +35,9 @@ it('adds a local folder to the same sidebar as Drive and browses both connection
   };
   let visible: Space[] | undefined;
   const storage: StorageBrowserApi = {
+    async renameEntry() {
+      return { ok: false, code: 'Unsupported' };
+    },
     async listConnections() {
       return success(
         visible
