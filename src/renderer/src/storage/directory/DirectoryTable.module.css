@@ -3,7 +3,7 @@
   color: inherit;
   background: transparent;
   border: 0;
-  border-radius: var(--mantine-radius-md);
+  border-radius: 0;
   font: inherit;
   text-align: start;
   cursor: pointer;
@@ -64,9 +64,13 @@
 }
 
 .entries th {
+  position: sticky;
+  z-index: 1;
+  inset-block-start: 0;
   padding: 0;
   border-bottom: 1px solid var(--storage-border);
   color: var(--storage-muted);
+  background: var(--mantine-color-body);
   font-weight: 500;
   text-align: start;
 }
