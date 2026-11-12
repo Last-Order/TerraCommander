@@ -32,6 +32,10 @@ export interface DirectorySelectionModifiers {
   range: boolean;
 }
 
+export interface DirectoryRevealTarget {
+  locator: string;
+}
+
 function DirectorySkeletonRows() {
   return Array.from({ length: 10 }, (_, index) => (
     <tr key={index}>
@@ -54,6 +58,7 @@ function DirectorySkeletonRows() {
 interface DirectoryTableProps {
   scrollElement: HTMLDivElement | null;
   rows: readonly DirectoryRow[];
+  revealTarget?: DirectoryRevealTarget | null;
   sort: DirectorySort | null;
   canSort: boolean;
   loadingWithoutEntries: boolean;
@@ -70,6 +75,7 @@ interface DirectoryTableProps {
 export function DirectoryTable({
   scrollElement,
   rows,
+  revealTarget = null,
   sort,
   canSort,
   loadingWithoutEntries,
@@ -85,7 +91,7 @@ export function DirectoryTable({
   const { t } = useTranslation('storage');
   const [tabNavigation, setTabNavigation] = useState(false);
   const { tableRef, enabled, scrollMargin, virtualizer, onFocus, onBlur, onKeyDown } =
-    useDirectoryVirtualizer(rows, scrollElement, canSort);
+    useDirectoryVirtualizer(rows, scrollElement, canSort, revealTarget);
 
   useEffect(() => {
     const document = tableRef.current?.ownerDocument;

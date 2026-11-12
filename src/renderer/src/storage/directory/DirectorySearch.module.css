@@ -1,0 +1,30 @@
+.search {
+  position: absolute;
+  z-index: 2;
+  inset-block-start: calc(
+    var(--directory-line-height) + var(--directory-cell-padding-block) * 3 + 1px
+  );
+  inset-inline-end: var(--directory-cell-padding-inline);
+  display: flex;
+  width: min(28rem, calc(100% - 1.5rem));
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--storage-border);
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-body);
+  box-shadow: var(--mantine-shadow-sm);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+}
+
+.position {
+  flex: none;
+  color: var(--storage-secondary);
+  font-size: var(--mantine-font-size-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

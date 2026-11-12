@@ -6,6 +6,7 @@ import { useStore } from 'zustand';
 import type { Entry, EntryRef } from '../../../../shared/storage';
 import { useKeyboardShortcuts } from '../../shortcuts/useKeyboardShortcuts';
 import classes from './DirectoryListing.module.css';
+import { DirectorySearch } from './DirectorySearch';
 import {
   DirectoryTable,
   type DirectoryRow,
@@ -16,6 +17,7 @@ import { EntryInformationModal, type EntrySelection } from './EntryInformationMo
 import { EntryRenameModal } from './EntryRenameModal';
 import type { DirectoryCache } from './directory-cache';
 import { useDirectoryListing } from './useDirectoryListing';
+import { useDirectorySearch } from './useDirectorySearch';
 import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
 import { selectPendingEntryEffects } from '../tasks/pending-entry-effects';
 
@@ -62,6 +64,8 @@ export function DirectoryListing({
   const [informationEntries, setInformationEntries] = useState<EntrySelection | null>(null);
   const [renameEntry, setRenameEntry] = useState<Entry | null>(null);
   const [sort, setSort] = useState<DirectorySort | null>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const refreshButton = useRef<HTMLButtonElement>(null);
   const onEntryRenamed = useCallback((previous: string, locator: string) => {
     if (selectionAnchor.current === previous) selectionAnchor.current = locator;
     setSelectedLocators((selection) => {
@@ -88,22 +92,6 @@ export function DirectoryListing({
   const loadingWithoutEntries = phase === 'loading' && entries.size === 0;
   const menuEntry = menuLocator === null ? undefined : entries.get(menuLocator);
 
-  useEffect(() => {
-    if (
-      phase === 'ready' &&
-      selectionAnchor.current !== null &&
-      !entries.has(selectionAnchor.current)
-    ) {
-      selectionAnchor.current = null;
-    }
-  }, [entries, phase]);
-
-  if (phase === 'ready' && selectedLocators.size > 0) {
-    const remaining = [...selectedLocators].filter((locator) => entries.has(locator));
-    if (remaining.length < selectedLocators.size) setSelectedLocators(new Set(remaining));
-  }
-  if (phase === 'ready' && menuLocator !== null && !menuEntry) setMenuLocator(null);
-
   const locale = i18n.resolvedLanguage;
   const rows = useMemo(() => {
     const rows = Array.from(entries.values(), (entry): DirectoryRow => {
@@ -120,6 +108,28 @@ export function DirectoryListing({
     if (sort && snapshot) sortRows(rows, sort, locale);
     return rows;
   }, [entries, sort, snapshot, locale, pendingEntries]);
+  const selectSearchMatch = useCallback((locator: string | null) => {
+    selectionAnchor.current = locator;
+    setSelectedLocators(new Set(locator === null ? [] : [locator]));
+    setMenuLocator(null);
+  }, []);
+  const search = useDirectorySearch(rows, selectSearchMatch);
+
+  useEffect(() => {
+    if (
+      phase === 'ready' &&
+      selectionAnchor.current !== null &&
+      !entries.has(selectionAnchor.current)
+    ) {
+      selectionAnchor.current = null;
+    }
+  }, [entries, phase]);
+
+  if (phase === 'ready' && selectedLocators.size > 0) {
+    const remaining = [...selectedLocators].filter((locator) => entries.has(locator));
+    if (remaining.length < selectedLocators.size) setSelectedLocators(new Set(remaining));
+  }
+  if (phase === 'ready' && menuLocator !== null && !menuEntry) setMenuLocator(null);
 
   const selectEntry = useCallback(
     (locator: string, { toggle, range }: DirectorySelectionModifiers) => {
@@ -171,8 +181,22 @@ export function DirectoryListing({
     setMenuLocator(null);
     refresh();
   };
+  const openSearch = () => {
+    setMenuLocator(null);
+    search.open();
+    searchInput.current?.focus();
+    searchInput.current?.select();
+  };
+  const closeSearch = () => {
+    search.close();
+    refreshButton.current?.focus();
+  };
   useKeyboardShortcuts([
     { key: 'F5', onTrigger: reload, enabled: !loading, allowInEditable: true },
+    { key: 'f', ctrlKey: true, onTrigger: openSearch, allowInEditable: true },
+    ...(search.query === null
+      ? []
+      : [{ key: 'Escape', onTrigger: closeSearch, allowInEditable: true }]),
   ]);
   const changeSort = (field: DirectorySort['field']) =>
     setSort((previous) => ({
@@ -196,6 +220,7 @@ export function DirectoryListing({
       <header className={classes.directoryHeader}>
         {children}
         <ActionIcon
+          ref={refreshButton}
           variant="subtle"
           color="gray"
           aria-label={t('refreshDirectory')}
@@ -212,69 +237,85 @@ export function DirectoryListing({
           <output>{t('loadingDirectory')}</output>
         </VisuallyHidden>
       )}
-      <div
-        ref={setScrollElement}
-        className={classes.directoryContents}
-        aria-busy={loadingWithoutEntries}
-      >
-        {error && (
-          <Alert color="red" role="alert">
-            <Group justify="space-between">
-              {t(`errors:${error}`)}
-              <Button variant="subtle" size="compact-sm" onClick={reload}>
-                {t('common:retry')}
-              </Button>
-            </Group>
-          </Alert>
-        )}
-        {snapshot?.size === 0 && <p className={classes.directoryStatus}>{t('emptyDirectory')}</p>}
-        {(loadingWithoutEntries || entries.size > 0) && (
-          <Menu
-            opened={menuEntry !== undefined}
-            onChange={(opened) => {
-              if (!opened) setMenuLocator(null);
-            }}
-            position="bottom-start"
-            floatingStrategy="fixed"
-            hideDetached={false}
-            transitionProps={{ duration: 0 }}
-          >
-            <DirectoryTable
-              scrollElement={scrollElement}
-              rows={rows}
-              sort={sort}
-              canSort={snapshot !== undefined && !loading}
-              loadingWithoutEntries={loadingWithoutEntries}
-              selectedLocators={selectedLocators}
-              dateFormatter={dateFormatter}
-              sizeFormatter={sizeFormatter}
-              onSort={changeSort}
-              onSelect={selectEntry}
-              onSelectAll={selectAll}
-              onContextMenu={showEntryMenu}
-              onOpen={onOpen}
-            />
-            <Menu.Dropdown>
-              {selectedLocators.size === 1 &&
-                menuEntry &&
-                menuEntry.capabilities.rename?.support !== 'unsupported' && (
-                  <Menu.Item
-                    disabled={menuEntryPending}
-                    leftSection={<SquarePen size={16} strokeWidth={1.5} aria-hidden="true" />}
-                    onClick={() => setRenameEntry(menuEntry)}
-                  >
-                    {t('renameEntry')}
-                  </Menu.Item>
-                )}
-              <Menu.Item
-                leftSection={<Info size={16} strokeWidth={1.5} aria-hidden="true" />}
-                onClick={showInformation}
-              >
-                {t('entryInformation')}
-              </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
-        )}
+      <div className={classes.directoryBody}>
+        <div
+          ref={setScrollElement}
+          className={classes.directoryContents}
+          aria-busy={loadingWithoutEntries}
+        >
+          {search.query !== null && (
+            <div className={classes.searchOverlay}>
+              <DirectorySearch
+                inputRef={searchInput}
+                query={search.query}
+                index={search.index}
+                total={search.total}
+                onChange={search.changeQuery}
+                onNavigate={search.navigate}
+                onClose={closeSearch}
+              />
+            </div>
+          )}
+          {error && (
+            <Alert color="red" role="alert">
+              <Group justify="space-between">
+                {t(`errors:${error}`)}
+                <Button variant="subtle" size="compact-sm" onClick={reload}>
+                  {t('common:retry')}
+                </Button>
+              </Group>
+            </Alert>
+          )}
+          {snapshot?.size === 0 && <p className={classes.directoryStatus}>{t('emptyDirectory')}</p>}
+          {(loadingWithoutEntries || entries.size > 0) && (
+            <Menu
+              opened={menuEntry !== undefined}
+              onChange={(opened) => {
+                if (!opened) setMenuLocator(null);
+              }}
+              position="bottom-start"
+              floatingStrategy="fixed"
+              hideDetached={false}
+              transitionProps={{ duration: 0 }}
+            >
+              <DirectoryTable
+                scrollElement={scrollElement}
+                rows={rows}
+                revealTarget={search.revealTarget}
+                sort={sort}
+                canSort={snapshot !== undefined && !loading}
+                loadingWithoutEntries={loadingWithoutEntries}
+                selectedLocators={selectedLocators}
+                dateFormatter={dateFormatter}
+                sizeFormatter={sizeFormatter}
+                onSort={changeSort}
+                onSelect={selectEntry}
+                onSelectAll={selectAll}
+                onContextMenu={showEntryMenu}
+                onOpen={onOpen}
+              />
+              <Menu.Dropdown>
+                {selectedLocators.size === 1 &&
+                  menuEntry &&
+                  menuEntry.capabilities.rename?.support !== 'unsupported' && (
+                    <Menu.Item
+                      disabled={menuEntryPending}
+                      leftSection={<SquarePen size={16} strokeWidth={1.5} aria-hidden="true" />}
+                      onClick={() => setRenameEntry(menuEntry)}
+                    >
+                      {t('renameEntry')}
+                    </Menu.Item>
+                  )}
+                <Menu.Item
+                  leftSection={<Info size={16} strokeWidth={1.5} aria-hidden="true" />}
+                  onClick={showInformation}
+                >
+                  {t('entryInformation')}
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          )}
+        </div>
       </div>
       {renameEntry && (
         <EntryRenameModal
