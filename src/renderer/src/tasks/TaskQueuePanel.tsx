@@ -1,27 +1,31 @@
-import { Check, CircleAlert, Clock3, LoaderCircle, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
-import { useTaskQueue } from './task-queue-context';
+import type { TaskQueue } from './task-queue';
+import type { TaskPresenter } from './task-row-model';
+import { isFinishedTask } from './task-selectors';
+import type { TaskDefinitions } from './task-types';
+import { TaskQueueRow } from './TaskQueueRow';
 import classes from './TaskQueuePanel.module.css';
 
-interface TaskQueuePanelProps {
+interface TaskQueuePanelProps<Definitions extends TaskDefinitions> {
   id: string;
   opened: boolean;
   onClose: () => void;
+  queue: TaskQueue<Definitions>;
+  presentTask: TaskPresenter<Definitions>;
 }
 
-const statusIcons = {
-  queued: Clock3,
-  running: LoaderCircle,
-  completed: Check,
-  failed: CircleAlert,
-};
-
-export function TaskQueuePanel({ id, opened, onClose }: TaskQueuePanelProps) {
-  const { t } = useTranslation(['storage', 'errors']);
-  const queue = useTaskQueue();
+export function TaskQueuePanel<Definitions extends TaskDefinitions>({
+  id,
+  opened,
+  onClose,
+  queue,
+  presentTask,
+}: TaskQueuePanelProps<Definitions>) {
+  const { t } = useTranslation('tasks');
   const tasks = useStore(queue.store, (state) => state.tasks);
-  const hasFinished = tasks.some(({ status }) => status === 'completed' || status === 'failed');
+  const hasFinished = tasks.some(isFinishedTask);
 
   return (
     <section id={id} className={classes.panel} hidden={!opened} aria-label={t('taskQueue')}>
@@ -42,44 +46,15 @@ export function TaskQueuePanel({ id, opened, onClose }: TaskQueuePanelProps) {
           <p className={classes.empty}>{t('emptyTaskQueue')}</p>
         ) : (
           <ol className={classes.tasks} aria-label={t('taskQueue')}>
-            {tasks.map((task) => {
-              const Icon = statusIcons[task.status];
-              return (
-                <li key={task.id} className={classes.task} data-status={task.status}>
-                  <Icon
-                    className={classes.statusIcon}
-                    size={16}
-                    strokeWidth={1.5}
-                    aria-hidden="true"
-                  />
-                  <div className={classes.description}>
-                    <div className={classes.operation}>
-                      <span className={classes.type}>{t('renameEntry')}</span>
-                      <span className={classes.name} title={task.request.entry.name}>
-                        {task.request.entry.name}
-                      </span>
-                      <span className={classes.arrow} aria-hidden="true">
-                        →
-                      </span>
-                      <span className={classes.name} title={task.request.name}>
-                        {task.request.name}
-                      </span>
-                    </div>
-                    <div className={classes.path} title={task.request.directoryPath}>
-                      {task.request.directoryPath}
-                    </div>
-                    {task.status === 'failed' && (
-                      <p className={classes.error}>
-                        {task.error === 'InvalidArgument'
-                          ? t('invalidEntryName')
-                          : t(`errors:${task.error}`)}
-                      </p>
-                    )}
-                  </div>
-                  <span className={classes.status}>{t(`taskStatus_${task.status}`)}</span>
-                </li>
-              );
-            })}
+            {tasks.map((task) => (
+              <TaskQueueRow
+                key={task.id}
+                status={task.status}
+                model={presentTask(task)}
+                progress={task.progress}
+                failure={task.status === 'failed' ? task.failure : undefined}
+              />
+            ))}
           </ol>
         )}
       </div>

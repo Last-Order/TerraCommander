@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Button, Group, Modal, Stack, TextInput } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
 import type { Entry, EntryRef } from '../../../../shared/storage';
-import { useTaskQueue } from '../../tasks/task-queue-context';
+import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
 
 interface EntryRenameProps {
   entry: Entry;
@@ -13,14 +13,14 @@ interface EntryRenameProps {
 
 export function EntryRenameModal({ entry, parent, directoryPath, onClose }: EntryRenameProps) {
   const { t } = useTranslation(['storage', 'common']);
-  const queue = useTaskQueue();
+  const queue = useStorageTaskQueue();
   const [name, setName] = useState(entry.name);
   const submitted = useRef(false);
   const valid = name.trim().length > 0 && !name.includes('\0');
 
   const rename = () => {
     if (submitted.current || !valid || name === entry.name) return;
-    if (!queue.enqueue({ type: 'rename', parent, entry, name, directoryPath })) return;
+    if (!queue.enqueue({ type: 'rename', input: { parent, entry, name, directoryPath } })) return;
     submitted.current = true;
     onClose();
   };

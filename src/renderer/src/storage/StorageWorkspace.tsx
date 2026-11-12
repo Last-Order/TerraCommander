@@ -10,8 +10,11 @@ import { DirectoryPane, EmptyDirectoryPane } from './directory/DirectoryPane';
 import { errorKey, resultOf } from './storage-client';
 import classes from './StorageWorkspace.module.css';
 import { TaskQueue } from '../tasks/task-queue';
-import { TaskQueueContext } from '../tasks/task-queue-context';
 import { TaskQueueDock } from '../tasks/TaskQueueDock';
+import { createRenameTaskHandler } from './tasks/rename-task';
+import { presentStorageTask } from './tasks/rename-task-presenter';
+import { StorageTaskQueueContext } from './tasks/storage-task-queue-context';
+import type { StorageTaskDefinitions } from './tasks/storage-task-types';
 
 export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { t } = useTranslation('errors');
@@ -30,16 +33,13 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
   }, [mutate]);
   const [queue] = useState(
     () =>
-      new TaskQueue({
-        execute: ({ entry, name }) => resultOf(window.desktop.storage.renameEntry(entry.ref, name)),
-        onRenamed: ({ parent, entry }, result) =>
-          directoryCache.rename({ parent, previous: entry.ref, entry: result }),
-        onAuthRequired: refresh,
+      new TaskQueue<StorageTaskDefinitions>({
+        rename: createRenameTaskHandler({ directoryCache, onAuthRequired: refresh }),
       }),
   );
 
   return (
-    <TaskQueueContext.Provider value={queue}>
+    <StorageTaskQueueContext.Provider value={queue}>
       <div className={classes.workspace}>
         <StorageSidebar
           connections={connections}
@@ -55,7 +55,7 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
             setLocation((previous) => ({ space, generation: (previous?.generation ?? 0) + 1 }))
           }
         />
-        <TaskQueueDock>
+        <TaskQueueDock queue={queue} presentTask={presentStorageTask}>
           {location ? (
             <DirectoryPane
               key={location.generation}
@@ -80,6 +80,6 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
           />
         )}
       </div>
-    </TaskQueueContext.Provider>
+    </StorageTaskQueueContext.Provider>
   );
 }
