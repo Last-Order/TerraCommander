@@ -8,9 +8,10 @@ import classes from './DirectoryListing.module.css';
 import { DirectoryTable, type DirectoryRow, type DirectorySort } from './DirectoryTable';
 import { EntryInformationModal, type EntrySelection } from './EntryInformationModal';
 import { EntryRenameModal } from './EntryRenameModal';
-import { directoryKey, type DirectoryCache } from './directory-cache';
+import type { DirectoryCache } from './directory-cache';
 import { useDirectoryListing } from './useDirectoryListing';
-import { useTaskQueue } from '../../tasks/task-queue-context';
+import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
+import { selectPendingEntryEffects } from '../tasks/pending-entry-effects';
 
 function sortRows(rows: DirectoryRow[], { field, direction }: DirectorySort, locale?: string) {
   const { compare } = new Intl.Collator(locale, { numeric: true, sensitivity: 'base' });
@@ -71,22 +72,10 @@ export function DirectoryListing({
     onAuthRequired,
     onEntryRenamed,
   });
-  const queue = useTaskQueue();
+  const queue = useStorageTaskQueue();
   const tasks = useStore(queue.store, (state) => state.tasks);
-  const pendingEntries = useMemo(
-    () =>
-      new Map(
-        tasks
-          .filter(
-            (task) =>
-              (task.status === 'queued' || task.status === 'running') &&
-              directoryKey(task.request.parent) === directoryKey(parent),
-          )
-          .map((task) => [task.request.entry.ref.locator, task.request]),
-      ),
-    [tasks, parent],
-  );
-  const menuEntryPending = menuLocator !== null && pendingEntries.has(menuLocator);
+  const pendingEntries = useMemo(() => selectPendingEntryEffects(tasks, parent), [tasks, parent]);
+  const menuEntryPending = menuLocator !== null && pendingEntries.get(menuLocator)?.busy === true;
   const loading = phase === 'loading' || phase === 'refreshing';
   const loadingWithoutEntries = phase === 'loading' && entries.size === 0;
   const menuEntry = menuLocator === null ? undefined : entries.get(menuLocator);
@@ -104,8 +93,8 @@ export function DirectoryListing({
       const pending = pendingEntries.get(entry.ref.locator);
       return {
         entry,
-        name: pending?.name ?? entry.name,
-        disabled: pending !== undefined,
+        name: pending?.optimisticName ?? entry.name,
+        disabled: pending?.busy === true,
         modifiedAt: Number.isFinite(modifiedAt) ? modifiedAt : undefined,
         size: entry.kind === 'directory' ? undefined : entry.size,
       };

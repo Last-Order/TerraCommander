@@ -2,27 +2,29 @@ import { ListTodo } from 'lucide-react';
 import type { Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
-import { useTaskQueue } from './task-queue-context';
+import type { TaskQueue } from './task-queue';
+import { summarizeTasks } from './task-selectors';
+import type { TaskDefinitions } from './task-types';
 import classes from './WorkspaceStatusBar.module.css';
 
-interface WorkspaceStatusBarProps {
+interface WorkspaceStatusBarProps<Definitions extends TaskDefinitions> {
+  queue: TaskQueue<Definitions>;
   panelId: string;
   opened: boolean;
   onToggle: () => void;
   buttonRef: Ref<HTMLButtonElement>;
 }
 
-export function WorkspaceStatusBar({
+export function WorkspaceStatusBar<Definitions extends TaskDefinitions>({
+  queue,
   panelId,
   opened,
   onToggle,
   buttonRef,
-}: WorkspaceStatusBarProps) {
-  const { t } = useTranslation('storage');
-  const queue = useTaskQueue();
+}: WorkspaceStatusBarProps<Definitions>) {
+  const { t } = useTranslation('tasks');
   const tasks = useStore(queue.store, (state) => state.tasks);
-  const active = tasks.filter(({ status }) => status === 'queued' || status === 'running').length;
-  const failed = tasks.filter(({ status }) => status === 'failed').length;
+  const { active, failed } = summarizeTasks(tasks);
 
   return (
     <footer className={classes.bar} aria-label={t('statusBar')}>

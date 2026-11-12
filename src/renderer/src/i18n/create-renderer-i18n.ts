@@ -4,6 +4,8 @@ import { appLanguages, fallbackLanguage, type AppLanguage } from '../../../share
 import { en } from './en';
 import { zhCN } from './zh-CN';
 
+export const rendererNamespaces = ['common', 'settings', 'storage', 'tasks', 'errors'] as const;
+
 declare module 'i18next' {
   interface CustomTypeOptions {
     defaultNS: 'common';
@@ -18,7 +20,7 @@ export async function createRendererI18n(language: AppLanguage): Promise<i18n> {
     lng: language,
     fallbackLng: fallbackLanguage,
     supportedLngs: appLanguages,
-    ns: ['common', 'settings', 'storage', 'errors'],
+    ns: [...rendererNamespaces],
     defaultNS: 'common',
     resources: { en, 'zh-CN': zhCN },
     interpolation: { escapeValue: false },
