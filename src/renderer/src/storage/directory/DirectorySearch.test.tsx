@@ -43,9 +43,9 @@ async function setup(open = true) {
     await user.click(spaceButton);
     await screen.findByRole('button', { name: 'Report.TXT' });
   }
-  const find = () => {
+  const find = async () => {
     fireEvent.keyDown(document.activeElement ?? window, { key: 'f', ctrlKey: true });
-    return screen.getByRole('searchbox', { name: '搜索当前目录' });
+    return screen.findByRole('searchbox', { name: '搜索当前目录' });
   };
   const table = () => within(screen.getByRole('table', { name: '文件和文件夹' }));
   const selectedNames = () =>
@@ -59,7 +59,7 @@ async function setup(open = true) {
 it('opens with Ctrl+F and selects the first match without filtering the directory', async () => {
   const { user, find, table, selectedNames, position, listDirectory } = await setup();
   expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
-  const input = find();
+  const input = await find();
   expect(input).toHaveFocus();
   expect(screen.queryByRole('button', { name: '下一个匹配项' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: '上一个匹配项' })).not.toBeInTheDocument();
@@ -68,7 +68,7 @@ it('opens with Ctrl+F and selects the first match without filtering the director
   expect(selectedNames()).toEqual(['Report.TXT']);
   expect(position()).toHaveTextContent('1 / 2');
   expect(position()).toHaveAccessibleName('第 1 个匹配项，共 2 个');
-  expect(find()).toHaveFocus();
+  expect(await find()).toHaveFocus();
   expect(input).toHaveProperty('selectionStart', 0);
   expect(input).toHaveProperty('selectionEnd', 6);
 
@@ -76,7 +76,9 @@ it('opens with Ctrl+F and selects the first match without filtering the director
   expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: '刷新目录' })).toHaveFocus();
   expect(selectedNames()).toEqual(['Report.TXT']);
-  await user.type(find(), 'notes');
+  const reopened = await find();
+  expect(reopened).toHaveFocus();
+  await user.type(reopened, 'notes');
   expect(selectedNames()).toEqual(['notes.txt']);
   await user.click(screen.getByRole('button', { name: '关闭搜索' }));
   expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
@@ -87,7 +89,7 @@ it('opens with Ctrl+F and selects the first match without filtering the director
 it('navigates both ways with buttons and Enter, wraps around, and keeps the input focused', async () => {
   const { user, find, selectedNames, position } = await setup();
   await user.click(screen.getByRole('button', { name: 'notes.txt' }));
-  const input = find();
+  const input = await find();
   await user.type(input, 'report');
   expect(selectedNames()).toEqual(['Report.TXT']);
   const next = screen.getByRole('button', { name: '下一个匹配项' });
@@ -110,7 +112,7 @@ it('navigates both ways with buttons and Enter, wraps around, and keeps the inpu
 
 it('matches punctuation, Chinese and whitespace literally and shows no results instead of navigation', async () => {
   const { user, find, selectedNames, position, table, listDirectory } = await setup();
-  const input = find();
+  const input = await find();
   await user.type(input, '.*');
   expect(selectedNames()).toEqual(['a.*[1].txt']);
   expect(position()).toHaveTextContent('1 / 1');
@@ -138,21 +140,21 @@ it('matches punctuation, Chinese and whitespace literally and shows no results i
 
 it('uses the displayed sort order and retains the current match when sorting or refreshing', async () => {
   const { user, find, table, selectedNames, position, entries, listDirectory } = await setup();
-  await user.type(find(), 'report');
+  await user.type(await find(), 'report');
   await user.click(table().getByRole('button', { name: '名称' }));
   expect(selectedNames()).toEqual(['Report.TXT']);
   expect(position()).toHaveTextContent('2 / 2');
   await user.click(screen.getByRole('button', { name: '下一个匹配项' }));
   expect(selectedNames()).toEqual(['report-final.md']);
   expect(position()).toHaveTextContent('1 / 2');
-  fireEvent.keyDown(find(), { key: 'F5' });
+  fireEvent.keyDown(await find(), { key: 'F5' });
   await waitFor(() => expect(listDirectory).toHaveBeenCalledTimes(2));
   await waitFor(() => expect(screen.getByRole('button', { name: '刷新目录' })).toBeEnabled());
   expect(selectedNames()).toEqual(['report-final.md']);
   listDirectory.mockResolvedValueOnce(
     success({ entries: entries.filter(({ name }) => name !== 'report-final.md') }),
   );
-  fireEvent.keyDown(find(), { key: 'F5' });
+  fireEvent.keyDown(await find(), { key: 'F5' });
   await waitFor(() => expect(position()).toHaveTextContent('1 / 1'));
   expect(selectedNames()).toEqual(['Report.TXT']);
 });
@@ -167,7 +169,7 @@ it('adds paginated matches without losing the current match and resets on folder
   try {
     await user.click(spaceButton);
     await screen.findByRole('button', { name: 'Report.TXT' });
-    const input = find();
+    const input = await find();
     await user.type(input, 'report');
     expect(position()).toHaveTextContent('1 / 1');
     nextPage.resolve(success({ entries: entries.slice(2) }));
@@ -188,7 +190,7 @@ it('adds paginated matches without losing the current match and resets on folder
 
 it('ignores composition and modified keys and does not navigate behind a modal', async () => {
   const { user, find, selectedNames, position } = await setup();
-  const input = find();
+  const input = await find();
   await user.type(input, 'report');
   for (const modifier of ['altKey', 'ctrlKey', 'metaKey', 'isComposing']) {
     fireEvent.keyDown(input, { key: 'Enter', [modifier]: true });
