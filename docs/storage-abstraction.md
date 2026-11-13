@@ -110,7 +110,7 @@ Contract rules:
 - `ByteSource` opens a stream with backpressure. Its reopenable variant supplies known length, source descriptor, and range reopening for retries/recovery. A one-shot stream supports ordinary writes but cannot promise restart recovery. Validate this contract with synthetic streams; a filesystem-backed source is a future integration.
 - `WriteTarget` distinguishes creation under a parent from replacement of an exact reference. The caller explicitly selects create-only, unconditional replacement, or conditional replacement. Create-only never overwrites an existing resource; Drive may create another ID with the same name.
 - Conditional replacement must use a supported backend guarantee, including at publication after a resumed upload. An adapter must not substitute a racy read-then-write check. AWS exposes conditional writes, while compatible endpoints require individual support checks. See [S3 PutObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html).
-- `remove` deletes one file/link or an empty directory. Recursive deletion and cross-connection copy/move require higher-level orchestration.
+- `remove` deletes one file/link or an empty directory using provider-specific behavior. Google Drive implements deletion by moving the file to its trash; callers use the same interface and capability as local deletion. Recursive deletion and cross-connection copy/move require higher-level orchestration.
 - `copyWithin` and `moveWithin` expose supported native operations within a connection. Unsupported or cross-filesystem operations fail explicitly; no hidden copy-then-delete fallback.
 
 ## Capabilities and Future Compatibility Checks

@@ -8,6 +8,17 @@ export interface EntryRenamed {
   entry: Entry;
 }
 
+export interface EntryRemoved {
+  parent: EntryRef;
+  ref: EntryRef;
+}
+
+export function removeDirectoryEntry(entries: DirectoryEntries, locator: string): DirectoryEntries {
+  const remaining = new Map(entries);
+  remaining.delete(locator);
+  return remaining;
+}
+
 export function replaceRenamedEntry(entries: DirectoryEntries, locator: string, renamed: Entry) {
   return new Map(
     Array.from(entries, ([key, entry]) =>
@@ -31,6 +42,7 @@ export class DirectoryCache {
   private readonly versions = new Map<string, number>();
   private readonly listeners = new Set<() => void>();
   private readonly renameListeners = new Set<(change: EntryRenamed) => void>();
+  private readonly removeListeners = new Set<(change: EntryRemoved) => void>();
   private entryCount = 0;
 
   peek(ref: EntryRef): DirectoryEntries | undefined {
@@ -75,6 +87,19 @@ export class DirectoryCache {
     this.renameListeners.add(listener);
     return () => {
       this.renameListeners.delete(listener);
+    };
+  }
+
+  remove(change: EntryRemoved): void {
+    const cached = this.peek(change.parent);
+    if (cached) this.save(change.parent, removeDirectoryEntry(cached, change.ref.locator));
+    for (const listener of this.removeListeners) listener(change);
+  }
+
+  subscribeRemovals(listener: (change: EntryRemoved) => void): () => void {
+    this.removeListeners.add(listener);
+    return () => {
+      this.removeListeners.delete(listener);
     };
   }
 

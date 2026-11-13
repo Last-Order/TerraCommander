@@ -150,6 +150,10 @@ export class StorageBrowser {
     return this.withBrowsableSpace(ref, () => this.storage.rename(ref, name));
   }
 
+  async deleteEntry(ref: EntryRef): Promise<void> {
+    return this.withBrowsableSpace(ref, () => this.storage.remove(ref));
+  }
+
   async measureDirectorySize(id: string, folders: EntryRef[]): Promise<number | null> {
     const first = folders[0];
     if (

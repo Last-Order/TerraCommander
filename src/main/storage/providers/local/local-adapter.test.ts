@@ -51,6 +51,46 @@ it('renames local files and folders and returns their new references', async () 
   }
 });
 
+it('deletes a single file while protecting roots, folders and paths through links', async () => {
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-delete-'));
+  const saved = join(temporary.path, 'saved');
+  const outside = join(temporary.path, 'outside');
+  await mkdir(saved);
+  await mkdir(outside);
+  await mkdir(join(saved, 'folder'));
+  await writeFile(join(saved, 'file.txt'), 'delete me');
+  await writeFile(join(saved, 'keep.txt'), 'keep me');
+  await writeFile(join(outside, 'secret.txt'), 'outside');
+  await symlink(
+    outside,
+    join(saved, 'redirect'),
+    process.platform === 'win32' ? 'junction' : 'dir',
+  );
+  const { registry, storage, root } = await setup(saved);
+  try {
+    const file = { ...root, locator: 'file.txt' };
+    expect((await storage.stat(file)).capabilities.remove?.support).toBe('supported');
+    await storage.remove(file);
+    await expect(storage.stat(file)).rejects.toMatchObject({ code: 'NotFound' });
+    await expect(storage.remove(root)).rejects.toMatchObject({ code: 'InvalidArgument' });
+    await expect(storage.remove({ ...root, locator: '..' })).rejects.toMatchObject({
+      code: 'InvalidArgument',
+    });
+    await expect(storage.remove({ ...root, locator: 'folder' })).rejects.toMatchObject({
+      code: 'Unsupported',
+    });
+    await expect(
+      storage.remove({ ...root, locator: join('redirect', 'secret.txt') }),
+    ).rejects.toMatchObject({ code: 'NotFound' });
+    await storage.remove({ ...root, locator: 'redirect' });
+    expect(await readdir(saved)).toEqual(['folder', 'keep.txt']);
+    expect(await readFile(join(saved, 'keep.txt'), 'utf8')).toBe('keep me');
+    expect(await readFile(join(outside, 'secret.txt'), 'utf8')).toBe('outside');
+  } finally {
+    await registry.dispose();
+  }
+});
+
 it('rejects conflicting names, invalid names, root renames and traversal through links', async () => {
   await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-rename-'));
   const saved = join(temporary.path, 'saved');

@@ -6,7 +6,9 @@ import { pausePage } from '../testing/storage-browser-fixtures';
 import { TaskQueue } from './task-queue';
 import type { TaskHandler, TaskRequest } from './task-types';
 
-function request(locator: string): TaskRequest<StorageTaskDefinitions> {
+type RenameTaskDefinitions = Pick<StorageTaskDefinitions, 'rename'>;
+
+function request(locator: string): TaskRequest<RenameTaskDefinitions> {
   const parent = { connectionId: 'local', spaceId: 'disk', locator: '.' };
   return {
     type: 'rename',
@@ -35,7 +37,7 @@ function setup(overrides: Partial<TaskHandler<RenameTaskInput, Entry>> = {}) {
     ...overrides,
   };
   return {
-    queue: new TaskQueue<StorageTaskDefinitions>({ rename: handler }),
+    queue: new TaskQueue<RenameTaskDefinitions>({ rename: handler }),
     execute,
     onSuccess,
     onFailure,

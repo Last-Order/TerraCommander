@@ -24,6 +24,12 @@ export function selectPendingEntryEffects(
           effects.set(input.entry.ref.locator, { busy: true, optimisticName: input.name });
         break;
       }
+      case 'delete': {
+        const { input } = task.request;
+        if (directoryKey(input.parent) === parentKey)
+          effects.set(input.entry.ref.locator, { busy: true });
+        break;
+      }
     }
   }
   return effects;

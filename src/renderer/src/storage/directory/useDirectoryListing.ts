@@ -3,6 +3,7 @@ import type { Entry, EntryRef } from '../../../../shared/storage';
 import { errorKey, resultOf, StorageBrowserError, type StorageErrorKey } from '../storage-client';
 import {
   directoryKey,
+  removeDirectoryEntry,
   replaceRenamedEntry,
   type DirectoryCache,
   type DirectoryEntries,
@@ -109,6 +110,22 @@ export function useDirectoryListing({
 
   const { phase, entries } = listing;
   const snapshot = phase === 'error' ? listing.snapshot : phase === 'loading' ? undefined : entries;
+
+  useLayoutEffect(
+    () =>
+      cache.subscribeRemovals(({ parent: changedParent, ref }) => {
+        if (directoryKey(changedParent) !== directoryKey(parent)) return;
+        if (currentRequest.current !== null || snapshot === undefined) {
+          void load(removeDirectoryEntry(entries, ref.locator));
+        } else {
+          setListing((current) => ({
+            phase: 'ready',
+            entries: removeDirectoryEntry(current.entries, ref.locator),
+          }));
+        }
+      }),
+    [cache, parent, snapshot, entries, load],
+  );
 
   useLayoutEffect(
     () =>

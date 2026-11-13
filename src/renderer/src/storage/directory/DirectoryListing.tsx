@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActionIcon, Alert, Button, Group, Menu, Transition, VisuallyHidden } from '@mantine/core';
 import { useReducedMotion } from '@mantine/hooks';
-import { Info, RefreshCw, SquarePen } from 'lucide-react';
+import { Info, RefreshCw, SquarePen, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
 import type { Entry, EntryRef } from '../../../../shared/storage';
@@ -12,6 +12,8 @@ import { DirectoryTable } from './DirectoryTable';
 import type { DirectoryRow, DirectorySort } from './directory-types';
 import { EntryInformationModal, type EntrySelection } from './EntryInformationModal';
 import { EntryRenameModal } from './EntryRenameModal';
+import { EntryDeleteModal } from './EntryDeleteModal';
+import { canDeleteEntry } from './entry-deletion';
 import type { DirectoryCache } from './directory-cache';
 import { useDirectoryListing } from './useDirectoryListing';
 import { useDirectorySearch } from './useDirectorySearch';
@@ -60,6 +62,7 @@ export function DirectoryListing({
   const [menuLocator, setMenuLocator] = useState<string | null>(null);
   const [informationEntries, setInformationEntries] = useState<EntrySelection | null>(null);
   const [renameEntry, setRenameEntry] = useState<Entry | null>(null);
+  const [deleteEntry, setDeleteEntry] = useState<Entry | null>(null);
   const [sort, setSort] = useState<DirectorySort | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const refreshButton = useRef<HTMLButtonElement>(null);
@@ -109,6 +112,9 @@ export function DirectoryListing({
     selectedEntry?.capabilities.rename?.support !== 'unsupported' ? selectedEntry : undefined;
   const renamePending =
     renamableEntry !== undefined && pendingEntries.get(renamableEntry.ref.locator)?.busy === true;
+  const deletableEntry = canDeleteEntry(selectedEntry) ? selectedEntry : undefined;
+  const deletePending =
+    deletableEntry !== undefined && pendingEntries.get(deletableEntry.ref.locator)?.busy === true;
   const selectSearchMatch = useCallback(
     (locator: string | null) => {
       selectOnly(locator);
@@ -144,6 +150,11 @@ export function DirectoryListing({
   const reload = () => {
     setMenuLocator(null);
     refresh();
+  };
+  const showDelete = () => {
+    if (!deletableEntry || deletePending) return;
+    setMenuLocator(null);
+    setDeleteEntry(deletableEntry);
   };
   const openSearch = () => {
     setMenuLocator(null);
@@ -292,6 +303,19 @@ export function DirectoryListing({
                 >
                   {t('entryInformation')}
                 </Menu.Item>
+                {deletableEntry && (
+                  <>
+                    <Menu.Divider />
+                    <Menu.Item
+                      color="red"
+                      disabled={deletePending}
+                      leftSection={<Trash2 size={16} strokeWidth={1.5} aria-hidden="true" />}
+                      onClick={showDelete}
+                    >
+                      {t('deleteEntry')}
+                    </Menu.Item>
+                  </>
+                )}
               </Menu.Dropdown>
             </Menu>
           )}
@@ -303,6 +327,14 @@ export function DirectoryListing({
           parent={parent}
           directoryPath={directoryPath}
           onClose={() => setRenameEntry(null)}
+        />
+      )}
+      {deleteEntry && (
+        <EntryDeleteModal
+          entry={deleteEntry}
+          parent={parent}
+          directoryPath={directoryPath}
+          onClose={() => setDeleteEntry(null)}
         />
       )}
       {informationEntries && (

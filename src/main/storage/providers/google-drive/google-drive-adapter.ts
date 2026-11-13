@@ -14,7 +14,8 @@ const sharedPrefix = 'shared:';
 const listSupported = { list: { support: 'supported' } } as const;
 const identifier = z.string().regex(/^[A-Za-z0-9_-]+$/);
 const token = z.string().min(1);
-const fileFields = 'id,name,mimeType,driveId,trashed,size,modifiedTime,capabilities(canRename)';
+const fileFields =
+  'id,name,mimeType,driveId,trashed,size,modifiedTime,capabilities(canRename,canTrash)';
 const fileSchema = z.object({
   id: identifier,
   name: z.string(),
@@ -23,7 +24,12 @@ const fileSchema = z.object({
   trashed: z.boolean().optional(),
   size: z.string().regex(/^\d+$/).optional(),
   modifiedTime: z.iso.datetime({ offset: true }).optional(),
-  capabilities: z.object({ canRename: z.boolean().optional() }).optional(),
+  capabilities: z
+    .object({
+      canRename: z.boolean().optional(),
+      canTrash: z.boolean().optional(),
+    })
+    .optional(),
 });
 const filesSchema = z.object({
   files: z.array(fileSchema).default([]),
@@ -88,7 +94,11 @@ class GoogleDriveAdapter implements StorageAdapter {
   }
 
   async capabilities() {
-    return { ...listSupported, rename: { support: 'supported' } } as const;
+    return {
+      ...listSupported,
+      rename: { support: 'supported' },
+      remove: { support: 'supported' },
+    } as const;
   }
 
   async stat(ref: EntryRef, context: OperationContext): Promise<Entry> {
@@ -146,6 +156,25 @@ class GoogleDriveAdapter implements StorageAdapter {
     if (file.id !== id || file.trashed || file.driveId !== driveId)
       throw new StorageError('OutcomeUnknown');
     return fileEntry(ref, file);
+  }
+
+  async remove(ref: EntryRef, context: OperationContext): Promise<void> {
+    const id = parse(identifier, ref.locator);
+    const driveId = this.sharedDriveId(ref.spaceId);
+    if (id === 'root' || id === driveId) throw new StorageError('InvalidArgument');
+    const entry = await this.stat(ref, context);
+    if (entry.kind !== 'file' && entry.kind !== 'link') throw new StorageError('Unsupported');
+    if (entry.capabilities.remove?.support === 'unsupported')
+      throw new StorageError('PermissionDenied');
+    const file = await this.requestJson(
+      'files/' + id,
+      new URLSearchParams({ fields: fileFields, supportsAllDrives: 'true' }),
+      fileSchema,
+      context,
+      { method: 'PATCH', body: JSON.stringify({ trashed: true }) },
+    );
+    if (file.id !== id || file.driveId !== driveId || file.trashed !== true)
+      throw new StorageError('OutcomeUnknown');
   }
 
   async dispose() {}
@@ -218,6 +247,14 @@ function fileEntry(ref: EntryRef, file: z.infer<typeof fileSchema>): Entry {
             : file.capabilities.canRename
               ? 'supported'
               : 'unsupported',
+      },
+      remove: {
+        support:
+          kind === 'directory' || file.capabilities?.canTrash === false
+            ? 'unsupported'
+            : file.capabilities?.canTrash
+              ? 'supported'
+              : 'unknown',
       },
     },
   };
