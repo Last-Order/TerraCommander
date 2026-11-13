@@ -1,56 +1,29 @@
-# Task queue
+# Task Queue
 
-The renderer owns one session queue per storage workspace. It keeps tasks alive when a dialog,
-directory, or queue panel closes. Registered tasks include rename and deletion.
+The storage workspace owns a session queue. Tasks continue when a dialog, directory, or queue panel closes. Session ownership does not provide persistence across application restarts.
 
-## Contracts and execution
+The [task contracts](../src/renderer/src/tasks/task-types.ts) define requests, states, failures, progress, and handlers. The [queue implementation](../src/renderer/src/tasks/task-queue.ts) owns scheduling and internal concurrency defaults. The common queue does not interpret storage entries or provider errors.
 
-`tasks/task-types.ts` defines the common request, state, failure, progress, and handler contracts.
-`TaskQueue<Definitions>` takes a type map associating each task's input with its result and a handler
-for every registered type. The queue does not interpret storage entries or storage errors.
+## Scheduling and Conflicts
 
-Each handler declares a `TaskCategory`: `operation` or `transfer`. Rename and deletion are operation
-tasks. The queue uses fixed, independent concurrency limits of 16 operation tasks and 8 transfer
-tasks. Transfer tasks have no registered implementation yet. Tasks start in enqueue order within
-each category; a full category does not block the other. A slot stays occupied until execution and
-its result hook finish, then becomes available whether the task succeeded or failed.
+Handlers declare an execution category. Each category has an independent concurrency limit, so a full category does not block another. Tasks start in enqueue order within a category. Execution and its result hook occupy the slot until both settle, whether the task succeeds or fails.
 
-Handlers provide opaque resource conflict keys, execute an operation, map failures to safe codes
-and translation descriptors, and optionally handle success or failure. An enqueue is rejected when
-its keys overlap any queued or running task. Keys are released when the task finishes.
+Handlers supply opaque resource conflict keys. Enqueue rejects overlap with queued or running work; keys remain reserved until the task finishes. Storage handlers must agree on keys for operations that cannot safely overlap.
 
-The queue catches result-hook errors and continues processing. A successful operation remains
-successful even when its result hook fails. Rename's success hook applies the result to the directory
-cache; if applying it throws, it invalidates the affected connection's cache so its listings reload.
-Logs omit the underlying error, which may contain provider details.
+Result-hook failure must not turn an already successful storage operation into a failed task or stop queue processing. Result handlers apply successful changes to the directory cache and invalidate affected listings if applying a result fails. Logs omit raw errors that could contain provider details.
 
-Handlers can report determinate or indeterminate progress through `TaskContext.reportProgress`.
-Reports only update the matching running task; callbacks after completion or clearing are ignored.
-Rename does not report progress. Requests, results, and progress must remain data snapshots;
-credentials, executable callbacks, React elements, and SDK objects do not belong in them.
+Progress can be determinate or indeterminate. Only reports for the matching running task may update its state; late callbacks must not recreate completed or cleared rows.
 
-## Presentation and directory integration
+## Data and Presentation Boundaries
 
-The workspace passes the queue and its presenter to `TaskQueueDock`. `TaskQueuePanel` and
-`TaskQueueRow` use common presentation models rather than inspecting task inputs. Labels and
-failures are translated when rendered, so changing languages also updates existing task rows.
-Optional row actions contain actual UI callbacks and live only in the derived presentation model.
-They are not stored in task snapshots. Rename currently supplies no row actions.
+Requests, results, and progress remain data snapshots. Credentials, executable callbacks, React elements, and SDK objects do not belong in task state. UI callbacks can exist in derived presentation models.
 
-`storage/tasks/` owns storage task input/result definitions, handlers, presenter, and the typed storage
-queue context. `selectPendingEntryEffects` projects active tasks into directory-specific busy states
-and optimistic names. Directory listings consume those effects without reading task inputs.
+The [storage task integration](../src/renderer/src/storage/tasks/) owns storage-specific inputs, handlers, failure mapping, and presentation. Common queue rows consume presentation models without inspecting storage task inputs. Translate labels and failure descriptors at render time so changing languages updates existing rows.
 
-Single-file deletion requires confirmation that deletion cannot be undone. The service and menu
-use the common remove operation and capability without distinguishing providers. Each adapter
-owns its implementation: Google Drive maps remove to files.update with trashed=true and derives
-its remove capability from canTrash, for both shared drives and My Drive. It never sends a
-permanent deletion request. Local storage uses unlink without following links. Drive deletion
-validates the selected drive and entry kind. Folder deletion is not exposed.
-Deletion shares conflict keys with rename and locks other writes until it finishes.
-Successful deletion removes the entry from cached and open listings; an in-flight listing reloads
-so an older response cannot restore the deleted row. Failures keep the entry and appear in the queue.
+Directory effects project active tasks into busy state and optimistic presentation. Listings consume those effects rather than interpreting task inputs directly. Successful changes must update cached and open listings, and an older in-flight response must not restore stale entries. Failures preserve the original listing state and appear in the queue.
 
-Adding a task requires extending the storage type map, registering its handler and category, providing its
-presentation, and defining any directory effects. The queue and common row layout remain shared.
-Persistent recovery and a main-process task service are separate future work.
+## Storage Operations and Extension
+
+Rename and deletion share conflict keys so conflicting writes remain blocked until completion. Deletion tasks are restricted to files and links and require explicit confirmation. Backend behavior follows the [storage removal semantics](storage-abstraction.md#capabilities-and-operations); the service and adapter enforce entry eligibility and capabilities.
+
+To add a task, extend the storage task definitions, register its handler and category, provide presentation, and define directory effects where needed. Registration belongs to the [workspace](../src/renderer/src/storage/StorageWorkspace.tsx). Reuse common scheduling and row presentation, and define conflict keys against existing operations.

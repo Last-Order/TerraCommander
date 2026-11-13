@@ -1,66 +1,45 @@
-# Google Drive Account Development
+# Google Drive Development
 
-The backend implements account authorization and lifecycle management. The desktop renderer remains blank. The main process owns a lightweight application-service host; it does not expose account methods through IPC yet.
+This guide covers Desktop OAuth client configuration and account smoke checks. Authorization guarantees belong to [Google Drive accounts](google-drive-accounts.md); common backend contracts belong to [account management](account-management.md).
 
-The [shared account runtime](account-management.md) opens on first account use. The [lazy service lifecycle](lazy-service-initialization.md) loads the Google Drive authentication module only when a Google login, verification, or credential request needs it. Ordinary startup opens no account store; listing metadata reads no Google client configuration and loads no Google SDK. Initialization errors affect the requested feature; a later explicit call can retry.
+## Client Configuration
 
-## Configuration
+Create a Google Cloud project, enable Drive API, configure its consent screen, and create an OAuth client of type **Desktop app**. Add the intended Google accounts as test users when using a project in Testing. Use separate projects and clients for development and production.
 
-Create a Google Cloud project, enable Drive API, configure its consent screen, and create an OAuth client of type **Desktop app**. For a project in Testing, add the Google accounts used for live testing. The requested scopes are `openid`, `email`, and `https://www.googleapis.com/auth/drive`.
-
-Both development and release builds use `VITE_GOOGLE_DRIVE_CLIENT_ID` and the optional `VITE_GOOGLE_DRIVE_CLIENT_SECRET`. Copy the root `.env.example` to the matching mode file and fill in that environment's Desktop OAuth client. Use separate Google Cloud projects and clients for development and production.
+Copy [.env.example](../.env.example) to the appropriate local mode file and fill in the Desktop client settings described in the template:
 
 ```powershell
 Copy-Item .env.example .env.development.local
-# Edit .env.development.local with your development Desktop OAuth client.
+# Fill in the development Desktop OAuth client before starting.
 npm run dev
 ```
 
-Use electron-vite's native `VITE_` prefix for shared build configuration. Main and renderer code read the same variables through `import.meta.env`, for example `import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID`. Vite loads and replaces these values automatically; new variables require no changes to `electron.vite.config.ts`. Shared environment types live in `src/shared/env.d.ts`. There is no custom `define` mapping, environment copying, or runtime override layer.
+For releases, use `.env.production.local` with the production client, then run `npm run build` or `npm run dist`. The template defines the required client ID and optional Desktop client secret; [shared environment types](../src/shared/env.d.ts) define their code-facing names.
 
-Commands read `.env`, `.env.local`, and their mode-specific variants from the project root. Development and the smoke harness use `development`; release builds use `production` by default. Mode-specific files override common files; existing shell variables take precedence at build time. Restart the command after editing an environment file. Local environment files are ignored by Git; `.env.example` contains empty placeholders only.
+Client values use the shared `VITE_` build-configuration convention through `import.meta.env`. They are public configuration available to main and renderer. User access tokens and refresh tokens must never be placed in these variables. Keep real values in ignored local files.
 
-For release builds, copy `.env.example` to `.env.production.local` and set the same variable names to the production client's values, then run `npm run build` or `npm run dist`. Packaged applications use the values selected during the build; they do not load environment files or read runtime Google client overrides.
+Development and the smoke harness use development mode; release builds default to production mode. Mode-specific files override common files, and existing shell variables take precedence. Restart commands after editing environment files. Packaged applications use the values selected at build time and do not load local environment files or runtime Google client overrides. See [electron-vite environment modes](https://electron-vite.org/guide/env-and-mode).
 
-`VITE_` values are public build configuration available to main and renderer. The Desktop OAuth client configuration follows this convention; user access tokens and refresh tokens remain in backend memory or encrypted persistence. Keep real values out of source control; native Desktop clients rely on PKCE rather than confidentiality of an embedded client secret. See [electron-vite environment variables](https://electron-vite.org/guide/env-and-mode).
+Client configuration is validated when the Google provider is needed. Missing or invalid values must not block saved metadata listing; Google authentication and credential use report a configuration failure. Changing client IDs does not migrate existing grants.
 
-Without client configuration, the application still starts and saved account summaries remain readable. Login and credential use report `ClientConfigurationInvalid`. Changing client IDs never migrates existing grants implicitly.
+## Backend Integration
 
-## Backend Entry Points
+Use the application-owned runtime and follow the [lazy service lifecycle](lazy-service-initialization.md). The [desktop account composition](../src/main/accounts/runtime/desktop-accounts.ts) binds persistence, encryption, and deferred providers. The [storage browser service](../src/main/services/storage-browser.ts) integrates accounts with desktop browsing; its renderer-facing operations are defined in the [shared browser API](../src/shared/storage-browser.ts).
 
-- `src/main/accounts/index.ts`: generic account manager, provider contracts, shared factory, and safe errors.
-- `src/main/accounts/runtime/desktop-accounts.ts`: Electron persistence, OS encryption, logging, and deferred provider registration.
-- `src/main/accounts/providers/google-drive/create-provider.ts`: Google lifecycle composition using injected common services.
-- `src/main/accounts/providers/google-drive/desktop-provider.ts`: deferred Google configuration, SDK, browser, and callback bindings.
-- `src/main/accounts/providers/google-drive/credential-resolver.ts`: backend authorization handle and binding guard for future adapters.
-- `src/main/services/application-services.ts`: typed lazy account-runtime access and application-owned disposal.
-- `src/main/services/lazy-service.ts`: shared initialization, independent waiter cancellation, retry after failure, and shutdown races.
-- `src/main/index.ts`: profile lock, lightweight service host, and shutdown disposal.
-- `src/shared/accounts/`: provider-neutral summaries, descriptors, setup requests, check results, and failure codes.
+## Smoke Checks
 
-Obtain the runtime from the host before calling an account API:
+The [smoke harness](../scripts/google-drive-accounts-smoke.ts) runs in Electron without the renderer and uses a separate profile. Its [launcher](../scripts/run-google-drive-smoke.mjs) builds it with development-mode configuration. It prints safe summaries or error codes.
 
-```ts
-const runtime = await services.accounts.get(context.signal);
-const accounts = await runtime.accounts.list('google-drive');
-const added = await runtime.accounts.add('google-drive', { method: 'browser' }, context);
-```
-
-The common manager supports `list`, `listProviders`, `add`, `updateAuthentication`, `verify`, and `remove`. Google reauthorization uses `updateAuthentication(id, { method: 'browser' }, context)`. `getConnectionDefinition(id)` is a backend-only projection for a future adapter. Inject `runtime.credentials` into `AdapterRegistry` when that adapter exists. Use the host-owned instance and let the host dispose it; do not create a second writer for the same profile. Concurrent first callers share initialization; canceling a waiter does not cancel initialization needed by others.
-
-Interactive methods accept `OperationContext.signal` for cancellation and have a five-minute deadline. Only one login attempt runs at a time. Regular verification and token refresh can run independently across accounts. SDK calls have a 30-second request timeout. Credentials never trigger an interactive login automatically.
-
-## Opt-in Smoke Harness
-
-The harness runs in Electron without loading the renderer and uses a separate **TerraCommander Account Smoke** profile. It prints only safe summaries or error codes. Its `infrastructure` command uses synthetic data to check the actual OS encryption API and encrypted persistence across repository reconstruction; it needs no Google client or network:
+These checks require no Google client or network:
 
 ```sh
+npm run smoke:google-drive -- idle
 npm run smoke:google-drive -- infrastructure
 ```
 
-To check the unused lifecycle, run `npm run smoke:google-drive -- idle`. This constructs and disposes the same application-service host without importing the account runtime or opening its store. A corrupt account snapshot or invalid OAuth configuration must not break this command. Account commands below use `services.accounts.get()`. `list` exercises only the shared runtime boundary and must succeed even with invalid Google client configuration; login and verification cross the additional provider boundary.
+`idle` constructs and disposes the service host without opening account infrastructure. `infrastructure` checks OS encryption and encrypted persistence with synthetic records in its own subdirectory.
 
-For a live account check, configure the development client variables first, then run:
+For live validation, configure the development client first:
 
 ```sh
 npm run smoke:google-drive -- add
@@ -70,14 +49,12 @@ npm run smoke:google-drive -- reauthorize <account-id>
 npm run smoke:google-drive -- remove <account-id>
 ```
 
-`add` and `reauthorize` open the system browser. `list` after a fresh process verifies account restoration; `verify` after restarting exercises refresh from the saved grant. Add two Google accounts to check isolation. Reauthorize a selected record with another Google account to check identity rejection. Removal deletes only this profile's local grant; it does not revoke the Google project's authorization on other installations.
+`add` and `reauthorize` open the system browser. Use the returned account ID in later commands. Listing in a fresh process checks restoration; verification after restart exercises refresh from the saved grant. Check account isolation with two identities and identity rejection by reauthorizing a selected record with another Google account.
 
-For an isolated test directory, set `TERRACOMMANDER_SMOKE_USER_DATA` to an absolute path. The harness holds a profile lock. Its `infrastructure-check` subdirectory contains synthetic records only; it does not modify live account records.
+`list` must also work without valid Google client configuration. Removal deletes this profile's local account; it does not revoke remote authorization. Set `TERRACOMMANDER_SMOKE_USER_DATA` to an absolute path to select another isolated profile directory. The harness holds a profile lock, and its infrastructure check does not modify live account records.
 
-## Persistence and Validation
+## Validation and Profiles
 
-Development uses the **TerraCommander Development** user-data profile; installed releases use **TerraCommander**. The shared `accounts.json` snapshot combines account metadata with OS-encrypted credential envelopes in one atomic replacement. Account IDs and credential references remain stable through refresh and reauthorization. There is no reader or migration for the previous Google-only format. Access tokens and pending login state remain in memory. Copying profiles across Windows users or machines does not promise working credentials.
+Use the scripts in [package.json](../package.json) for repository checks. Automated tests use fake provider responses and local loopback requests without real Google credentials. Callback integration tests require permission to connect to localhost. Live login and packaged-release validation require interactive consent with the intended project client.
 
-`npm run check` runs formatting, type-aware linting, tests, type checking, and the production build. Backend tests use fake Google responses and real local loopback requests; they never contact Google or require real credentials. A restricted execution environment must permit localhost connections for the callback integration tests.
-
-Real Google login requires a configured project client and interactive consent. Public release verification and Google account-policy restrictions are described in the [account integration design](google-drive-accounts.md). This phase adds no Drive file operations or upload implementation.
+Development, packaged releases, and the smoke harness keep separate user-data profiles; application profile selection is defined in the [main entry point](../src/main/index.ts). Account persistence follows the [common repository rules](account-management.md#identity-and-persistence). OS-backed credentials are tied to their encryption environment, so copying a profile across users or machines does not promise usable authorization.

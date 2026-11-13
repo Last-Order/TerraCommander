@@ -1,62 +1,39 @@
 # Account Management
 
-The main process exposes one account API across providers. Each provider owns its authentication methods and private data. Shared infrastructure owns account metadata, encrypted credential binding, lazy provider initialization, and routing. Google Drive is the only production account provider implemented. File-operation adapters, frontend screens, and account IPC remain separate work.
+Account management owns saved identities, authentication lifecycles, and credential routing in the main process. Providers own their authentication methods and private data. File operations belong to the [storage layer](storage-abstraction.md); Google-specific rules belong to [Google Drive accounts](google-drive-accounts.md).
 
-## Public Backend API
+The [account manager](../src/main/accounts/core/account-manager.ts) defines the backend API, the [shared models](../src/shared/accounts/models.ts) define safe summaries and requests, and the [provider contract](../src/main/accounts/core/ports.ts) defines integration points. Use those definitions for exact signatures and fields.
 
-```ts
-const runtime = await services.accounts.get(context.signal);
-const providers = runtime.accounts.listProviders();
-const saved = await runtime.accounts.list();
-const account = await runtime.accounts.add('google-drive', { method: 'browser' }, context);
-await runtime.accounts.verify(account.id, context);
-await runtime.accounts.updateAuthentication(account.id, { method: 'browser' }, context);
-await runtime.accounts.remove(account.id, context);
-```
+## Metadata and Provider Isolation
 
-`list(provider?)` returns safe common summaries: account ID, provider ID, optional labels, in-memory authorization/credential state, and the latest check. It never returns configuration, private provider data, credential references, tokens, or SDK objects. Restored accounts begin unchecked until explicitly used. `listProviders()` returns static descriptors and authentication capabilities without constructing providers.
+Listing saved accounts reads common metadata and in-memory status without decrypting credentials, loading provider SDKs, reading provider client configuration, or contacting remote services. Restored authorization starts unchecked. A saved account alone does not establish valid authorization or connectivity.
 
-Authentication requests select a provider-defined method and optional JSON data. A provider may describe browser authentication, supplied credentials, or no authentication. The manager checks the advertised method and operation capabilities before loading the provider. Each provider validates its own input; setup data may contain secrets and stays in the backend. Unsupported operations fail explicitly.
+Public summaries exclude connection configuration, private provider data, credential references, tokens, and SDK objects. Authentication setup data can contain secrets and must stay in the backend. Logs and cross-process failures expose safe categories rather than raw provider responses.
 
-## Identity and Credentials
+Provider descriptors declare authentication methods and operation capabilities without constructing a provider. The manager rejects unsupported requests before loading it; each provider validates its own setup and private payloads. Common infrastructure contains no provider SDK types, OAuth token schema, or provider-specific scope requirements.
 
-Every account receives a stable UUID and credential reference. Deduplication uses `(provider, identityKey)`; the identity key is opaque to common infrastructure. Email and display names are optional mutable labels. Different providers may use the same remote identity key without colliding, and one provider can own many accounts.
+## Identity and Persistence
 
-An account record contains immutable connection configuration, versioned nonsecret `providerData`, timestamps, a revision, and optional encrypted credentials. Providers define the meaning of their identity, configuration, and private payload. A secretless provider can omit encrypted credentials. The common layer contains no OAuth token schema, scope requirements, or provider SDK types.
+An account has a stable application-generated identity and credential reference. Deduplication is scoped to a provider; the provider defines an opaque remote identity key. Mutable display labels must not determine identity. One provider can own multiple accounts, and identical remote keys from different providers must not collide.
 
-`CredentialStore` encrypts provider-specific JSON through the OS-backed cipher. Its envelope binds the payload to the provider, account ID, identity key, credential reference, and immutable connection fingerprint. Moving ciphertext to another account or connection fails validation. Providers validate the decrypted private payload and handle any required re-encryption. Plaintext credentials are never written to the account snapshot.
+Connection configuration is immutable. Refreshing credentials retains the connection identity; changing the remote identity or endpoint requires a new account. Removing and adding an account allocates new identifiers so stale references cannot attach to a replacement.
 
-`AccountRepository` is the sole snapshot writer. It validates records and uniqueness, serializes writes, and checks revisions before replacing metadata and ciphertext atomically in `accounts.json`. Failed writes leave the last committed in-memory state intact. Unsupported or corrupt snapshots fail without being cleared. The application profile lock protects single-writer ownership. This is the current format and API; there are no legacy readers, aliases, or migrations.
+The [account repository](../src/main/accounts/persistence/account-repository.ts) is the sole snapshot writer. It validates records and uniqueness, serializes updates, checks revisions, and atomically replaces metadata and ciphertext together. Report success only after persistence completes. Failed writes preserve the last committed in-memory state; unsupported or corrupt snapshots fail without being cleared. The host's profile lock protects single-writer ownership.
 
-## Storage Integration
+Providers own versioned private metadata and credential payloads. Metadata stored outside encrypted payloads must be nonsecret. A provider that needs no secret may omit encrypted credentials. Persisted formats and validation are defined in the [backend models](../src/main/accounts/core/models.ts).
 
-`runtime.accounts.getConnectionDefinition(id)` projects the backend connection ID, provider ID, immutable configuration, and credential reference. Updating credentials retains this definition; changing the remote identity or endpoint requires a new account. Removing and adding an account allocates new IDs.
+## Credentials and Storage Integration
 
-`runtime.credentials` implements the storage `CredentialResolver` port. It looks up the reference, loads only its provider, and returns that provider's backend authorization handle as `unknown`. A future adapter narrows and validates its handle. The common layer does not assume every handle is an OAuth access token. Account failures become storage failures at this boundary.
+The [credential store](../src/main/accounts/persistence/credential-store.ts) encrypts private payloads using an OS-backed cipher. The encrypted envelope binds a payload to its provider, account, remote identity, credential reference, and immutable connection fingerprint. Copying ciphertext to another account or connection must fail validation. Plaintext credentials must never enter the snapshot.
 
-## Initialization and Removal
+Providers validate decrypted payloads and handle required re-encryption through the shared repository. Encryption failure must not cause a plaintext fallback or automatic deletion of the saved account.
 
-There are two independent lazy boundaries. `ApplicationServices.accounts.get()` opens shared account infrastructure. `AccountProviderRegistry.get(providerId)` initializes only a provider needed for authentication, verification, or credential resolution. Ordinary startup does neither. Metadata listing opens the shared snapshot but loads no provider SDK and reads no provider client configuration.
+The manager projects backend connection definitions for storage use. The [credential resolver](../src/main/accounts/core/account-credential-resolver.ts) loads the required provider and returns its backend authorization handle. The consuming adapter validates that handle against its connection. Common infrastructure must not assume every handle is an OAuth access token. Account failures are translated into storage-domain failures at this boundary.
 
-Concurrent first callers share initialization; canceling one waiter does not cancel other waiters. A failed provider initialization can be retried by a later explicit operation and does not block other providers or metadata listing. Shutdown aborts active operations, disposes initialized providers once, and flushes pending repository writes. See [lazy service initialization](lazy-service-initialization.md).
+## Lifecycle and Extension
 
-Removal cancels account operations and pending additions for the same provider to prevent a late login from recreating a removed identity. A loaded provider also cancels its own token/authentication work. An unloaded or unavailable provider's record can be deleted locally without loading its SDK or requiring valid client configuration. Providers must respect cancellation before committing results and revalidate account existence when reusing credential handles.
+Use the application-owned runtime rather than creating another writer for the same profile. Shared runtime and provider initialization follow the [lazy service lifecycle](lazy-service-initialization.md).
 
-## Code Layout and Extension
+Removal blocks new work for that account and cancels active operations, including pending additions for the same provider, so a late login cannot recreate a removed identity. Providers must observe cancellation before committing and revalidate account existence when a credential handle is reused. An unloaded or unavailable provider's local record remains removable without loading its SDK or requiring valid client configuration.
 
-```text
-src/shared/accounts/                  Serializable metadata and safe failures
-src/main/accounts/
-  core/                               Manager, provider registry, credential routing, ports
-  persistence/                        Repository and encrypted credential envelope
-  infrastructure/                     Electron store and safeStorage bindings
-  providers/google-drive/             Google lifecycle, token handling, private data codecs
-    oauth/                            Client configuration, SDK gateway, browser callback flow
-    testing/                          Google-specific fakes
-  runtime/                            Shared composition and deferred desktop factories
-  testing/                            Common fakes and a synthetic key-based provider
-```
-
-To add a provider, implement `AccountProvider`, supply an SDK-free descriptor and deferred factory, and validate its setup/private data inside its own directory. Use shared persistence and encryption rather than creating another account-store writer. `getState()` must read memory only. Do not import a provider from `core/` or `persistence/`.
-
-Tests cover independent key-based providers, provider-scoped identities, secret binding, metadata-only restoration, capability gating, initialization failure isolation, unavailable-provider removal, and removal/loading races. Google-specific lifecycle and OAuth tests remain with the Google provider. The synthetic provider is test infrastructure, not an S3 or local-storage implementation.
+To add a provider, supply an SDK-free descriptor and deferred factory, implement the common provider contract, and validate setup and private data within its integration. Use shared persistence and encryption. Keep state inspection memory-only, and keep provider imports out of common account management and persistence.
