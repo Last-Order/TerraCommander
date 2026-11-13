@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ActionIcon, Alert, Button, Group, Menu, Transition, VisuallyHidden } from '@mantine/core';
+import { ActionIcon, Button, Menu, Transition, VisuallyHidden } from '@mantine/core';
 import { useReducedMotion } from '@mantine/hooks';
-import { Info, RefreshCw, SquarePen, Trash2 } from 'lucide-react';
+import { CircleAlert, Info, RefreshCw, SquarePen, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
 import type { Entry, EntryRef } from '../../../../shared/storage';
@@ -214,7 +214,11 @@ export function DirectoryListing({
       <div className={classes.directoryBody}>
         <div
           ref={setScrollElement}
-          className={classes.directoryContents}
+          className={
+            error && entries.size === 0
+              ? `${classes.directoryContents} ${classes.centeredError}`
+              : classes.directoryContents
+          }
           aria-busy={loadingWithoutEntries}
         >
           <Transition
@@ -249,16 +253,22 @@ export function DirectoryListing({
             )}
           </Transition>
           {error && (
-            <Alert color="red" role="alert">
-              <Group justify="space-between">
-                {t(`errors:${error}`)}
-                <Button variant="subtle" size="compact-sm" onClick={reload}>
-                  {t('common:retry')}
-                </Button>
-              </Group>
-            </Alert>
+            <div className={classes.directoryError} role="alert">
+              <CircleAlert size={24} strokeWidth={1.5} aria-hidden="true" />
+              <p>{t(`errors:${error}`)}</p>
+              <Button
+                variant="subtle"
+                size="compact-sm"
+                leftSection={<RefreshCw size={16} strokeWidth={1.5} aria-hidden="true" />}
+                onClick={reload}
+              >
+                {t('common:retry')}
+              </Button>
+            </div>
           )}
-          {snapshot?.size === 0 && <p className={classes.directoryStatus}>{t('emptyDirectory')}</p>}
+          {!error && snapshot?.size === 0 && (
+            <p className={classes.directoryStatus}>{t('emptyDirectory')}</p>
+          )}
           {(loadingWithoutEntries || entries.size > 0) && (
             <Menu
               opened={menuEntry !== undefined}
