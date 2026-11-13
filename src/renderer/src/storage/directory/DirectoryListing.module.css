@@ -36,6 +36,40 @@
   scrollbar-gutter: stable;
 }
 
+.centeredError {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  scrollbar-gutter: auto;
+}
+
+.directoryError {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  color: var(--storage-secondary);
+  font-size: var(--mantine-font-size-sm);
+  text-align: center;
+}
+
+.centeredError .directoryError {
+  flex: 1;
+  justify-content: center;
+}
+
+.directoryError > svg {
+  flex: none;
+  color: var(--storage-muted);
+}
+
+.directoryError p {
+  max-width: 28rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .searchOverlay {
   position: sticky;
   z-index: 2;
