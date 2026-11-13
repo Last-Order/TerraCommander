@@ -6,35 +6,23 @@ import type { Entry } from '../../../../shared/storage';
 import classes from './DirectoryTable.module.css';
 import { DirectoryEntryRow } from './DirectoryEntryRow';
 import { useDirectoryVirtualizer } from './useDirectoryVirtualizer';
+import type {
+  DirectoryRevealTarget,
+  DirectoryRow,
+  DirectorySelectionModifiers,
+  DirectorySort,
+} from './directory-types';
 
 const entryIconSize = 16;
 const columns = [
   { field: 'name', label: 'entryName', className: undefined },
   { field: 'modifiedAt', label: 'entryModifiedAt', className: classes.entryDate },
   { field: 'size', label: 'entrySize', className: classes.entrySize },
-] as const;
-
-export interface DirectorySort {
-  field: (typeof columns)[number]['field'];
-  direction: 'ascending' | 'descending';
-}
-
-export interface DirectoryRow {
-  entry: Entry;
-  name: string;
-  disabled: boolean;
-  modifiedAt: number | undefined;
-  size: number | undefined;
-}
-
-export interface DirectorySelectionModifiers {
-  toggle: boolean;
-  range: boolean;
-}
-
-export interface DirectoryRevealTarget {
-  locator: string;
-}
+] as const satisfies readonly {
+  field: DirectorySort['field'];
+  label: string;
+  className: string | undefined;
+}[];
 
 function DirectorySkeletonRows() {
   return Array.from({ length: 10 }, (_, index) => (

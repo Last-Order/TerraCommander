@@ -13,7 +13,8 @@ import {
 import { createRendererI18n } from '../../i18n/create-renderer-i18n';
 import { renderWorkspace } from '../../testing/render-app';
 import { success } from '../../testing/storage-browser-fixtures';
-import { DirectoryTable, type DirectoryRow } from './DirectoryTable';
+import { DirectoryTable } from './DirectoryTable';
+import type { DirectoryRow } from './directory-types';
 
 const rowHeight = 36;
 const headerOffset = 52;

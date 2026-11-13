@@ -23,7 +23,6 @@ interface ListingOptions {
   cacheable: boolean;
   version: number;
   onAuthRequired: () => void;
-  onEntryRenamed: (previous: string, locator: string) => void;
 }
 
 const emptyEntries: DirectoryEntries = new Map();
@@ -34,7 +33,6 @@ export function useDirectoryListing({
   cacheable,
   version,
   onAuthRequired,
-  onEntryRenamed,
 }: ListingOptions) {
   const [listing, setListing] = useState<ListingState>(() => {
     const cached = cacheable ? cache.peek(parent) : undefined;
@@ -125,9 +123,8 @@ export function useDirectoryListing({
             entries: replaceRenamedEntry(current.entries, previous.locator, entry),
           }));
         }
-        onEntryRenamed(previous.locator, entry.ref.locator);
       }),
-    [cache, parent, snapshot, entries, load, onEntryRenamed],
+    [cache, parent, snapshot, entries, load],
   );
 
   return {

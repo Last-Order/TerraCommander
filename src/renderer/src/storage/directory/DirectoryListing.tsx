@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActionIcon, Alert, Button, Group, Menu, Transition, VisuallyHidden } from '@mantine/core';
 import { useReducedMotion } from '@mantine/hooks';
 import { Info, RefreshCw, SquarePen } from 'lucide-react';
@@ -8,17 +8,14 @@ import type { Entry, EntryRef } from '../../../../shared/storage';
 import { useKeyboardShortcuts } from '../../shortcuts/useKeyboardShortcuts';
 import classes from './DirectoryListing.module.css';
 import { DirectorySearch } from './DirectorySearch';
-import {
-  DirectoryTable,
-  type DirectoryRow,
-  type DirectorySelectionModifiers,
-  type DirectorySort,
-} from './DirectoryTable';
+import { DirectoryTable } from './DirectoryTable';
+import type { DirectoryRow, DirectorySort } from './directory-types';
 import { EntryInformationModal, type EntrySelection } from './EntryInformationModal';
 import { EntryRenameModal } from './EntryRenameModal';
 import type { DirectoryCache } from './directory-cache';
 import { useDirectoryListing } from './useDirectoryListing';
 import { useDirectorySearch } from './useDirectorySearch';
+import { useDirectorySelection } from './useDirectorySelection';
 import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
 import { selectPendingEntryEffects } from '../tasks/pending-entry-effects';
 
@@ -60,31 +57,18 @@ export function DirectoryListing({
   const { t, i18n } = useTranslation(['storage', 'common', 'errors']);
   const reduceMotion = useReducedMotion();
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
-  const [selectedLocators, setSelectedLocators] = useState(() => new Set<string>());
-  const selectionAnchor = useRef<string | null>(null);
   const [menuLocator, setMenuLocator] = useState<string | null>(null);
   const [informationEntries, setInformationEntries] = useState<EntrySelection | null>(null);
   const [renameEntry, setRenameEntry] = useState<Entry | null>(null);
   const [sort, setSort] = useState<DirectorySort | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const refreshButton = useRef<HTMLButtonElement>(null);
-  const onEntryRenamed = useCallback((previous: string, locator: string) => {
-    if (selectionAnchor.current === previous) selectionAnchor.current = locator;
-    setSelectedLocators((selection) => {
-      if (!selection.has(previous)) return selection;
-      const updated = new Set(selection);
-      updated.delete(previous);
-      updated.add(locator);
-      return updated;
-    });
-  }, []);
   const { entries, phase, snapshot, error, refresh } = useDirectoryListing({
     parent,
     cache,
     cacheable,
     version,
     onAuthRequired,
-    onEntryRenamed,
   });
   const queue = useStorageTaskQueue();
   const tasks = useStore(queue.store, (state) => state.tasks);
@@ -110,66 +94,31 @@ export function DirectoryListing({
     if (sort && snapshot) sortRows(rows, sort, locale);
     return rows;
   }, [entries, sort, snapshot, locale, pendingEntries]);
-  const selectSearchMatch = useCallback((locator: string | null) => {
-    selectionAnchor.current = locator;
-    setSelectedLocators(new Set(locator === null ? [] : [locator]));
-    setMenuLocator(null);
-  }, []);
+  const { selectedLocators, selectEntry, selectAll, selectOnly, selectForContextMenu } =
+    useDirectorySelection({
+      rows,
+      completedEntries: phase === 'ready' ? entries : undefined,
+      cache,
+      parent,
+    });
+  const selectSearchMatch = useCallback(
+    (locator: string | null) => {
+      selectOnly(locator);
+      setMenuLocator(null);
+    },
+    [selectOnly],
+  );
   const search = useDirectorySearch(rows, selectSearchMatch);
 
-  useEffect(() => {
-    if (
-      phase === 'ready' &&
-      selectionAnchor.current !== null &&
-      !entries.has(selectionAnchor.current)
-    ) {
-      selectionAnchor.current = null;
-    }
-  }, [entries, phase]);
-
-  if (phase === 'ready' && selectedLocators.size > 0) {
-    const remaining = [...selectedLocators].filter((locator) => entries.has(locator));
-    if (remaining.length < selectedLocators.size) setSelectedLocators(new Set(remaining));
-  }
   if (phase === 'ready' && menuLocator !== null && !menuEntry) setMenuLocator(null);
 
-  const selectEntry = useCallback(
-    (locator: string, { toggle, range }: DirectorySelectionModifiers) => {
-      const anchor = selectionAnchor.current;
-      const start = range ? rows.findIndex(({ entry }) => entry.ref.locator === anchor) : -1;
-      const end = rows.findIndex(({ entry }) => entry.ref.locator === locator);
-      if (end < 0) return;
-      if (start < 0) selectionAnchor.current = locator;
-
-      setSelectedLocators((previous) => {
-        if (start >= 0) {
-          const next = toggle ? new Set(previous) : new Set<string>();
-          for (const { entry } of rows.slice(Math.min(start, end), Math.max(start, end) + 1)) {
-            next.add(entry.ref.locator);
-          }
-          return next;
-        }
-        if (!toggle) return new Set([locator]);
-
-        const next = new Set(previous);
-        if (!range && next.has(locator)) next.delete(locator);
-        else next.add(locator);
-        return next;
-      });
+  const showEntryMenu = useCallback(
+    ({ ref: { locator } }: Entry) => {
+      selectForContextMenu(locator);
+      setMenuLocator(locator);
     },
-    [rows],
+    [selectForContextMenu],
   );
-  const selectAll = useCallback(() => {
-    if (!rows.some(({ entry }) => entry.ref.locator === selectionAnchor.current)) {
-      selectionAnchor.current = rows[0]?.entry.ref.locator ?? null;
-    }
-    setSelectedLocators(new Set(rows.map(({ entry }) => entry.ref.locator)));
-  }, [rows]);
-  const showEntryMenu = useCallback(({ ref: { locator } }: Entry) => {
-    selectionAnchor.current = locator;
-    setSelectedLocators((previous) => (previous.has(locator) ? previous : new Set([locator])));
-    setMenuLocator(locator);
-  }, []);
   const showInformation = () => {
     if (!menuEntry) return;
     const selection: EntrySelection = [menuEntry];

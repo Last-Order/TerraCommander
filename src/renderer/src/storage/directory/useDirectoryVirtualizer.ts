@@ -8,7 +8,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import type { DirectoryRevealTarget, DirectoryRow } from './DirectoryTable';
+import type { DirectoryRevealTarget, DirectoryRow } from './directory-types';
 
 export function useDirectoryVirtualizer(
   rows: readonly DirectoryRow[],
