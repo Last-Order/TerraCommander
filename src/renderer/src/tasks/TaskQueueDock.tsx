@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { TaskQueuePanel } from './TaskQueuePanel';
 import { WorkspaceStatusBar } from './WorkspaceStatusBar';
 import classes from './TaskQueueDock.module.css';
@@ -18,6 +18,14 @@ export function TaskQueueDock<Definitions extends TaskDefinitions>({
   const [opened, setOpened] = useState(false);
   const panelId = useId();
   const button = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(
+    () =>
+      queue.store.subscribe((state, previous) => {
+        if (state.tasks.length > previous.tasks.length) setOpened(true);
+      }),
+    [queue],
+  );
 
   const close = () => {
     setOpened(false);

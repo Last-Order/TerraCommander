@@ -110,7 +110,6 @@ it.each(['file', 'link'] as const)(
     await user.click(screen.getByRole('button', { name: space.name }));
     expect(screen.queryByRole('button', { name: file.name })).not.toBeInTheDocument();
     expect(listDirectory).toHaveBeenCalledTimes(1);
-    await user.click(screen.getByRole('button', { name: '任务队列' }));
     const queue = within(screen.getByRole('region', { name: '任务队列' }));
     expect(queue.getByText(file.name)).toBeInTheDocument();
     expect(queue.getByText('删除')).toBeInTheDocument();
@@ -207,7 +206,6 @@ it('retains the file and displays the failure when deletion fails', async () => 
       'aria-busy',
     ),
   );
-  await user.click(screen.getByRole('button', { name: '任务队列' }));
   expect(await screen.findByText('没有权限访问这个位置。')).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: '关闭任务队列' }));
   await openMenu();

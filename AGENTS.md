@@ -31,7 +31,7 @@ Keep common account and storage layers independent of provider SDKs. Authenticat
 
 ## Documentation
 
-Document design reasons, ownership boundaries, behavioral guarantees, and actionable development procedures. Link to source for exact API shapes, dependency versions, internal defaults, registrations, and file layouts. Avoid duplicating these details or maintaining feature-status snapshots, completed implementation plans, and test inventories in architecture documents.
+Keep documentation focused on design rationale, architectural boundaries, ownership, and long-term constraints. Do not document concrete implementation logic or implemented feature behavior, including UI interactions, execution flows, internal algorithms, parameter values, API inventories, registrations, or detailed file layouts. Code and tests are the source of truth for these details; link to them when needed instead of maintaining a prose copy. Do not add feature-status snapshots, completed implementation plans, or test inventories. Keep development setup and verification procedures in their dedicated development documents.
 
 Each topic has one primary document; reference it rather than repeating its rules:
 
@@ -42,7 +42,7 @@ Each topic has one primary document; reference it rather than repeating its rule
 - [Google Drive development](docs/google-drive-development.md): Client configuration and smoke-test procedures.
 - [Task queue](docs/task-queue.md): Session ownership, scheduling, conflicts, and UI integration.
 
-When a change affects a documented guarantee or procedure, update its primary document. Keep temporary plans and historical delivery scope out of current architecture guidance.
+Update the primary document only when a change affects a design decision, ownership boundary, long-term constraint, or documented development procedure. Adding or changing a feature or UI behavior does not by itself justify a documentation update. Keep temporary plans and historical delivery scope out of current architecture guidance.
 
 ## Development Commands
 

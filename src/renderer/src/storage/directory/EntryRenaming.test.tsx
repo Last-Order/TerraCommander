@@ -195,7 +195,7 @@ it('runs renames in the background and shows errors in the task queue', async ()
   expect(renameEntry).toHaveBeenCalledExactlyOnceWith(file.ref, '冲突.txt');
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   const toggle = screen.getByRole('button', { name: '任务队列' });
-  await user.click(toggle);
+  expect(toggle).toHaveAttribute('aria-expanded', 'true');
   const panel = within(screen.getByRole('region', { name: '任务队列' }));
   expect(panel.getByText('执行中')).toBeInTheDocument();
   expect(panel.getByText('冲突.txt')).toBeInTheDocument();
@@ -250,7 +250,6 @@ it('continues a queued rename after switching directories and updates its cached
   const dialog = await openRename();
   await user.clear(dialog.getByRole('textbox', { name: '名称' }));
   await user.type(dialog.getByRole('textbox', { name: '名称' }), '后台重命名.txt{Enter}');
-  await user.click(screen.getByRole('button', { name: '任务队列' }));
   await user.click(screen.getByRole('button', { name: '归档盘' }));
   expect(await screen.findByText('此文件夹为空')).toBeInTheDocument();
   const renamed = { ...file, ref: { ...file.ref, locator: 'renamed' }, name: '后台重命名.txt' };
