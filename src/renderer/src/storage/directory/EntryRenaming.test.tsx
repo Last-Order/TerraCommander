@@ -112,6 +112,28 @@ it('renames a single right-clicked file in place without reloading the listing',
   expect(table.getByRole('button', { name: other.name })).toHaveAttribute('aria-pressed', 'true');
 });
 
+it.each(['file', 'directory'] as const)('renames a single selected %s with F2', async (kind) => {
+  const { user, file, other, renameEntry, listDirectory } = await setup(kind);
+  await user.keyboard('{F2}');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: other.name }));
+  await user.click(screen.getByRole('button', { name: file.name }));
+  await user.keyboard('{F2}');
+  const dialog = within(await screen.findByRole('dialog', { name: '重命名' }));
+  const input = dialog.getByRole('textbox', { name: '名称' });
+  expect(input).toHaveValue(file.name);
+  await user.clear(input);
+  await user.type(input, '新名称{Enter}');
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: '新名称' }).closest('tr')).not.toHaveAttribute(
+      'aria-busy',
+    ),
+  );
+  expect(renameEntry).toHaveBeenCalledExactlyOnceWith(file.ref, '新名称');
+  expect(screen.getByRole('button', { name: '新名称' })).toHaveAttribute('aria-pressed', 'true');
+  expect(listDirectory).toHaveBeenCalledTimes(1);
+});
+
 it('finishes an in-flight refresh without allowing its older result to undo the rename', async () => {
   const { user, file, other, listDirectory, openRename } = await setup();
   const pending = pausePage<Awaited<ReturnType<StorageBrowserApi['listDirectory']>>>();
@@ -140,12 +162,16 @@ it('hides rename for multiple selected entries', async () => {
   await user.keyboard('{Control>}');
   await user.click(screen.getByRole('button', { name: other.name }));
   await user.keyboard('{/Control}');
+  await user.keyboard('{F2}');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   await user.pointer({
     target: screen.getByRole('button', { name: file.name }),
     keys: '[MouseRight]',
   });
   await screen.findByRole('menuitem', { name: '信息' });
   expect(screen.queryByRole('menuitem', { name: '重命名' })).not.toBeInTheDocument();
+  await user.keyboard('{F2}');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
 
 it('cancels an edited name without submitting a rename', async () => {
@@ -279,6 +305,8 @@ it('hides rename when the provider reports that the file cannot be renamed', asy
   });
   await screen.findByRole('menuitem', { name: '信息' });
   expect(screen.queryByRole('menuitem', { name: '重命名' })).not.toBeInTheDocument();
+  await user.keyboard('{F2}');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
 
 it.each([true, false])(
@@ -317,6 +345,8 @@ it.each([true, false])(
     );
     expect(screen.getByRole('menuitem', { name: '信息' })).not.toHaveAttribute('data-disabled');
     await user.keyboard('{Escape}');
+    await user.keyboard('{F2}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
     const renamed = {
       ...file,
@@ -361,6 +391,9 @@ it('optimistically renames and locks waiting tasks before they begin execution',
     'true',
   );
   expect(renameEntry).toHaveBeenCalledTimes(1);
+  await user.click(screen.getByRole('button', { name: '第二个任务.txt' }));
+  await user.keyboard('{F2}');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   await act(async () => first.resolve(success({ ...file, name: '第一个任务.txt' })));
   expect(renameEntry).toHaveBeenCalledTimes(2);
   expect(screen.getByRole('button', { name: '第一个任务.txt' }).closest('tr')).not.toHaveAttribute(

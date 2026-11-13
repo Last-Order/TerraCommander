@@ -73,7 +73,6 @@ export function DirectoryListing({
   const queue = useStorageTaskQueue();
   const tasks = useStore(queue.store, (state) => state.tasks);
   const pendingEntries = useMemo(() => selectPendingEntryEffects(tasks, parent), [tasks, parent]);
-  const menuEntryPending = menuLocator !== null && pendingEntries.get(menuLocator)?.busy === true;
   const loading = phase === 'loading' || phase === 'refreshing';
   const loadingWithoutEntries = phase === 'loading' && entries.size === 0;
   const menuEntry = menuLocator === null ? undefined : entries.get(menuLocator);
@@ -101,6 +100,15 @@ export function DirectoryListing({
       cache,
       parent,
     });
+  const [selectedLocator] = selectedLocators;
+  const selectedEntry =
+    selectedLocators.size === 1 && selectedLocator !== undefined
+      ? entries.get(selectedLocator)
+      : undefined;
+  const renamableEntry =
+    selectedEntry?.capabilities.rename?.support !== 'unsupported' ? selectedEntry : undefined;
+  const renamePending =
+    renamableEntry !== undefined && pendingEntries.get(renamableEntry.ref.locator)?.busy === true;
   const selectSearchMatch = useCallback(
     (locator: string | null) => {
       selectOnly(locator);
@@ -128,6 +136,11 @@ export function DirectoryListing({
     }
     setInformationEntries(selection);
   };
+  const showRename = () => {
+    if (!renamableEntry || renamePending) return;
+    setMenuLocator(null);
+    setRenameEntry(renamableEntry);
+  };
   const reload = () => {
     setMenuLocator(null);
     refresh();
@@ -143,6 +156,7 @@ export function DirectoryListing({
     refreshButton.current?.focus();
   };
   useKeyboardShortcuts([
+    { key: 'F2', onTrigger: showRename, enabled: !!renamableEntry && !renamePending },
     { key: 'F5', onTrigger: reload, enabled: !loading, allowInEditable: true },
     { key: 'f', ctrlKey: true, onTrigger: openSearch, allowInEditable: true },
     ...(search.opened ? [{ key: 'Escape', onTrigger: closeSearch, allowInEditable: true }] : []),
@@ -262,17 +276,16 @@ export function DirectoryListing({
                 onOpen={onOpen}
               />
               <Menu.Dropdown>
-                {selectedLocators.size === 1 &&
-                  menuEntry &&
-                  menuEntry.capabilities.rename?.support !== 'unsupported' && (
-                    <Menu.Item
-                      disabled={menuEntryPending}
-                      leftSection={<SquarePen size={16} strokeWidth={1.5} aria-hidden="true" />}
-                      onClick={() => setRenameEntry(menuEntry)}
-                    >
-                      {t('renameEntry')}
-                    </Menu.Item>
-                  )}
+                {renamableEntry && (
+                  <Menu.Item
+                    disabled={renamePending}
+                    aria-keyshortcuts="F2"
+                    leftSection={<SquarePen size={16} strokeWidth={1.5} aria-hidden="true" />}
+                    onClick={showRename}
+                  >
+                    {t('renameEntry')}
+                  </Menu.Item>
+                )}
                 <Menu.Item
                   leftSection={<Info size={16} strokeWidth={1.5} aria-hidden="true" />}
                   onClick={showInformation}

@@ -57,6 +57,40 @@ function pressF5(init: KeyboardEventInit = {}, target: Element | Window = window
   return event;
 }
 
+it('ignores modified or repeated F2, editing controls, and open modals', async () => {
+  const { user, file, spaceButton } = await setup();
+  await user.click(spaceButton);
+  const entry = await screen.findByRole('button', { name: file.name });
+  await user.click(entry);
+  fireEvent.keyDown(entry, { key: 'F2', repeat: true });
+  for (const modifier of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey']) {
+    fireEvent.keyDown(entry, { key: 'F2', [modifier]: true });
+  }
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+  await user.keyboard('{Control>}f{/Control}');
+  expect(await screen.findByRole('searchbox', { name: '搜索当前目录' })).toHaveFocus();
+  await user.keyboard('{F2}');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  await user.keyboard('{Escape}');
+  await user.click(screen.getByRole('button', { name: '设置' }));
+  await screen.findByRole('dialog', { name: '设置' });
+  await user.keyboard('{F2}');
+  expect(screen.queryByRole('dialog', { name: '重命名' })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: '关闭' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+  await user.pointer({ target: entry, keys: '[MouseRight]' });
+  expect(await screen.findByRole('menuitem', { name: '重命名' })).toHaveAttribute(
+    'aria-keyshortcuts',
+    'F2',
+  );
+  await user.keyboard('{F2}');
+  const dialog = await screen.findByRole('dialog', { name: '重命名' });
+  expect(within(dialog).getByRole('textbox', { name: '名称' })).toHaveValue(file.name);
+  expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+});
+
 it('refreshes with F5 from the sidebar or file list and preserves selection', async () => {
   const { user, file, space, spaceButton, listDirectory } = await setup();
   expect(pressF5().defaultPrevented).toBe(false);
