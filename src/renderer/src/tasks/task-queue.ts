@@ -2,6 +2,7 @@ import { createStore } from 'zustand/vanilla';
 import { isActiveTask } from './task-selectors';
 import type {
   QueueTask,
+  TaskCategory,
   TaskDefinitions,
   TaskFailure,
   TaskHandlers,
@@ -9,13 +10,19 @@ import type {
   TaskType,
 } from './task-types';
 
+const concurrencyLimits: Readonly<Record<TaskCategory, number>> = {
+  operation: 16,
+  transfer: 8,
+};
+
 /** Session-owned queue: execution continues when dialogs, panels or directories are closed. */
 export class TaskQueue<Definitions extends TaskDefinitions> {
   readonly store = createStore<{ tasks: readonly QueueTask<Definitions>[] }>()(() => ({
     tasks: [],
   }));
   private nextId = 0;
-  private running = false;
+  private draining = false;
+  private readonly running: Record<TaskCategory, number> = { operation: 0, transfer: 0 };
   private readonly conflicts = new Map<number, readonly string[]>();
 
   constructor(private readonly handlers: TaskHandlers<Definitions>) {}
@@ -28,7 +35,7 @@ export class TaskQueue<Definitions extends TaskDefinitions> {
     const task: QueueTask<Definitions, Type> = { id: ++this.nextId, request, status: 'queued' };
     this.conflicts.set(task.id, keys);
     this.store.setState(({ tasks }) => ({ tasks: [...tasks, task] }));
-    void this.drain();
+    this.drain();
     return true;
   }
 
@@ -89,16 +96,28 @@ export class TaskQueue<Definitions extends TaskDefinitions> {
     this.update(task);
   }
 
-  private async drain(): Promise<void> {
-    if (this.running) return;
-    this.running = true;
+  private drain(): void {
+    if (this.draining) return;
+    this.draining = true;
     try {
       let task: QueueTask<Definitions> | undefined;
-      while ((task = this.store.getState().tasks.find(({ status }) => status === 'queued'))) {
-        await this.execute(task);
+      while (
+        (task = this.store.getState().tasks.find((candidate) => {
+          const category = this.handlers[candidate.request.type].category;
+          return (
+            candidate.status === 'queued' && this.running[category] < concurrencyLimits[category]
+          );
+        }))
+      ) {
+        const category = this.handlers[task.request.type].category;
+        this.running[category]++;
+        void this.execute(task).finally(() => {
+          this.running[category]--;
+          this.drain();
+        });
       }
     } finally {
-      this.running = false;
+      this.draining = false;
     }
   }
 }

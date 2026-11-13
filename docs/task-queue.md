@@ -1,13 +1,19 @@
 # Task queue
 
-The renderer owns one session queue per storage workspace. It runs tasks serially and keeps them
-alive when a dialog, directory, or queue panel closes. Registered tasks include rename and deletion.
+The renderer owns one session queue per storage workspace. It keeps tasks alive when a dialog,
+directory, or queue panel closes. Registered tasks include rename and deletion.
 
 ## Contracts and execution
 
 `tasks/task-types.ts` defines the common request, state, failure, progress, and handler contracts.
 `TaskQueue<Definitions>` takes a type map associating each task's input with its result and a handler
 for every registered type. The queue does not interpret storage entries or storage errors.
+
+Each handler declares a `TaskCategory`: `operation` or `transfer`. Rename and deletion are operation
+tasks. The queue uses fixed, independent concurrency limits of 16 operation tasks and 8 transfer
+tasks. Transfer tasks have no registered implementation yet. Tasks start in enqueue order within
+each category; a full category does not block the other. A slot stays occupied until execution and
+its result hook finish, then becomes available whether the task succeeded or failed.
 
 Handlers provide opaque resource conflict keys, execute an operation, map failures to safe codes
 and translation descriptors, and optionally handle success or failure. An enqueue is rejected when
@@ -45,6 +51,6 @@ Deletion shares conflict keys with rename and locks other writes until it finish
 Successful deletion removes the entry from cached and open listings; an in-flight listing reloads
 so an older response cannot restore the deleted row. Failures keep the entry and appear in the queue.
 
-Adding a task requires extending the storage type map, registering its handler, providing its
+Adding a task requires extending the storage type map, registering its handler and category, providing its
 presentation, and defining any directory effects. The queue and common row layout remain shared.
-Concurrency, persistent recovery, and a main-process task service are separate future work.
+Persistent recovery and a main-process task service are separate future work.

@@ -11,6 +11,7 @@ export function createDeleteTaskHandler({
   onAuthRequired: () => void;
 }): TaskHandler<DeleteTaskInput, void> {
   return {
+    category: 'operation',
     conflictKeys: ({ entry }) => [directoryKey(entry.ref)],
     execute: ({ entry }) => resultOf(window.desktop.storage.deleteEntry(entry.ref)),
     onSuccess: ({ parent, entry }) => {

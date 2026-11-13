@@ -29,6 +29,7 @@ function setup(overrides: Partial<TaskHandler<RenameTaskInput, Entry>> = {}) {
   const onSuccess = vi.fn();
   const onFailure = vi.fn();
   const handler: TaskHandler<RenameTaskInput, Entry> = {
+    category: 'operation',
     conflictKeys: (input) => [JSON.stringify(input.entry.ref)],
     execute,
     onSuccess,
@@ -54,11 +55,13 @@ it('records failures, continues the queue and only clears finished tasks', async
     .mockReturnValueOnce(pending.promise);
   queue.enqueue(first);
   queue.enqueue(second);
-  await waitFor(() => expect(execute).toHaveBeenCalledTimes(2));
-  expect(queue.store.getState().tasks).toMatchObject([
-    { status: 'failed', failure: { code: 'failed', message: { key: 'tasks:unknownError' } } },
-    { status: 'running' },
-  ]);
+  await waitFor(() =>
+    expect(queue.store.getState().tasks).toMatchObject([
+      { status: 'failed', failure: { code: 'failed', message: { key: 'tasks:unknownError' } } },
+      { status: 'running' },
+    ]),
+  );
+  expect(execute).toHaveBeenCalledTimes(2);
   expect(onFailure).toHaveBeenCalledOnce();
   expect(onSuccess).not.toHaveBeenCalled();
   queue.clearFinished();
@@ -72,10 +75,16 @@ it('records failures, continues the queue and only clears finished tasks', async
 it('rejects additional writes to running and queued entries until they finish', async () => {
   const first = request('first.txt');
   const second = request('second.txt');
-  const pending = pausePage<Entry>();
+  const pending = pausePage<void>();
   const { queue, execute, onSuccess } = setup();
-  execute.mockReturnValueOnce(pending.promise);
+  execute.mockImplementation(async (input) => {
+    await pending.promise;
+    return { ...input.entry, name: input.name };
+  });
   expect(queue.enqueue(first)).toBe(true);
+  for (let index = 0; index < 15; index++) {
+    expect(queue.enqueue(request(`other-${index}.txt`))).toBe(true);
+  }
   expect(queue.enqueue(second)).toBe(true);
   expect(
     queue.enqueue({ ...first, input: { ...first.input, name: 'conflicting-write.txt' } }),
@@ -84,24 +93,29 @@ it('rejects additional writes to running and queued entries until they finish', 
     queue.enqueue({ ...second, input: { ...second.input, name: 'conflicting-queued-write.txt' } }),
   ).toBe(false);
   queue.clearFinished();
-  expect(queue.store.getState().tasks).toHaveLength(2);
-  expect(execute).toHaveBeenCalledExactlyOnceWith(
+  expect(queue.store.getState().tasks).toHaveLength(17);
+  expect(queue.store.getState().tasks.at(-1)?.status).toBe('queued');
+  expect(execute).toHaveBeenCalledTimes(16);
+  expect(execute).toHaveBeenNthCalledWith(
+    1,
     first.input,
     expect.objectContaining({ reportProgress: expect.any(Function) }),
   );
   const firstResult = { ...first.input.entry, name: first.input.name };
-  pending.resolve(firstResult);
+  pending.resolve();
   await waitFor(() =>
     expect(queue.store.getState().tasks.every(({ status }) => status === 'completed')).toBe(true),
   );
-  expect(onSuccess.mock.calls).toEqual([
-    [first.input, firstResult],
-    [second.input, { ...second.input.entry, name: second.input.name }],
-  ]);
+  expect(onSuccess).toHaveBeenCalledTimes(17);
+  expect(onSuccess).toHaveBeenCalledWith(first.input, firstResult);
+  expect(onSuccess).toHaveBeenCalledWith(second.input, {
+    ...second.input.entry,
+    name: second.input.name,
+  });
   expect(
     queue.enqueue({ ...first, input: { ...first.input, name: 'allowed-after-completion.txt' } }),
   ).toBe(true);
-  await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(3));
+  await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(18));
 });
 
 it('keeps successful operations completed when a result callback rejects and continues executing', async () => {

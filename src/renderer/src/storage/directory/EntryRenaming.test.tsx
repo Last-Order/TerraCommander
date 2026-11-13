@@ -366,7 +366,7 @@ it.each([true, false])(
   },
 );
 
-it('optimistically renames and locks waiting tasks before they begin execution', async () => {
+it('runs independent renames concurrently and keeps each entry locked until its task finishes', async () => {
   const { user, file, other, renameEntry, openRename } = await setup();
   const first = pausePage<BrowserResult<Entry>>();
   const second = pausePage<BrowserResult<Entry>>();
@@ -390,7 +390,7 @@ it('optimistically renames and locks waiting tasks before they begin execution',
     'data-disabled',
     'true',
   );
-  expect(renameEntry).toHaveBeenCalledTimes(1);
+  expect(renameEntry).toHaveBeenCalledTimes(2);
   await user.click(screen.getByRole('button', { name: '第二个任务.txt' }));
   await user.keyboard('{F2}');
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

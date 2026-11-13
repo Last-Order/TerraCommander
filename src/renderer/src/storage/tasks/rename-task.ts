@@ -12,6 +12,7 @@ export function createRenameTaskHandler({
   onAuthRequired: () => void;
 }): TaskHandler<RenameTaskInput, Entry> {
   return {
+    category: 'operation',
     conflictKeys: ({ entry }) => [directoryKey(entry.ref)],
     execute: ({ entry, name }) => resultOf(window.desktop.storage.renameEntry(entry.ref, name)),
     onSuccess: ({ parent, entry }, result) => {

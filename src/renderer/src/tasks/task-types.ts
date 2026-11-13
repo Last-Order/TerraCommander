@@ -26,6 +26,7 @@ export type TaskProgress =
 
 export type TaskDefinitions = Record<string, { input: unknown; result: unknown }>;
 export type TaskType<Definitions extends TaskDefinitions> = Extract<keyof Definitions, string>;
+export type TaskCategory = 'operation' | 'transfer';
 
 export type TaskRequest<
   Definitions extends TaskDefinitions,
@@ -57,6 +58,7 @@ export interface TaskContext {
 }
 
 export interface TaskHandler<Input, Result> {
+  readonly category: TaskCategory;
   conflictKeys(input: Input): readonly string[];
   execute(input: Input, context: TaskContext): Promise<Result>;
   onSuccess?(input: Input, result: Result): void | Promise<void>;
