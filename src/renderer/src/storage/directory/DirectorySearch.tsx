@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import classes from './DirectorySearch.module.css';
 
 interface DirectorySearchProps {
+  opened: boolean;
   inputRef: RefObject<HTMLInputElement | null>;
   query: string;
   index: number;
@@ -15,6 +16,7 @@ interface DirectorySearchProps {
 }
 
 export function DirectorySearch({
+  opened,
   inputRef,
   query,
   index,
@@ -26,8 +28,8 @@ export function DirectorySearch({
   const { t } = useTranslation('storage');
 
   useLayoutEffect(() => {
-    inputRef.current?.focus();
-  }, [inputRef]);
+    if (opened) inputRef.current?.focus();
+  }, [inputRef, opened]);
 
   return (
     <div className={classes.search}>

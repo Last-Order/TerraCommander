@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ActionIcon, Alert, Button, Group, Menu, VisuallyHidden } from '@mantine/core';
+import { ActionIcon, Alert, Button, Group, Menu, Transition, VisuallyHidden } from '@mantine/core';
+import { useReducedMotion } from '@mantine/hooks';
 import { Info, RefreshCw, SquarePen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
@@ -57,6 +58,7 @@ export function DirectoryListing({
   children,
 }: ListingProps) {
   const { t, i18n } = useTranslation(['storage', 'common', 'errors']);
+  const reduceMotion = useReducedMotion();
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const [selectedLocators, setSelectedLocators] = useState(() => new Set<string>());
   const selectionAnchor = useRef<string | null>(null);
@@ -194,9 +196,7 @@ export function DirectoryListing({
   useKeyboardShortcuts([
     { key: 'F5', onTrigger: reload, enabled: !loading, allowInEditable: true },
     { key: 'f', ctrlKey: true, onTrigger: openSearch, allowInEditable: true },
-    ...(search.query === null
-      ? []
-      : [{ key: 'Escape', onTrigger: closeSearch, allowInEditable: true }]),
+    ...(search.opened ? [{ key: 'Escape', onTrigger: closeSearch, allowInEditable: true }] : []),
   ]);
   const changeSort = (field: DirectorySort['field']) =>
     setSort((previous) => ({
@@ -243,19 +243,37 @@ export function DirectoryListing({
           className={classes.directoryContents}
           aria-busy={loadingWithoutEntries}
         >
-          {search.query !== null && (
-            <div className={classes.searchOverlay}>
-              <DirectorySearch
-                inputRef={searchInput}
-                query={search.query}
-                index={search.index}
-                total={search.total}
-                onChange={search.changeQuery}
-                onNavigate={search.navigate}
-                onClose={closeSearch}
-              />
-            </div>
-          )}
+          <Transition
+            mounted={search.opened}
+            duration={reduceMotion ? 0 : 160}
+            exitDuration={reduceMotion ? 0 : 120}
+            timingFunction="ease-out"
+            transition={{
+              in: { opacity: 1, transform: 'translateY(0)' },
+              out: { opacity: 0, transform: 'translateY(-4px)' },
+              transitionProperty: 'opacity, transform',
+            }}
+          >
+            {(styles) => (
+              <div
+                className={classes.searchOverlay}
+                style={styles}
+                inert={!search.opened}
+                aria-hidden={!search.opened || undefined}
+              >
+                <DirectorySearch
+                  opened={search.opened}
+                  inputRef={searchInput}
+                  query={search.query}
+                  index={search.index}
+                  total={search.total}
+                  onChange={search.changeQuery}
+                  onNavigate={search.navigate}
+                  onClose={closeSearch}
+                />
+              </div>
+            )}
+          </Transition>
           {error && (
             <Alert color="red" role="alert">
               <Group justify="space-between">
