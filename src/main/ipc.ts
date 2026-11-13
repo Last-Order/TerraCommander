@@ -124,6 +124,9 @@ export function registerIpcHandlers(
     z.tuple([directory, entryNameSchema]),
     (browser, _window, ref, name) => browser.renameEntry(ref, name),
   );
+  handleStorage(channels.deleteEntry, z.tuple([directory]), (browser, _window, ref) =>
+    browser.deleteEntry(ref),
+  );
   handleStorage(
     channels.measureDirectorySize,
     z.tuple([z.uuid(), z.array(directory).min(1)]),

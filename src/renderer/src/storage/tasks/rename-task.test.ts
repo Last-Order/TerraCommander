@@ -45,7 +45,7 @@ it('invalidates the affected connection if applying a successful rename result f
   directoryCache.subscribeRenames(() => {
     throw new Error('private listener error');
   });
-  const queue = new TaskQueue<StorageTaskDefinitions>({
+  const queue = new TaskQueue<Pick<StorageTaskDefinitions, 'rename'>>({
     rename: createRenameTaskHandler({ directoryCache, onAuthRequired: vi.fn() }),
   });
   queue.enqueue({ type: 'rename', input });

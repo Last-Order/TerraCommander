@@ -14,6 +14,7 @@ export const channels = {
   cancelAuthorization: 'storage:cancel-authorization',
   listDirectory: 'storage:list-directory',
   renameEntry: 'storage:rename-entry',
+  deleteEntry: 'storage:delete-entry',
   measureDirectorySize: 'storage:measure-directory-size',
   cancelDirectoryMeasurement: 'storage:cancel-directory-measurement',
 } as const;

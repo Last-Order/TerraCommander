@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { Dirent, Stats } from 'node:fs';
-import { lstat, readdir, rename } from 'node:fs/promises';
+import { lstat, readdir, rename, unlink } from 'node:fs/promises';
 import { basename, dirname, join, normalize, parse, sep } from 'node:path';
 import type { Entry, EntryPage, EntryRef, ListRequest, Space } from '../../../../shared/storage';
 import type { OperationContext } from '../../core/contracts';
@@ -10,6 +10,7 @@ import { listLocalVolumes } from './local-volumes';
 
 const listSupported = { list: { support: 'supported' } } as const;
 const renameSupported = { rename: { support: 'supported' } } as const;
+const removeSupported = { remove: { support: 'supported' } } as const;
 const metadataBatchSize = 32;
 
 export function localSpace(connectionId: string, directory: string): Space {
@@ -72,7 +73,7 @@ class LocalAdapter implements StorageAdapter {
   }
 
   async capabilities() {
-    return { ...listSupported, ...renameSupported };
+    return { ...listSupported, ...renameSupported, ...removeSupported };
   }
 
   async stat(ref: EntryRef, { signal }: OperationContext): Promise<Entry> {
@@ -151,6 +152,18 @@ class LocalAdapter implements StorageAdapter {
     }
   }
 
+  async remove(ref: EntryRef, { signal }: OperationContext): Promise<void> {
+    if (ref.locator === '.') throw new StorageError('InvalidArgument');
+    const { path, info } = await this.locate(ref, signal);
+    if (!info.isFile() && !info.isSymbolicLink()) throw new StorageError('Unsupported');
+    try {
+      throwIfAborted(signal);
+      await unlink(path);
+    } catch (error) {
+      localFailure(error, signal);
+    }
+  }
+
   async dispose() {}
 
   private async locate(ref: EntryRef, signal?: AbortSignal) {
@@ -209,7 +222,11 @@ function localEntry(ref: EntryRef, name: string, displayPath: string, info: Dire
         ? kind === 'directory'
           ? listSupported
           : {}
-        : { ...renameSupported, ...(kind === 'directory' ? listSupported : {}) },
+        : {
+            ...renameSupported,
+            ...(kind === 'directory' ? listSupported : {}),
+            ...(kind === 'file' || kind === 'link' ? removeSupported : {}),
+          },
   };
   if ('mtime' in info) {
     const year = info.mtime.getUTCFullYear();

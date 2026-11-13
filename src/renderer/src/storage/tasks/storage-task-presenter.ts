@@ -13,5 +13,11 @@ export const presentStorageTask: TaskPresenter<StorageTaskDefinitions> = (task) 
   switch (task.request.type) {
     case 'rename':
       return presentRenameTask(task.request.input);
+    case 'delete':
+      return {
+        typeLabel: { key: 'storage:deleteEntry' },
+        title: [{ text: task.request.input.entry.name }],
+        summary: task.request.input.directoryPath,
+      };
   }
 };

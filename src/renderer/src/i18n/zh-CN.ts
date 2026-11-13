@@ -47,6 +47,8 @@ export const zhCN = {
     entrySize: '大小',
     entryInformation: '信息',
     renameEntry: '重命名',
+    deleteEntry: '删除',
+    deleteEntryConfirmation: '确定删除“{{name}}”吗？删除后不可恢复。',
     invalidEntryName: '请输入有效的名称。',
     entryWriteLocked: '修改中，暂不可进行其他写操作。',
     entryPath: '路径',

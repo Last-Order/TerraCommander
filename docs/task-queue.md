@@ -1,7 +1,7 @@
 # Task queue
 
 The renderer owns one session queue per storage workspace. It runs tasks serially and keeps them
-alive when a dialog, directory, or queue panel closes. The current registered task is rename.
+alive when a dialog, directory, or queue panel closes. Registered tasks include rename and deletion.
 
 ## Contracts and execution
 
@@ -31,9 +31,19 @@ failures are translated when rendered, so changing languages also updates existi
 Optional row actions contain actual UI callbacks and live only in the derived presentation model.
 They are not stored in task snapshots. Rename currently supplies no row actions.
 
-`storage/tasks/` owns rename's input/result definitions, handler, presenter, and the typed storage
+`storage/tasks/` owns storage task input/result definitions, handlers, presenter, and the typed storage
 queue context. `selectPendingEntryEffects` projects active tasks into directory-specific busy states
 and optimistic names. Directory listings consume those effects without reading task inputs.
+
+Single-file deletion requires confirmation that deletion cannot be undone. The service and menu
+use the common remove operation and capability without distinguishing providers. Each adapter
+owns its implementation: Google Drive maps remove to files.update with trashed=true and derives
+its remove capability from canTrash, for both shared drives and My Drive. It never sends a
+permanent deletion request. Local storage uses unlink without following links. Drive deletion
+validates the selected drive and entry kind. Folder deletion is not exposed.
+Deletion shares conflict keys with rename and locks other writes until it finishes.
+Successful deletion removes the entry from cached and open listings; an in-flight listing reloads
+so an older response cannot restore the deleted row. Failures keep the entry and appear in the queue.
 
 Adding a task requires extending the storage type map, registering its handler, providing its
 presentation, and defining any directory effects. The queue and common row layout remain shared.

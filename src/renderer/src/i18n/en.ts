@@ -48,6 +48,8 @@ export const en = {
     entrySize: 'Size',
     entryInformation: 'Information',
     renameEntry: 'Rename',
+    deleteEntry: 'Delete',
+    deleteEntryConfirmation: 'Delete “{{name}}”? This action cannot be undone.',
     invalidEntryName: 'Enter a valid name.',
     entryWriteLocked: 'Modification in progress. Other write operations are disabled.',
     entryPath: 'Path',

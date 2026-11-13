@@ -108,6 +108,8 @@ describe('storage access dispatch and native references', () => {
     const { adapter, registry, access } = await setup();
     adapter.caps.copyWithin = { support: 'unsupported' };
     adapter.caps.moveWithin = { support: 'unsupported' };
+    adapter.caps.remove = { support: 'unsupported' };
+    await expect(access.remove(fixtureRef())).rejects.toMatchObject({ code: 'Unsupported' });
     await expect(
       access.copyWithin(fixtureRef(), { parent: fixtureRef(), name: 'copy' }),
     ).rejects.toMatchObject({ code: 'Unsupported' });

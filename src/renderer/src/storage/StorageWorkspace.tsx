@@ -12,7 +12,8 @@ import classes from './StorageWorkspace.module.css';
 import { TaskQueue } from '../tasks/task-queue';
 import { TaskQueueDock } from '../tasks/TaskQueueDock';
 import { createRenameTaskHandler } from './tasks/rename-task';
-import { presentStorageTask } from './tasks/rename-task-presenter';
+import { createDeleteTaskHandler } from './tasks/delete-task';
+import { presentStorageTask } from './tasks/storage-task-presenter';
 import { StorageTaskQueueContext } from './tasks/storage-task-queue-context';
 import type { StorageTaskDefinitions } from './tasks/storage-task-types';
 
@@ -35,6 +36,7 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
     () =>
       new TaskQueue<StorageTaskDefinitions>({
         rename: createRenameTaskHandler({ directoryCache, onAuthRequired: refresh }),
+        delete: createDeleteTaskHandler({ directoryCache, onAuthRequired: refresh }),
       }),
   );
 

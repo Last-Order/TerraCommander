@@ -19,6 +19,90 @@ function memorySnapshotStore() {
   };
 }
 
+it('deletes local files without initializing accounts', async () => {
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-delete-mode-'));
+  const path = join(temporary.path, 'notes.txt');
+  await writeFile(path, 'keep until confirmed');
+  const getAccounts = vi.fn(async () => {
+    throw new Error('Local deletion must not initialize accounts.');
+  });
+  const browser = new StorageBrowser(new StoragePreferences(memorySnapshotStore()), getAccounts, {
+    event() {},
+  });
+  try {
+    const space = await browser.addLocalFolder(temporary.path);
+    const ref = { ...space.root, locator: 'notes.txt' };
+    await browser.deleteEntry(ref);
+    expect((await browser.listDirectory(space.root)).entries).toEqual([]);
+    expect(getAccounts).not.toHaveBeenCalled();
+  } finally {
+    await browser.dispose();
+  }
+});
+
+it.each([
+  { spaceId: 'my-drive', driveId: undefined },
+  { spaceId: 'shared:team', driveId: 'team' },
+])(
+  'always trashes deleted files in $spaceId even when permanent deletion is allowed',
+  async ({ spaceId, driveId }) => {
+    const { runtime } = accountFixture();
+    const snapshotStore = memorySnapshotStore();
+    let browser: StorageBrowser | undefined;
+    const file = {
+      id: 'notes',
+      name: 'notes.txt',
+      mimeType: 'text/plain',
+      driveId,
+      capabilities: { canTrash: true, canDelete: true },
+    };
+    let patchStatus = 200;
+    const request = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      expect(url.pathname).toBe('/drive/v3/files/notes');
+      expect(url.searchParams.get('supportsAllDrives')).toBe('true');
+      expect(init?.method).not.toBe('DELETE');
+      if (init?.method === 'PATCH') {
+        expect(init.body).toBe(JSON.stringify({ trashed: true }));
+        return Response.json({ ...file, trashed: true }, { status: patchStatus });
+      }
+      return Response.json(file);
+    });
+    vi.stubGlobal('fetch', request);
+    try {
+      const account = await runtime.accounts.add('google-drive', { method: 'browser' });
+      snapshotStore.write({
+        version: 2,
+        folders: [],
+        connections: [
+          {
+            id: account.id,
+            spaces: [{ id: spaceId, cached: { name: 'Drive', locator: driveId ?? 'root' } }],
+          },
+        ],
+      });
+      browser = new StorageBrowser(new StoragePreferences(snapshotStore), async () => runtime, {
+        event() {},
+      });
+      const ref = { connectionId: account.id, spaceId, locator: file.id };
+      await browser.deleteEntry(ref);
+      expect(request.mock.calls.map(([, init]) => init?.method ?? 'GET')).toEqual(['GET', 'PATCH']);
+      patchStatus = 403;
+      await expect(browser.deleteEntry(ref)).rejects.toMatchObject({ code: 'PermissionDenied' });
+      expect(request.mock.calls.map(([, init]) => init?.method ?? 'GET')).toEqual([
+        'GET',
+        'PATCH',
+        'GET',
+        'PATCH',
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+      await browser?.dispose();
+      await runtime.dispose();
+    }
+  },
+);
+
 it('restores a chosen folder and confines browsing to its saved root', async () => {
   await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-storage-'));
   const root = join(temporary.path, 'saved');
