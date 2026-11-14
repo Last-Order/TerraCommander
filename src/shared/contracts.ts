@@ -1,5 +1,6 @@
 import type { LanguagePreference, LanguageSettings } from './language';
 import type { StorageBrowserApi } from './storage-browser';
+import type { DownloadsApi } from './downloads';
 
 export const channels = {
   getAppInfo: 'app:get-info',
@@ -17,6 +18,14 @@ export const channels = {
   deleteEntry: 'storage:delete-entry',
   measureDirectorySize: 'storage:measure-directory-size',
   cancelDirectoryMeasurement: 'storage:cancel-directory-measurement',
+  getDownloadSettings: 'downloads:get-settings',
+  setDownloadDirectory: 'downloads:set-directory',
+  chooseDownloadDirectory: 'downloads:choose-directory',
+  prepareDownload: 'downloads:prepare',
+  runDownload: 'downloads:run',
+  cancelDownload: 'downloads:cancel',
+  showDownloadInFolder: 'downloads:show-in-folder',
+  downloadProgress: 'downloads:progress',
 } as const;
 
 export interface AppInfo {
@@ -33,4 +42,5 @@ export interface DesktopApi {
     set(preference: LanguagePreference): Promise<LanguageSettings | null>;
   };
   storage: StorageBrowserApi;
+  downloads: DownloadsApi;
 }

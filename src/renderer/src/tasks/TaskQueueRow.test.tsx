@@ -82,3 +82,27 @@ it('only renders supplied actions and honors their disabled state', async () => 
   expect(cancel).not.toHaveBeenCalled();
   expect(screen.getByRole('button', { name: '取消' })).toBeDisabled();
 });
+
+it('formats byte progress and current throughput with suitable units', async () => {
+  const i18n = await createRendererI18n('zh-CN');
+  const row = (progress: TaskProgress) => (
+    <I18nextProvider i18n={i18n}>
+      <TaskQueueRow status="running" model={model} progress={progress} />
+    </I18nextProvider>
+  );
+  const { rerender } = render(
+    row({
+      kind: 'determinate',
+      unit: 'bytes',
+      completed: 1.5 * 1024 ** 2,
+      total: 5 * 1024 ** 3,
+      bytesPerSecond: 2 * 1024 ** 2,
+    }),
+  );
+  expect(screen.getByText('1.5 MiB / 5 GiB')).toBeInTheDocument();
+  expect(screen.getByLabelText('当前速率')).toHaveTextContent('2 MiB/s');
+  rerender(row({ kind: 'indeterminate', completedBytes: 1536, bytesPerSecond: 0 }));
+  expect(screen.getByRole('progressbar')).not.toHaveAttribute('value');
+  expect(screen.getByText('1.5 KiB')).toBeInTheDocument();
+  expect(screen.getByLabelText('当前速率')).toHaveTextContent('0 B/s');
+});

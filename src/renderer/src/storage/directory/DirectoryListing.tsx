@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActionIcon, Button, Menu, Transition, VisuallyHidden } from '@mantine/core';
 import { useReducedMotion } from '@mantine/hooks';
-import { CircleAlert, Info, RefreshCw, SquarePen, Trash2 } from 'lucide-react';
+import { CircleAlert, Download, Info, RefreshCw, SquarePen, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
 import type { Entry, EntryRef } from '../../../../shared/storage';
@@ -13,6 +13,7 @@ import type { DirectoryRow, DirectorySort } from './directory-types';
 import { EntryInformationModal, type EntrySelection } from './EntryInformationModal';
 import { EntryRenameModal } from './EntryRenameModal';
 import { EntryDeleteModal } from './EntryDeleteModal';
+import { EntryDownloadModal } from './EntryDownloadModal';
 import { canDeleteEntry } from './entry-deletion';
 import type { DirectoryCache } from './directory-cache';
 import { useDirectoryListing } from './useDirectoryListing';
@@ -63,6 +64,7 @@ export function DirectoryListing({
   const [informationEntries, setInformationEntries] = useState<EntrySelection | null>(null);
   const [renameEntry, setRenameEntry] = useState<Entry | null>(null);
   const [deleteEntry, setDeleteEntry] = useState<Entry | null>(null);
+  const [downloadEntry, setDownloadEntry] = useState<Entry | null>(null);
   const [sort, setSort] = useState<DirectorySort | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const refreshButton = useRef<HTMLButtonElement>(null);
@@ -113,6 +115,12 @@ export function DirectoryListing({
   const renamePending =
     renamableEntry !== undefined && pendingEntries.get(renamableEntry.ref.locator)?.busy === true;
   const deletableEntry = canDeleteEntry(selectedEntry) ? selectedEntry : undefined;
+  const downloadableEntry =
+    selectedEntry?.kind === 'file' &&
+    selectedEntry.ref.connectionId !== 'local' &&
+    selectedEntry.capabilities.read?.support !== 'unsupported'
+      ? selectedEntry
+      : undefined;
   const deletePending =
     deletableEntry !== undefined && pendingEntries.get(deletableEntry.ref.locator)?.busy === true;
   const selectSearchMatch = useCallback(
@@ -297,6 +305,18 @@ export function DirectoryListing({
                 onOpen={onOpen}
               />
               <Menu.Dropdown>
+                {downloadableEntry && (
+                  <Menu.Item
+                    disabled={pendingEntries.get(downloadableEntry.ref.locator)?.busy === true}
+                    leftSection={<Download size={16} strokeWidth={1.5} aria-hidden="true" />}
+                    onClick={() => {
+                      setMenuLocator(null);
+                      setDownloadEntry(downloadableEntry);
+                    }}
+                  >
+                    {t('downloadEntry')}
+                  </Menu.Item>
+                )}
                 {renamableEntry && (
                   <Menu.Item
                     disabled={renamePending}
@@ -337,6 +357,15 @@ export function DirectoryListing({
           parent={parent}
           directoryPath={directoryPath}
           onClose={() => setRenameEntry(null)}
+        />
+      )}
+      {downloadEntry && (
+        <EntryDownloadModal
+          entry={downloadEntry}
+          parent={parent}
+          directoryPath={directoryPath}
+          onClose={() => setDownloadEntry(null)}
+          onAuthRequired={onAuthRequired}
         />
       )}
       {deleteEntry && (

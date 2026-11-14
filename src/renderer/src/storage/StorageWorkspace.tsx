@@ -13,9 +13,11 @@ import { TaskQueue } from '../tasks/task-queue';
 import { TaskQueueDock } from '../tasks/TaskQueueDock';
 import { createRenameTaskHandler } from './tasks/rename-task';
 import { createDeleteTaskHandler } from './tasks/delete-task';
+import { createDownloadTaskHandler } from './tasks/download-task';
+import { EntryDownloadModal } from './directory/EntryDownloadModal';
 import { presentStorageTask } from './tasks/storage-task-presenter';
 import { StorageTaskQueueContext } from './tasks/storage-task-queue-context';
-import type { StorageTaskDefinitions } from './tasks/storage-task-types';
+import type { DownloadTaskInput, StorageTaskDefinitions } from './tasks/storage-task-types';
 
 export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { t } = useTranslation('errors');
@@ -28,6 +30,7 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
   const [dialog, setDialog] = useState<SetupIntent | null>(null);
   const [location, setLocation] = useState<{ space: Space; generation: number } | null>(null);
   const [directoryCache] = useState(() => new DirectoryCache());
+  const [retryDownload, setRetryDownload] = useState<DownloadTaskInput | null>(null);
 
   const refresh = useCallback(() => {
     void mutate();
@@ -37,6 +40,7 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
       new TaskQueue<StorageTaskDefinitions>({
         rename: createRenameTaskHandler({ directoryCache, onAuthRequired: refresh }),
         delete: createDeleteTaskHandler({ directoryCache, onAuthRequired: refresh }),
+        download: createDownloadTaskHandler({ directoryCache, onAuthRequired: refresh }),
       }),
   );
 
@@ -57,7 +61,10 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
             setLocation((previous) => ({ space, generation: (previous?.generation ?? 0) + 1 }))
           }
         />
-        <TaskQueueDock queue={queue} presentTask={presentStorageTask}>
+        <TaskQueueDock
+          queue={queue}
+          presentTask={(task) => presentStorageTask(task, setRetryDownload)}
+        >
           {location ? (
             <DirectoryPane
               key={location.generation}
@@ -69,6 +76,16 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
             <EmptyDirectoryPane />
           )}
         </TaskQueueDock>
+        {retryDownload && (
+          <EntryDownloadModal
+            entry={retryDownload.entry}
+            parent={retryDownload.parent}
+            directoryPath={retryDownload.directoryPath}
+            initialRequest={retryDownload.request}
+            onClose={() => setRetryDownload(null)}
+            onAuthRequired={refresh}
+          />
+        )}
         {dialog && (
           <StorageSetupModal
             intent={dialog}

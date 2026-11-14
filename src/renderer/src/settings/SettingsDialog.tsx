@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Modal, NativeSelect, Tabs } from '@mantine/core';
-import { SlidersHorizontal } from 'lucide-react';
+import { ArrowDownUp, SlidersHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { languagePreferences, type LanguagePreference } from '../../../shared/language';
 import classes from './SettingsDialog.module.css';
+import { DownloadSettingsSection } from './DownloadSettingsSection';
 
 interface SettingsDialogProps {
   opened: boolean;
@@ -72,6 +73,14 @@ export function SettingsDialog({ opened, onClose, initialPreference }: SettingsD
           >
             {t('general')}
           </Tabs.Tab>
+          <Tabs.Tab
+            className={classes.category}
+            classNames={{ tabLabel: classes.categoryLabel }}
+            value="transfers"
+            leftSection={<ArrowDownUp size={16} strokeWidth={1.5} aria-hidden="true" />}
+          >
+            {t('transfers')}
+          </Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel className={classes.panel} value="general">
           <NativeSelect
@@ -87,6 +96,9 @@ export function SettingsDialog({ opened, onClose, initialPreference }: SettingsD
               { value: 'en', label: 'English' },
             ]}
           />
+        </Tabs.Panel>
+        <Tabs.Panel className={classes.panel} value="transfers">
+          <DownloadSettingsSection />
         </Tabs.Panel>
       </Tabs>
     </Modal>

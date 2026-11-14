@@ -15,13 +15,21 @@ export interface TaskFailure {
 }
 
 export type TaskProgress =
-  | { kind: 'indeterminate'; stage?: TaskMessage }
+  | {
+      kind: 'indeterminate';
+      stage?: TaskMessage;
+      cancellable?: boolean;
+      completedBytes?: number;
+      bytesPerSecond?: number;
+    }
   | {
       kind: 'determinate';
       completed: number;
       total: number;
       unit: 'bytes' | 'items';
       stage?: TaskMessage;
+      cancellable?: boolean;
+      bytesPerSecond?: number;
     };
 
 export type TaskDefinitions = Record<string, { input: unknown; result: unknown }>;
@@ -38,6 +46,7 @@ export type TaskRequest<
 export type TaskState<Result> =
   | { status: 'queued' | 'running' }
   | { status: 'completed'; result: Result }
+  | { status: 'cancelled' }
   | { status: 'failed'; failure: TaskFailure };
 
 export type QueueTask<
@@ -48,6 +57,7 @@ export type QueueTask<
     id: number;
     request: TaskRequest<Definitions, Kind>;
     progress?: TaskProgress;
+    cancelling?: boolean;
   } & TaskState<Definitions[Kind]['result']>;
 }[Type];
 
@@ -61,10 +71,13 @@ export interface TaskHandler<Input, Result> {
   readonly category: TaskCategory;
   conflictKeys(input: Input): readonly string[];
   execute(input: Input, context: TaskContext): Promise<Result>;
+  cancel?(input: Input): void | Promise<void>;
   onSuccess?(input: Input, result: Result): void | Promise<void>;
   toFailure(error: unknown): TaskFailure;
   onFailure?(input: Input, failure: TaskFailure): void | Promise<void>;
 }
+
+export class TaskCancelledError extends Error {}
 
 export type TaskHandlers<Definitions extends TaskDefinitions> = {
   [Type in TaskType<Definitions>]: TaskHandler<

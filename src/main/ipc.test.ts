@@ -7,6 +7,7 @@ import { ApplicationServices } from './services/application-services';
 import { StorageBrowser } from './services/storage-browser';
 import { StoragePreferences } from './services/storage-preferences';
 import { StorageError } from './storage';
+import { DownloadPreferences } from './services/download-preferences';
 
 const handlers = vi.hoisted(() => new Map<string, (...args: unknown[]) => Promise<unknown>>());
 vi.mock('electron', () => ({
@@ -41,7 +42,7 @@ function setup() {
   const handler = handlers.get(channels.deleteEntry);
   if (!handler) throw new Error('Missing deletion handler');
   const ref = { connectionId: 'local', spaceId: 'disk', locator: 'notes.txt' };
-  return { handler, event, ref, getBrowser, deleteEntry };
+  return { handler, event, ref, getBrowser, deleteEntry, services };
 }
 
 it('only forwards a validated single entry and rejects renderer-supplied deletion modes', async () => {
@@ -78,4 +79,40 @@ it('returns safe deletion error codes without provider details', async () => {
   const { handler, event, ref, deleteEntry } = setup();
   deleteEntry.mockRejectedValueOnce(new StorageError('PermissionDenied'));
   expect(await handler(event, ref)).toEqual({ ok: false, code: 'PermissionDenied' });
+});
+
+it('reads download defaults without loading storage or accounts and validates download arguments', async () => {
+  const { services, event, ref, getBrowser } = setup();
+  const preferences = new DownloadPreferences('system-downloads', {
+    read: () => undefined,
+    write() {},
+  });
+  const getPreferences = vi
+    .spyOn(services.downloadPreferences, 'get')
+    .mockResolvedValue(preferences);
+  const get = handlers.get(channels.getDownloadSettings)!;
+  expect(await get(event, 'unexpected')).toEqual({ ok: false, code: 'InvalidArgument' });
+  expect(getPreferences).not.toHaveBeenCalled();
+  expect(await get(event)).toEqual({
+    ok: true,
+    value: {
+      directory: 'system-downloads',
+    },
+  });
+  const prepare = handlers.get(channels.prepareDownload)!;
+  for (const request of [
+    null,
+    { ref, directory: 'D:\\Downloads', expectedName: 'file', replace: false },
+    {
+      ref: { ...ref, connectionId: '5e45885a-89f0-462e-9821-7195cba174e5' },
+      directory: 'D:\\Downloads',
+      expectedName: 'file',
+      name: 'custom-name',
+      replace: false,
+    },
+  ]) {
+    expect(await prepare(event, request)).toEqual({ ok: false, code: 'InvalidArgument' });
+  }
+  expect(getBrowser).not.toHaveBeenCalled();
+  await expect(get({ ...event, sender: {} })).rejects.toThrow('Untrusted IPC sender');
 });

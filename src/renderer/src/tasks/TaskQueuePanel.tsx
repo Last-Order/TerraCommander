@@ -50,7 +50,23 @@ export function TaskQueuePanel<Definitions extends TaskDefinitions>({
               <TaskQueueRow
                 key={task.id}
                 status={task.status}
-                model={presentTask(task)}
+                model={{
+                  ...presentTask(task),
+                  actions: [
+                    ...(presentTask(task).actions ?? []),
+                    ...(queue.canCancel(task)
+                      ? [
+                          {
+                            id: 'cancel',
+                            label: { key: 'common:cancel' as const },
+                            onClick: () => {
+                              void queue.cancel(task.id);
+                            },
+                          },
+                        ]
+                      : []),
+                  ],
+                }}
                 progress={task.progress}
                 failure={task.status === 'failed' ? task.failure : undefined}
               />

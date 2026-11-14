@@ -1,6 +1,7 @@
-import { Check, CircleAlert, Clock3, LoaderCircle } from 'lucide-react';
+import { Check, CircleAlert, Clock3, LoaderCircle, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { rendererNamespaces } from '../i18n/create-renderer-i18n';
+import { formatSize } from '../format/size';
 import type { TaskRowModel } from './task-row-model';
 import type { TaskFailure, TaskProgress, TaskStatus } from './task-types';
 import classes from './TaskQueueRow.module.css';
@@ -10,6 +11,7 @@ const statusIcons = {
   running: LoaderCircle,
   completed: Check,
   failed: CircleAlert,
+  cancelled: X,
 };
 
 interface TaskQueueRowProps {
@@ -20,7 +22,8 @@ interface TaskQueueRowProps {
 }
 
 export function TaskQueueRow({ status, model, progress, failure }: TaskQueueRowProps) {
-  const { t } = useTranslation(rendererNamespaces);
+  const { t, i18n } = useTranslation(rendererNamespaces);
+  const formatter = new Intl.NumberFormat(i18n.resolvedLanguage, { maximumFractionDigits: 1 });
   const Icon = statusIcons[status];
   const label = t(model.typeLabel.key, { ...model.typeLabel.values });
   const determinate =
@@ -63,12 +66,32 @@ export function TaskQueueRow({ status, model, progress, failure }: TaskQueueRowP
             />
             {determinate && (
               <span>
-                {t(`tasks:progress_${progress.unit}`, {
-                  completed: progress.completed,
-                  total: progress.total,
-                })}
+                {progress.unit === 'bytes'
+                  ? t('tasks:progress_bytes', {
+                      completed: formatSize(Math.max(0, progress.completed), formatter),
+                      total: formatSize(progress.total, formatter),
+                    })
+                  : t('tasks:progress_items', {
+                      completed: progress.completed,
+                      total: progress.total,
+                    })}
               </span>
             )}
+            {progress.kind === 'indeterminate' &&
+              progress.completedBytes !== undefined &&
+              Number.isFinite(progress.completedBytes) &&
+              progress.completedBytes >= 0 && (
+                <span>{formatSize(progress.completedBytes, formatter)}</span>
+              )}
+            {progress.bytesPerSecond !== undefined &&
+              Number.isFinite(progress.bytesPerSecond) &&
+              progress.bytesPerSecond >= 0 && (
+                <span aria-label={t('tasks:transferRate')}>
+                  {t('tasks:progressRate', {
+                    rate: formatSize(progress.bytesPerSecond, formatter),
+                  })}
+                </span>
+              )}
           </div>
         )}
         {status === 'failed' && failure && (

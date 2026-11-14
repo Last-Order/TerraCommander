@@ -2,6 +2,25 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { channels, type DesktopApi } from '../shared/contracts';
 
 const api: DesktopApi = {
+  downloads: {
+    getSettings: () => ipcRenderer.invoke(channels.getDownloadSettings),
+    setDirectory: (path) => ipcRenderer.invoke(channels.setDownloadDirectory, path),
+    chooseDirectory: (path) => ipcRenderer.invoke(channels.chooseDownloadDirectory, path),
+    prepare: (request) => ipcRenderer.invoke(channels.prepareDownload, request),
+    run: (id) => ipcRenderer.invoke(channels.runDownload, id),
+    cancel: (id) => ipcRenderer.invoke(channels.cancelDownload, id),
+    showInFolder: (id) => ipcRenderer.invoke(channels.showDownloadInFolder, id),
+    onProgress: (listener) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        progress: Parameters<typeof listener>[0],
+      ) => listener(progress);
+      ipcRenderer.on(channels.downloadProgress, handler);
+      return () => {
+        ipcRenderer.removeListener(channels.downloadProgress, handler);
+      };
+    },
+  },
   getAppInfo: () => ipcRenderer.invoke(channels.getAppInfo),
   language: {
     get: () => ipcRenderer.invoke(channels.getLanguage),

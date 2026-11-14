@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { Entry } from '../../../../shared/storage';
 import { errorKey, resultOf, type StorageErrorKey } from '../storage-client';
 import classes from './EntryInformationModal.module.css';
-import { formatSize } from './entry-format';
+import { formatSize } from '../../format/size';
 
 export type EntrySelection = [Entry, ...Entry[]];
 

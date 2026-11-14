@@ -13,6 +13,7 @@ import {
 import type { StorageBrowser } from './services/storage-browser';
 import { normalizeStorageError } from './storage/core/errors';
 import { entryNameSchema, entryRefSchema } from './storage/core/validation';
+import { registerDownloadIpc } from './download-ipc';
 
 const connectionId = z.union([z.literal(localConnectionId), z.uuid()]);
 const spaceId = z.string().min(1).max(1024);
@@ -55,6 +56,8 @@ export function registerIpcHandlers(
       },
     };
   });
+
+  registerDownloadIpc(assertTrusted, entryUrl, services);
 
   ipcMain.handle(channels.getLanguage, (event, ...args: unknown[]) => {
     assertTrusted(event);

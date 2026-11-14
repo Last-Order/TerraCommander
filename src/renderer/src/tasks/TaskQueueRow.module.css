@@ -70,10 +70,14 @@
 
 .progress progress {
   min-width: 4rem;
-  max-width: 12rem;
   height: 0.375rem;
   flex: 1;
   accent-color: var(--storage-accent);
+}
+
+.progress > span {
+  flex: none;
+  white-space: nowrap;
 }
 
 .error {

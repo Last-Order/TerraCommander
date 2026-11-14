@@ -29,7 +29,7 @@ it('shares write conflicts with rename for running and queued deletions', async 
   const renameEntry = vi.fn().mockResolvedValue(success(input.entry));
   vi.stubGlobal('desktop', { storage: { deleteEntry, renameEntry } });
   const options = { directoryCache: new DirectoryCache(), onAuthRequired: vi.fn() };
-  const queue = new TaskQueue<StorageTaskDefinitions>({
+  const queue = new TaskQueue<Pick<StorageTaskDefinitions, 'delete' | 'rename'>>({
     delete: createDeleteTaskHandler(options),
     rename: createRenameTaskHandler(options),
   });

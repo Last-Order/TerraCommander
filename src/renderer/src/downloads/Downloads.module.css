@@ -1,0 +1,9 @@
+.directory {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.browse {
+  flex: none;
+  margin-block-start: 1.55rem;
+}

@@ -1,5 +1,12 @@
 import { z } from 'zod';
-import type { Entry, EntryPage, EntryRef, ListRequest, Space } from '../../../../shared/storage';
+import type {
+  Entry,
+  EntryPage,
+  EntryRef,
+  ListRequest,
+  ReadOptions,
+  Space,
+} from '../../../../shared/storage';
 import {
   matchesGoogleDriveAuthorization,
   type GoogleDriveAuthorization,
@@ -8,6 +15,7 @@ import type { OperationContext } from '../../core/contracts';
 import { StorageError, throwIfAborted } from '../../core/errors';
 import { parse } from '../../core/validation';
 import type { AdapterFactory, StorageAdapter } from '../../ports/adapter';
+import { readGoogleDriveContent } from './google-drive-read';
 
 const myDriveId = 'my-drive';
 const sharedPrefix = 'shared:';
@@ -15,7 +23,7 @@ const listSupported = { list: { support: 'supported' } } as const;
 const identifier = z.string().regex(/^[A-Za-z0-9_-]+$/);
 const token = z.string().min(1);
 const fileFields =
-  'id,name,mimeType,driveId,trashed,size,modifiedTime,capabilities(canRename,canTrash)';
+  'id,name,mimeType,driveId,trashed,size,modifiedTime,capabilities(canRename,canTrash,canDownload)';
 const fileSchema = z.object({
   id: identifier,
   name: z.string(),
@@ -28,6 +36,7 @@ const fileSchema = z.object({
     .object({
       canRename: z.boolean().optional(),
       canTrash: z.boolean().optional(),
+      canDownload: z.boolean().optional(),
     })
     .optional(),
 });
@@ -96,6 +105,7 @@ class GoogleDriveAdapter implements StorageAdapter {
   async capabilities() {
     return {
       ...listSupported,
+      read: { support: 'supported' },
       rename: { support: 'supported' },
       remove: { support: 'supported' },
     } as const;
@@ -156,6 +166,17 @@ class GoogleDriveAdapter implements StorageAdapter {
     if (file.id !== id || file.trashed || file.driveId !== driveId)
       throw new StorageError('OutcomeUnknown');
     return fileEntry(ref, file);
+  }
+
+  async read(ref: EntryRef, options: ReadOptions, context: OperationContext) {
+    if (options.range || options.expectedRevision !== undefined)
+      throw new StorageError('Unsupported');
+    const entry = await this.stat(ref, context);
+    if (entry.kind !== 'file' || entry.mediaType?.startsWith('application/vnd.google-apps.'))
+      throw new StorageError('Unsupported');
+    if (entry.capabilities.read?.support === 'unsupported')
+      throw new StorageError('PermissionDenied');
+    return readGoogleDriveContent(ref.locator, this.authorization, this.request, context);
   }
 
   async remove(ref: EntryRef, context: OperationContext): Promise<void> {
@@ -239,6 +260,16 @@ function fileEntry(ref: EntryRef, file: z.infer<typeof fileSchema>): Entry {
     modifiedAt: file.modifiedTime,
     size: Number.isSafeInteger(size) ? size : undefined,
     capabilities: {
+      read: {
+        support:
+          kind !== 'file' ||
+          file.mimeType.startsWith('application/vnd.google-apps.') ||
+          file.capabilities?.canDownload === false
+            ? 'unsupported'
+            : file.capabilities?.canDownload
+              ? 'supported'
+              : 'unknown',
+      },
       ...(kind === 'directory' ? listSupported : {}),
       rename: {
         support:
@@ -260,7 +291,7 @@ function fileEntry(ref: EntryRef, file: z.infer<typeof fileSchema>): Entry {
   };
 }
 
-function driveFailure(status: number, payload: unknown): StorageError {
+export function driveFailure(status: number, payload: unknown): StorageError {
   if (status === 401) return new StorageError('AuthRequired');
   if (status === 404) return new StorageError('NotFound');
   const failure = failureSchema.safeParse(payload);

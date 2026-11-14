@@ -1,4 +1,5 @@
 import type { AccountErrorCode } from './accounts';
+import type { DownloadErrorCode } from './downloads';
 import type { Entry, EntryPage, EntryRef, Space, StorageErrorCode, StorageLabel } from './storage';
 
 export const localConnectionId = 'local';
@@ -26,7 +27,7 @@ export interface SpaceChoice {
   available: boolean;
 }
 
-export type BrowserErrorCode = AccountErrorCode | StorageErrorCode;
+export type BrowserErrorCode = AccountErrorCode | StorageErrorCode | DownloadErrorCode;
 export type BrowserResult<T> = { ok: true; value: T } | { ok: false; code: BrowserErrorCode };
 
 export interface StorageBrowserApi {

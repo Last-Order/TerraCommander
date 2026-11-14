@@ -14,6 +14,10 @@ Result-hook failure must not turn an already successful storage operation into a
 
 Progress can be determinate or indeterminate. Only reports for the matching running task may update its state; late callbacks must not recreate completed or cleared rows.
 
+Cancellation is cooperative. Resource reservations and execution slots remain owned until execution and cleanup settle. A committed result takes precedence over a late cancellation request. Transfer resources and local destination safety belong to the backend application service; the renderer queue owns scheduling and presentation. Closing a renderer session releases its backend transfer resources.
+
+Local destination policies distinguish exclusive creation from replacement. Exclusive creation does not promise that only complete content is visible; replacement preserves the existing file until commit. Session cleanup is best effort and must not remove a destination that no longer refers to the task's own creation. Abnormal shutdown can leave unfinished local content because session tasks have no durable recovery state.
+
 ## Data and Presentation Boundaries
 
 Requests, results, and progress remain data snapshots. Credentials, executable callbacks, React elements, and SDK objects do not belong in task state. UI callbacks can exist in derived presentation models.

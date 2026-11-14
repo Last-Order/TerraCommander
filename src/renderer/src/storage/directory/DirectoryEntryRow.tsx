@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { Entry } from '../../../../shared/storage';
 import type { DirectoryRow, DirectorySelectionModifiers } from './directory-types';
 import classes from './DirectoryTable.module.css';
-import { formatSize } from './entry-format';
+import { formatSize } from '../../format/size';
 
 interface DirectoryEntryRowProps extends DirectoryRow {
   index: number;

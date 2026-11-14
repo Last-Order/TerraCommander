@@ -21,6 +21,7 @@ import {
 import type { AccountRuntime } from './application-services';
 import { measureDirectorySize } from './measure-directory-size';
 import type { StoragePreferences } from './storage-preferences';
+import { DownloadService } from './download-service';
 
 const localConnection: ConnectionDefinition = {
   id: localConnectionId,
@@ -30,6 +31,7 @@ const localConnection: ConnectionDefinition = {
 const browserAuthentication = { method: 'browser' };
 
 export class StorageBrowser {
+  readonly downloads: DownloadService;
   private readonly registry: AdapterRegistry;
   private readonly storage: StorageAccess;
   private readonly connections = new Map<string, Promise<void>>();
@@ -60,6 +62,11 @@ export class StorageBrowser {
       async save() {
         throw new StorageError('Unsupported');
       },
+    });
+    this.downloads = new DownloadService({
+      stat: (ref, context) => this.withBrowsableSpace(ref, () => this.storage.stat(ref, context)),
+      read: (ref, context) =>
+        this.withBrowsableSpace(ref, () => this.storage.read(ref, {}, context)),
     });
   }
 
@@ -185,6 +192,7 @@ export class StorageBrowser {
   async dispose(): Promise<void> {
     this.cancelAuthorization();
     this.directoryMeasurement?.controller.abort();
+    await this.downloads.dispose();
     await this.registry.dispose();
   }
 

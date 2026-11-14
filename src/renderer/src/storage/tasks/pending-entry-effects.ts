@@ -24,7 +24,8 @@ export function selectPendingEntryEffects(
           effects.set(input.entry.ref.locator, { busy: true, optimisticName: input.name });
         break;
       }
-      case 'delete': {
+      case 'delete':
+      case 'download': {
         const { input } = task.request;
         if (directoryKey(input.parent) === parentKey)
           effects.set(input.entry.ref.locator, { busy: true });

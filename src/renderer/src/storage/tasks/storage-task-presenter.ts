@@ -1,5 +1,10 @@
-import type { TaskPresenter, TaskRowModel } from '../../tasks/task-row-model';
-import type { RenameTaskInput, StorageTaskDefinitions } from './storage-task-types';
+import type { TaskRowModel } from '../../tasks/task-row-model';
+import type {
+  DownloadTaskInput,
+  RenameTaskInput,
+  StorageTaskDefinitions,
+} from './storage-task-types';
+import type { QueueTask } from '../../tasks/task-types';
 
 function presentRenameTask(input: RenameTaskInput): TaskRowModel {
   return {
@@ -9,7 +14,10 @@ function presentRenameTask(input: RenameTaskInput): TaskRowModel {
   };
 }
 
-export const presentStorageTask: TaskPresenter<StorageTaskDefinitions> = (task) => {
+export const presentStorageTask = (
+  task: QueueTask<StorageTaskDefinitions>,
+  onRetry?: (input: DownloadTaskInput) => void,
+): TaskRowModel => {
   switch (task.request.type) {
     case 'rename':
       return presentRenameTask(task.request.input);
@@ -19,5 +27,33 @@ export const presentStorageTask: TaskPresenter<StorageTaskDefinitions> = (task) 
         title: [{ text: task.request.input.entry.name }],
         summary: task.request.input.directoryPath,
       };
+    case 'download': {
+      const input = task.request.input;
+      return {
+        typeLabel: { key: 'storage:downloadEntry' },
+        title: [{ text: input.entry.name }],
+        summary: `${input.directoryPath} → ${input.destination.path}`,
+        actions:
+          task.status === 'completed'
+            ? [
+                {
+                  id: 'show',
+                  label: { key: 'storage:showDownloadInFolder' },
+                  onClick: () => {
+                    void window.desktop.downloads.showInFolder(input.destination.id);
+                  },
+                },
+              ]
+            : (task.status === 'failed' || task.status === 'cancelled') && onRetry
+              ? [
+                  {
+                    id: 'retry',
+                    label: { key: 'common:retry' },
+                    onClick: () => onRetry(input),
+                  },
+                ]
+              : [],
+      };
+    }
   }
 };

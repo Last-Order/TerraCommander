@@ -1,6 +1,7 @@
 import type { AppLanguage } from '../../shared/language';
 import { LazyService } from './lazy-service';
 import type { StorageBrowser } from './storage-browser';
+import type { DownloadPreferences } from './download-preferences';
 
 type AccountModule = typeof import('../accounts/runtime/desktop-accounts');
 export type AccountRuntime = ReturnType<AccountModule['createDesktopAccountServices']>;
@@ -15,9 +16,20 @@ interface ApplicationServicesOptions {
 export class ApplicationServices {
   readonly accounts: LazyService<AccountRuntime>;
   readonly storageBrowser: LazyService<StorageBrowser>;
+  readonly downloadPreferences: LazyService<DownloadPreferences>;
   private disposal: Promise<void> | undefined;
 
   constructor(options: ApplicationServicesOptions) {
+    this.downloadPreferences = new LazyService({
+      create: async (signal) => {
+        await options.whenReady();
+        signal.throwIfAborted();
+        const { createDesktopDownloadPreferences } = await import('./desktop-download-preferences');
+        signal.throwIfAborted();
+        return createDesktopDownloadPreferences();
+      },
+      dispose: async () => {},
+    });
     this.accounts = new LazyService({
       create: async (signal) => {
         await options.whenReady();
@@ -55,7 +67,11 @@ export class ApplicationServices {
           throw new AggregateError(failures, 'Application service cleanup failed.');
       });
       // Close slots immediately and directly; get() would initialize unused services.
-      shutdowns.push(this.storageBrowser.dispose(), this.accounts.dispose());
+      shutdowns.push(
+        this.storageBrowser.dispose(),
+        this.accounts.dispose(),
+        this.downloadPreferences.dispose(),
+      );
     }
     return this.disposal;
   }

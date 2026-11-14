@@ -1,5 +1,6 @@
 import { createStore } from 'zustand/vanilla';
 import { isActiveTask } from './task-selectors';
+import { TaskCancelledError } from './task-types';
 import type {
   QueueTask,
   TaskCategory,
@@ -43,6 +44,40 @@ export class TaskQueue<Definitions extends TaskDefinitions> {
     this.store.setState(({ tasks }) => ({ tasks: tasks.filter(isActiveTask) }));
   }
 
+  canCancel(task: QueueTask<Definitions>): boolean {
+    return (
+      isActiveTask(task) &&
+      !task.cancelling &&
+      task.progress?.cancellable !== false &&
+      this.handlers[task.request.type].cancel !== undefined
+    );
+  }
+
+  async cancel(id: number): Promise<void> {
+    const task = this.store.getState().tasks.find((candidate) => candidate.id === id);
+    if (!task || !this.canCancel(task)) return;
+    this.update({ ...task, cancelling: true } as QueueTask<Definitions>);
+    try {
+      await this.handlers[task.request.type].cancel?.(task.request.input);
+      if (task.status === 'queued') this.finish({ id, request: task.request, status: 'cancelled' });
+    } catch (error) {
+      if (task.status === 'queued')
+        this.finish({
+          id,
+          request: task.request,
+          status: 'failed',
+          failure: this.handlers[task.request.type].toFailure(error),
+        });
+      else {
+        const current = this.store.getState().tasks.find((candidate) => candidate.id === id);
+        if (current && isActiveTask(current))
+          this.update({ ...current, cancelling: false } as QueueTask<Definitions>);
+      }
+    } finally {
+      this.drain();
+    }
+  }
+
   private update(task: QueueTask<Definitions>): void {
     this.store.setState(({ tasks }) => ({
       tasks: tasks.map((previous) => (previous.id === task.id ? task : previous)),
@@ -76,6 +111,10 @@ export class TaskQueue<Definitions extends TaskDefinitions> {
         },
       });
     } catch (error) {
+      if (error instanceof TaskCancelledError) {
+        this.finish({ id: task.id, request: task.request, status: 'cancelled' });
+        return;
+      }
       let failure: TaskFailure;
       try {
         failure = handler.toFailure(error);
@@ -105,7 +144,9 @@ export class TaskQueue<Definitions extends TaskDefinitions> {
         (task = this.store.getState().tasks.find((candidate) => {
           const category = this.handlers[candidate.request.type].category;
           return (
-            candidate.status === 'queued' && this.running[category] < concurrencyLimits[category]
+            candidate.status === 'queued' &&
+            !candidate.cancelling &&
+            this.running[category] < concurrencyLimits[category]
           );
         }))
       ) {
