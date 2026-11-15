@@ -59,7 +59,6 @@ export const zhCN = {
     overwriteAndDownload: '覆盖并下载',
     downloadReceiving: '下载中',
     downloadSaving: '保存中',
-    showDownloadInFolder: '在文件夹中显示',
     deleteEntry: '删除',
     deleteEntryConfirmation: '确定删除“{{name}}”吗？删除后不可恢复。',
     invalidEntryName: '请输入有效的名称。',

@@ -40,7 +40,6 @@ async function setup() {
       pending.resolve({ ok: false, code: 'Cancelled' });
       return success(undefined);
     }),
-    showInFolder: vi.fn(async () => success(undefined)),
     onProgress: vi.fn((next: (progress: DownloadProgress) => void) => {
       listener = next;
       return unsubscribe;
@@ -123,8 +122,8 @@ it('opens an editable overlay and starts a background download without opening t
   await act(async () => {
     pending.resolve(success(undefined));
   });
-  await user.click(await queue.findByRole('button', { name: '在文件夹中显示' }));
-  expect(downloads.showInFolder).toHaveBeenCalledWith('download');
+  expect(await queue.findByText('已完成')).toBeInTheDocument();
+  expect(within(queue.getByRole('listitem')).queryByRole('button')).not.toBeInTheDocument();
   expect(unsubscribe).toHaveBeenCalledOnce();
 });
 
@@ -146,7 +145,7 @@ it('requires explicit replacement confirmation while retaining the download dial
   });
 });
 
-it('cancels a running transfer and offers a fresh download overlay for retry', async () => {
+it('cancels a running transfer without offering task-specific controls', async () => {
   const { user, modal, downloads, unsubscribe } = await setup();
   await user.click(modal.getByRole('button', { name: '开始下载' }));
   const queue = within(await screen.findByRole('region', { name: '任务队列' }));
@@ -154,9 +153,7 @@ it('cancels a running transfer and offers a fresh download overlay for retry', a
   expect(downloads.cancel).toHaveBeenCalledWith('download');
   expect(await queue.findByText('已取消')).toBeInTheDocument();
   expect(unsubscribe).toHaveBeenCalledOnce();
-  await user.click(queue.getByRole('button', { name: '重试' }));
-  const retry = within(await screen.findByRole('dialog', { name: '下载…' }));
-  expect(retry.getByRole('textbox', { name: '保存目录' })).toHaveValue('D:\\Downloads');
+  expect(within(queue.getByRole('listitem')).queryByRole('button')).not.toBeInTheDocument();
   expect(downloads.prepare).toHaveBeenCalledOnce();
 });
 

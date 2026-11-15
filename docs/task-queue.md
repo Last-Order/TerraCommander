@@ -20,7 +20,7 @@ Local destination policies distinguish exclusive creation from replacement. Excl
 
 ## Data and Presentation Boundaries
 
-Requests, results, and progress remain data snapshots. Credentials, executable callbacks, React elements, and SDK objects do not belong in task state. UI callbacks can exist in derived presentation models.
+Requests, results, and progress remain data snapshots. Credentials, executable callbacks, React elements, and SDK objects do not belong in task state. Presentation models contain display data only. The common queue UI owns task controls; task integrations cannot add custom controls.
 
 The [storage task integration](../src/renderer/src/storage/tasks/) owns storage-specific inputs, handlers, failure mapping, and presentation. Common queue rows consume presentation models without inspecting storage task inputs. Translate labels and failure descriptors at render time so changing languages updates existing rows.
 

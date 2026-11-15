@@ -54,7 +54,6 @@ it.each([false, true])(
     await service.run(1, prepared.id, progress);
     expect(await readFile(path, 'utf8')).toBe('content');
     expect(await readdir(temporary.path)).toEqual([entry.name]);
-    expect(service.completedPath(1, prepared.id)).toBe(path);
     expect(progress).toHaveBeenLastCalledWith({
       id: prepared.id,
       stage: 'saving',

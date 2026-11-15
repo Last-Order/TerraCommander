@@ -110,12 +110,6 @@ export class DownloadService {
     }
   }
 
-  completedPath(owner: number, id: string): string {
-    const record = this.owned(owner, id);
-    if (record.stage !== 'completed') throw new StorageError('InvalidArgument');
-    return record.path;
-  }
-
   cancelOwner(owner: number): void {
     this.ownerEpochs.set(owner, (this.ownerEpochs.get(owner) ?? 0) + 1);
     for (const [id, record] of this.records) {

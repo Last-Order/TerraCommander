@@ -9,7 +9,6 @@ const api: DesktopApi = {
     prepare: (request) => ipcRenderer.invoke(channels.prepareDownload, request),
     run: (id) => ipcRenderer.invoke(channels.runDownload, id),
     cancel: (id) => ipcRenderer.invoke(channels.cancelDownload, id),
-    showInFolder: (id) => ipcRenderer.invoke(channels.showDownloadInFolder, id),
     onProgress: (listener) => {
       const handler = (
         _event: Electron.IpcRendererEvent,

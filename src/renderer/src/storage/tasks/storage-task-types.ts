@@ -1,5 +1,5 @@
 import type { Entry, EntryRef } from '../../../../shared/storage';
-import type { DownloadRequest, PreparedDownload } from '../../../../shared/downloads';
+import type { PreparedDownload } from '../../../../shared/downloads';
 
 export interface RenameTaskInput {
   parent: EntryRef;
@@ -19,7 +19,6 @@ export interface DownloadTaskInput {
   entry: Entry;
   directoryPath: string;
   destination: PreparedDownload;
-  request: DownloadRequest;
 }
 
 export interface DeleteTaskInput {

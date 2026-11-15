@@ -90,12 +90,8 @@
   color: var(--storage-secondary);
 }
 
-.actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.actions button {
+.cancel {
+  flex: none;
   border: 0;
   border-radius: var(--mantine-radius-sm);
   background: transparent;
@@ -104,11 +100,6 @@
   cursor: pointer;
 }
 
-.actions button:hover:enabled {
+.cancel:hover {
   background: var(--storage-hover);
-}
-
-.actions button:disabled {
-  opacity: 0.45;
-  cursor: default;
 }

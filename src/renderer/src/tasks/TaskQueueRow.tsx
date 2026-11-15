@@ -19,9 +19,10 @@ interface TaskQueueRowProps {
   model: TaskRowModel;
   progress?: TaskProgress | undefined;
   failure?: TaskFailure | undefined;
+  onCancel?: (() => void) | undefined;
 }
 
-export function TaskQueueRow({ status, model, progress, failure }: TaskQueueRowProps) {
+export function TaskQueueRow({ status, model, progress, failure, onCancel }: TaskQueueRowProps) {
   const { t, i18n } = useTranslation(rendererNamespaces);
   const formatter = new Intl.NumberFormat(i18n.resolvedLanguage, { maximumFractionDigits: 1 });
   const Icon = statusIcons[status];
@@ -99,19 +100,10 @@ export function TaskQueueRow({ status, model, progress, failure }: TaskQueueRowP
         )}
       </div>
       <span className={classes.status}>{t(`tasks:taskStatus_${status}`)}</span>
-      {model.actions && model.actions.length > 0 && (
-        <div className={classes.actions}>
-          {model.actions.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              disabled={action.disabled}
-              onClick={action.onClick}
-            >
-              {t(action.label.key, { ...action.label.values })}
-            </button>
-          ))}
-        </div>
+      {onCancel && (
+        <button className={classes.cancel} type="button" onClick={onCancel}>
+          {t('common:cancel')}
+        </button>
       )}
     </li>
   );

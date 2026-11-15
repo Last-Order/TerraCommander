@@ -1,4 +1,4 @@
-import { dialog, ipcMain, shell, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
+import { dialog, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import { z } from 'zod';
 import { channels } from '../shared/contracts';
 import type { BrowserResult } from '../shared/storage-browser';
@@ -106,7 +106,4 @@ export function registerDownloadIpc(
   handle(channels.cancelDownload, z.tuple([z.uuid()]), async (window, id) =>
     (await downloads(window)).cancel(window.webContents.id, id),
   );
-  handle(channels.showDownloadInFolder, z.tuple([z.uuid()]), async (window, id) => {
-    shell.showItemInFolder((await downloads(window)).completedPath(window.webContents.id, id));
-  });
 }

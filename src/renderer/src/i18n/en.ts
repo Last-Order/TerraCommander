@@ -61,7 +61,6 @@ export const en = {
     overwriteAndDownload: 'Overwrite and download',
     downloadReceiving: 'Downloading',
     downloadSaving: 'Saving',
-    showDownloadInFolder: 'Show in folder',
     deleteEntry: 'Delete',
     deleteEntryConfirmation: 'Delete “{{name}}”? This action cannot be undone.',
     invalidEntryName: 'Enter a valid name.',

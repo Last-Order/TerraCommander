@@ -1,9 +1,5 @@
 import type { TaskRowModel } from '../../tasks/task-row-model';
-import type {
-  DownloadTaskInput,
-  RenameTaskInput,
-  StorageTaskDefinitions,
-} from './storage-task-types';
+import type { RenameTaskInput, StorageTaskDefinitions } from './storage-task-types';
 import type { QueueTask } from '../../tasks/task-types';
 
 function presentRenameTask(input: RenameTaskInput): TaskRowModel {
@@ -14,10 +10,7 @@ function presentRenameTask(input: RenameTaskInput): TaskRowModel {
   };
 }
 
-export const presentStorageTask = (
-  task: QueueTask<StorageTaskDefinitions>,
-  onRetry?: (input: DownloadTaskInput) => void,
-): TaskRowModel => {
+export const presentStorageTask = (task: QueueTask<StorageTaskDefinitions>): TaskRowModel => {
   switch (task.request.type) {
     case 'rename':
       return presentRenameTask(task.request.input);
@@ -33,26 +26,6 @@ export const presentStorageTask = (
         typeLabel: { key: 'storage:downloadEntry' },
         title: [{ text: input.entry.name }],
         summary: `${input.directoryPath} → ${input.destination.path}`,
-        actions:
-          task.status === 'completed'
-            ? [
-                {
-                  id: 'show',
-                  label: { key: 'storage:showDownloadInFolder' },
-                  onClick: () => {
-                    void window.desktop.downloads.showInFolder(input.destination.id);
-                  },
-                },
-              ]
-            : (task.status === 'failed' || task.status === 'cancelled') && onRetry
-              ? [
-                  {
-                    id: 'retry',
-                    label: { key: 'common:retry' },
-                    onClick: () => onRetry(input),
-                  },
-                ]
-              : [],
       };
     }
   }

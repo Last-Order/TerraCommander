@@ -39,6 +39,5 @@ export interface DownloadsApi {
   prepare(request: DownloadRequest): Promise<BrowserResult<PreparedDownload>>;
   run(id: string): Promise<BrowserResult<void>>;
   cancel(id: string): Promise<BrowserResult<void>>;
-  showInFolder(id: string): Promise<BrowserResult<void>>;
   onProgress(listener: (progress: DownloadProgress) => void): () => void;
 }

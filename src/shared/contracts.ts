@@ -24,7 +24,6 @@ export const channels = {
   prepareDownload: 'downloads:prepare',
   runDownload: 'downloads:run',
   cancelDownload: 'downloads:cancel',
-  showDownloadInFolder: 'downloads:show-in-folder',
   downloadProgress: 'downloads:progress',
 } as const;
 

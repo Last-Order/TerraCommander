@@ -12,21 +12,19 @@ export function EntryDownloadModal({
   entry,
   parent,
   directoryPath,
-  initialRequest,
   onClose,
   onAuthRequired,
 }: {
   entry: Entry;
   parent: EntryRef;
   directoryPath: string;
-  initialRequest?: DownloadRequest | undefined;
   onClose: () => void;
   onAuthRequired: () => void;
 }) {
   const { t } = useTranslation(['storage', 'common', 'errors']);
   const queue = useStorageTaskQueue();
-  const [directory, setDirectory] = useState(initialRequest?.directory ?? '');
-  const [ready, setReady] = useState(initialRequest !== undefined);
+  const [directory, setDirectory] = useState('');
+  const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<StorageErrorKey>();
   const [overwriteRequest, setOverwriteRequest] = useState<DownloadRequest | null>(null);
@@ -36,23 +34,22 @@ export function EntryDownloadModal({
   useEffect(() => {
     let cancelled = false;
     active.current = true;
-    if (!initialRequest)
-      void (async () => {
-        try {
-          const settings = await resultOf(window.desktop.downloads.getSettings());
-          if (!cancelled) {
-            if (!directoryEdited.current) setDirectory(settings.directory);
-            setReady(true);
-          }
-        } catch (error) {
-          if (!cancelled && !directoryEdited.current) setError(errorKey(error));
+    void (async () => {
+      try {
+        const settings = await resultOf(window.desktop.downloads.getSettings());
+        if (!cancelled) {
+          if (!directoryEdited.current) setDirectory(settings.directory);
+          setReady(true);
         }
-      })();
+      } catch (error) {
+        if (!cancelled && !directoryEdited.current) setError(errorKey(error));
+      }
+    })();
     return () => {
       cancelled = true;
       active.current = false;
     };
-  }, [initialRequest]);
+  }, []);
   async function submit(request: DownloadRequest) {
     if (submitting.current || !request.directory) return;
     submitting.current = true;
@@ -64,7 +61,7 @@ export function EntryDownloadModal({
         !active.current ||
         !queue.enqueue({
           type: 'download',
-          input: { parent, entry, directoryPath, request, destination },
+          input: { parent, entry, directoryPath, destination },
         })
       ) {
         await resultOf(window.desktop.downloads.cancel(destination.id));

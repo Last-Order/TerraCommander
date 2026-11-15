@@ -57,30 +57,20 @@ it('renders optional progress without inventing a total and updates known progre
   expect(screen.queryByText('0 / 0 项')).not.toBeInTheDocument();
 });
 
-it('only renders supplied actions and honors their disabled state', async () => {
+it('renders the queue cancellation control only when cancellation is available', async () => {
   const i18n = await createRendererI18n('zh-CN');
   const user = userEvent.setup();
-  const retry = vi.fn();
   const cancel = vi.fn();
-  render(
+  const row = (onCancel?: () => void) => (
     <I18nextProvider i18n={i18n}>
-      <TaskQueueRow
-        status="failed"
-        model={{
-          ...model,
-          actions: [
-            { id: 'retry', label: { key: 'common:retry' }, onClick: retry },
-            { id: 'cancel', label: { key: 'common:cancel' }, disabled: true, onClick: cancel },
-          ],
-        }}
-      />
-    </I18nextProvider>,
+      <TaskQueueRow status="running" model={model} onCancel={onCancel} />
+    </I18nextProvider>
   );
-  await user.click(screen.getByRole('button', { name: '重试' }));
+  const { rerender } = render(row(cancel));
   await user.click(screen.getByRole('button', { name: '取消' }));
-  expect(retry).toHaveBeenCalledOnce();
-  expect(cancel).not.toHaveBeenCalled();
-  expect(screen.getByRole('button', { name: '取消' })).toBeDisabled();
+  expect(cancel).toHaveBeenCalledOnce();
+  rerender(row());
+  expect(screen.queryByRole('button')).not.toBeInTheDocument();
 });
 
 it('formats byte progress and current throughput with suitable units', async () => {
