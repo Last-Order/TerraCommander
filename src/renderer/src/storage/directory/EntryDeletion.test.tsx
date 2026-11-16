@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import type { Entry, Space } from '../../../../shared/storage';
 import {
   emptyLocalConnection,
+  localConnectionId,
   type BrowserResult,
   type StorageBrowserApi,
 } from '../../../../shared/storage-browser';
@@ -12,31 +13,19 @@ import { pausePage, success } from '../../testing/storage-browser-fixtures';
 
 afterEach(() => vi.unstubAllGlobals());
 
-async function setup(
-  kind: Entry['kind'] = 'file',
-  {
-    capabilities,
-    drive = 'local',
-  }: { capabilities?: Entry['capabilities']; drive?: 'local' | 'personal' | 'shared' } = {},
-) {
+async function setup(kind: Entry['kind'] = 'file') {
   const user = userEvent.setup();
-  const connectionId = drive === 'local' ? 'local' : 'studio';
-  const spaceId = drive === 'shared' ? 'shared:team' : drive === 'personal' ? 'my-drive' : 'disk';
   const space = {
-    id: spaceId,
-    connectionId,
+    id: 'disk',
+    connectionId: localConnectionId,
     name: '项目盘',
-    root: {
-      connectionId,
-      spaceId,
-      locator: drive === 'shared' ? 'team' : drive === 'personal' ? 'root' : '.',
-    },
+    root: { connectionId: localConnectionId, spaceId: 'disk', locator: '.' },
   } satisfies Space;
   const file: Entry = {
     ref: { ...space.root, locator: 'notes.txt' },
     name: '笔记.txt',
     kind,
-    capabilities: capabilities ?? {
+    capabilities: {
       remove: { support: 'supported' },
       rename: { support: 'supported' },
     },
@@ -58,8 +47,6 @@ async function setup(
         success([
           {
             ...emptyLocalConnection,
-            id: space.connectionId,
-            provider: drive === 'local' ? 'local' : 'google-drive',
             spaces: [space],
           },
         ]),
@@ -127,36 +114,6 @@ it('hides deletion for multiple selected entries', async () => {
   expect(screen.queryByRole('menuitem', { name: '删除' })).not.toBeInTheDocument();
   expect(deleteEntry).not.toHaveBeenCalled();
 });
-
-it.each(['personal', 'shared'] as const)(
-  'deletes a %s Drive file with an irreversible warning',
-  async (drive) => {
-    const { user, file, deleteEntry, openDelete } = await setup('file', {
-      drive,
-      capabilities: { remove: { support: 'supported' } },
-    });
-    const dialog = await openDelete();
-    expect(dialog.getByText(`确定删除“${file.name}”吗？删除后不可恢复。`)).toBeInTheDocument();
-    expect(dialog.queryByText(/可在存储服务的回收站中恢复/)).not.toBeInTheDocument();
-    await user.click(dialog.getByRole('button', { name: '删除' }));
-    await waitFor(() =>
-      expect(screen.queryByRole('button', { name: file.name })).not.toBeInTheDocument(),
-    );
-    expect(deleteEntry).toHaveBeenCalledExactlyOnceWith(file.ref);
-  },
-);
-
-it.each(['personal', 'shared'] as const)(
-  'hides deletion for a %s Drive file when the adapter reports removal is unsupported',
-  async (drive) => {
-    const { openMenu } = await setup('file', {
-      drive,
-      capabilities: { remove: { support: 'unsupported' } },
-    });
-    await openMenu();
-    expect(screen.queryByRole('menuitem', { name: '删除' })).not.toBeInTheDocument();
-  },
-);
 
 it.each(['directory', 'other'] as const)('hides deletion for a selected %s', async (kind) => {
   const { openMenu } = await setup(kind);

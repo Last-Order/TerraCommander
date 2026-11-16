@@ -59,6 +59,8 @@ it.each([
     });
     await storage.remove(ref);
     expect(patched()).toBe(true);
+    file.capabilities.canDelete = true;
+    await storage.remove(ref);
 
     for (const [failureStatus, code] of [
       [401, 'AuthRequired'],

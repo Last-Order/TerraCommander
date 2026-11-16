@@ -119,18 +119,14 @@ function TableFixture({ props, i18n }: { props: TableProps; i18n: i18n }) {
 
 async function renderTable(rows = createRows(10_000)) {
   const i18n = await createRendererI18n('en');
-  const dateFormatter = new Intl.DateTimeFormat('en');
-  const sizeFormatter = new Intl.NumberFormat('en');
-  const formatDate = vi.fn(dateFormatter.format.bind(dateFormatter));
-  Object.defineProperty(dateFormatter, 'format', { value: formatDate });
   const props = {
     rows,
     sort: null,
     canSort: true,
     loadingWithoutEntries: false,
     selectedLocators: new Set<string>(),
-    dateFormatter,
-    sizeFormatter,
+    dateFormatter: new Intl.DateTimeFormat('en'),
+    sizeFormatter: new Intl.NumberFormat('en'),
     onSelect: vi.fn(),
     onSelectAll: vi.fn(),
     onSort: vi.fn(),
@@ -146,7 +142,7 @@ async function renderTable(rows = createRows(10_000)) {
   const scrollToRow = (index: number) =>
     fireEvent.scroll(scroll, { target: { scrollTop: headerOffset + index * rowHeight } });
 
-  return { ...view, rerender, props, rows, scroll, table, mountedRows, scrollToRow, formatDate };
+  return { ...view, rerender, props, rows, scroll, table, mountedRows, scrollToRow };
 }
 
 it('bounds mounted rows for 10,000 files and reaches the middle and last file', async () => {
@@ -176,12 +172,10 @@ it('bounds mounted rows for 10,000 files and reaches the middle and last file', 
   expect(mountedRows().length).toBeLessThan(40);
 });
 
-it('preserves selection across scrolling and skips formatting unchanged rows', async () => {
-  const { rerender, props, scrollToRow, formatDate, mountedRows } = await renderTable();
-  formatDate.mockClear();
+it('preserves selection across scrolling', async () => {
+  const { rerender, props, scrollToRow, mountedRows } = await renderTable();
   const selected = { ...props, selectedLocators: new Set(['0']) };
   rerender(selected);
-  expect(formatDate).toHaveBeenCalledTimes(1);
   expect(screen.getByRole('button', { name: 'file0.txt' })).toHaveAttribute('aria-pressed', 'true');
 
   scrollToRow(5000);

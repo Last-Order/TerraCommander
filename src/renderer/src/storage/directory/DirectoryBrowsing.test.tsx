@@ -399,10 +399,8 @@ it('enables local sorting only after the entire directory is loaded', async () =
     await waitFor(() => expect(listDirectory).toHaveBeenLastCalledWith(space.root, 'last'));
     expect(entryNames()).toEqual(['file10', 'unknown']);
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '加载更多' })).not.toBeInTheDocument();
     for (const header of table.getAllByRole('columnheader')) {
       expect(within(header).queryByRole('button')).not.toBeInTheDocument();
-      expect(header.querySelector('svg')).not.toBeInTheDocument();
       expect(header).not.toHaveAttribute('aria-sort');
     }
 

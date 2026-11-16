@@ -163,7 +163,7 @@ it('requires explicit replacement confirmation while retaining the download dial
   });
 });
 
-it('cancels a running transfer without offering task-specific controls', async () => {
+it('cancels a running transfer and unsubscribes from progress', async () => {
   const { user, modal, downloads, unsubscribe } = await setup();
   await user.click(modal.getByRole('button', { name: '开始下载' }));
   const queue = within(await screen.findByRole('region', { name: '任务队列' }));

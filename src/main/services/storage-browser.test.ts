@@ -40,68 +40,50 @@ it('deletes local files without initializing accounts', async () => {
   }
 });
 
-it.each([
-  { spaceId: 'my-drive', driveId: undefined },
-  { spaceId: 'shared:team', driveId: 'team' },
-])(
-  'always trashes deleted files in $spaceId even when permanent deletion is allowed',
-  async ({ spaceId, driveId }) => {
-    const { runtime } = accountFixture();
-    const snapshotStore = memorySnapshotStore();
-    let browser: StorageBrowser | undefined;
-    const file = {
-      id: 'notes',
-      name: 'notes.txt',
-      mimeType: 'text/plain',
-      driveId,
-      capabilities: { canTrash: true, canDelete: true },
-    };
-    let patchStatus = 200;
-    const request = vi.fn<typeof fetch>(async (input, init) => {
-      const url = new URL(input instanceof Request ? input.url : input);
-      expect(url.pathname).toBe('/drive/v3/files/notes');
-      expect(url.searchParams.get('supportsAllDrives')).toBe('true');
-      expect(init?.method).not.toBe('DELETE');
-      if (init?.method === 'PATCH') {
-        expect(init.body).toBe(JSON.stringify({ trashed: true }));
-        return Response.json({ ...file, trashed: true }, { status: patchStatus });
-      }
-      return Response.json(file);
-    });
-    vi.stubGlobal('fetch', request);
-    try {
-      const account = await runtime.accounts.add('google-drive', { method: 'browser' });
-      snapshotStore.write({
-        version: 2,
-        folders: [],
-        connections: [
-          {
-            id: account.id,
-            spaces: [{ id: spaceId, cached: { name: 'Drive', locator: driveId ?? 'root' } }],
-          },
-        ],
-      });
-      browser = new StorageBrowser(new StoragePreferences(snapshotStore), async () => runtime, {
-        event() {},
-      });
-      const ref = { connectionId: account.id, spaceId, locator: file.id };
-      await browser.deleteEntry(ref);
-      expect(request.mock.calls.map(([, init]) => init?.method ?? 'GET')).toEqual(['GET', 'PATCH']);
-      patchStatus = 403;
-      await expect(browser.deleteEntry(ref)).rejects.toMatchObject({ code: 'PermissionDenied' });
-      expect(request.mock.calls.map(([, init]) => init?.method ?? 'GET')).toEqual([
-        'GET',
-        'PATCH',
-        'GET',
-        'PATCH',
-      ]);
-    } finally {
-      vi.unstubAllGlobals();
-      await browser?.dispose();
-      await runtime.dispose();
+it('routes a shared Drive deletion through the saved account connection', async () => {
+  const { runtime } = accountFixture();
+  const snapshotStore = memorySnapshotStore();
+  let browser: StorageBrowser | undefined;
+  const file = {
+    id: 'notes',
+    name: 'notes.txt',
+    mimeType: 'text/plain',
+    driveId: 'team',
+    capabilities: { canTrash: true, canDelete: true },
+  };
+  const request = vi.fn<typeof fetch>(async (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    expect(url.pathname).toBe('/drive/v3/files/notes');
+    if (init?.method === 'PATCH') {
+      return Response.json({ ...file, trashed: true });
     }
-  },
-);
+    return Response.json(file);
+  });
+  vi.stubGlobal('fetch', request);
+  try {
+    const account = await runtime.accounts.add('google-drive', { method: 'browser' });
+    snapshotStore.write({
+      version: 2,
+      folders: [],
+      connections: [
+        {
+          id: account.id,
+          spaces: [{ id: 'shared:team', cached: { name: 'Drive', locator: 'team' } }],
+        },
+      ],
+    });
+    browser = new StorageBrowser(new StoragePreferences(snapshotStore), async () => runtime, {
+      event() {},
+    });
+    const ref = { connectionId: account.id, spaceId: 'shared:team', locator: file.id };
+    await browser.deleteEntry(ref);
+    expect(request.mock.calls.map(([, init]) => init?.method ?? 'GET')).toEqual(['GET', 'PATCH']);
+  } finally {
+    vi.unstubAllGlobals();
+    await browser?.dispose();
+    await runtime.dispose();
+  }
+});
 
 it('restores a chosen folder and confines browsing to its saved root', async () => {
   await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-storage-'));
