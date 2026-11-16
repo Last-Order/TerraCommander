@@ -2,12 +2,13 @@ import { expect, it, vi } from 'vitest';
 import { AdapterRegistry, StorageAccess } from '../..';
 import { googleDriveAdapterFactory } from './google-drive-adapter';
 
-async function fixture(media: () => Response | Promise<Response>, file = {}) {
+async function fixture(media: (init?: RequestInit) => Response | Promise<Response>, file = {}) {
+  const event = vi.fn();
   const request = vi.fn<typeof fetch>(async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : input);
     expect(new Headers(init?.headers).get('authorization')).toBe('Bearer access');
     return url.searchParams.get('alt') === 'media'
-      ? media()
+      ? media(init)
       : Response.json({
           id: 'file',
           name: 'file.txt',
@@ -26,7 +27,7 @@ async function fixture(media: () => Response | Promise<Response>, file = {}) {
         getAccessToken: async () => 'access',
       }),
     },
-    logger: { event() {} },
+    logger: { event },
   });
   registry.register(googleDriveAdapterFactory(request));
   await registry.connect({
@@ -37,7 +38,7 @@ async function fixture(media: () => Response | Promise<Response>, file = {}) {
   });
   const storage = new StorageAccess(registry, { async load() {}, async save() {} });
   const ref = { connectionId: 'account', spaceId: 'my-drive', locator: 'file' };
-  return { registry, storage, ref, request };
+  return { registry, storage, ref, request, event };
 }
 
 it('streams Drive content with its response length and authorization', async () => {
@@ -51,6 +52,107 @@ it('streams Drive content with its response length and authorization', async () 
     for await (const chunk of handle.stream) chunks.push(chunk as Buffer);
     expect(Buffer.concat(chunks).toString()).toBe('content');
     await handle.dispose();
+  } finally {
+    await registry.dispose();
+  }
+});
+
+it('distinguishes a failed range request from initial download and metadata failures', async () => {
+  const { registry, storage, ref, event } = await fixture(() => {
+    throw new TypeError('fetch failed', { cause: { code: 'UND_ERR_SOCKET' } });
+  });
+  try {
+    await expect(storage.read(ref, { range: { offset: 4 } })).rejects.toMatchObject({
+      code: 'NetworkError',
+    });
+    expect(event).toHaveBeenCalledExactlyOnceWith('google-drive.request.failed', {
+      stage: 'headers',
+      timedOut: false,
+      rangeRequested: true,
+      errorCode: 'NetworkError',
+      networkCode: 'UND_ERR_SOCKET',
+    });
+  } finally {
+    await registry.dispose();
+  }
+});
+
+it('records a body interruption separately from failure to open a range', async () => {
+  const { registry, storage, ref, event } = await fixture(
+    () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(new TypeError('private details', { cause: { code: 'ECONNRESET' } }));
+          },
+        }),
+        { status: 206, headers: { 'Content-Range': 'bytes 4-6/7' } },
+      ),
+  );
+  try {
+    const handle = await storage.read(ref, { range: { offset: 4 } });
+    await expect(async () => {
+      for await (const _chunk of handle.stream) {
+        /* Consume the interrupted response. */
+      }
+    }).rejects.toMatchObject({ code: 'NetworkError' });
+    await handle.dispose();
+    expect(event).toHaveBeenCalledExactlyOnceWith('google-drive.request.failed', {
+      stage: 'body',
+      timedOut: false,
+      rangeRequested: true,
+      status: 206,
+      errorCode: 'NetworkError',
+      networkCode: 'ECONNRESET',
+    });
+  } finally {
+    await registry.dispose();
+  }
+});
+
+it('records a range response header timeout', async () => {
+  vi.useFakeTimers();
+  const { registry, storage, ref, request, event } = await fixture(
+    (init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(new DOMException('Aborted', 'AbortError')),
+        );
+      }),
+  );
+  try {
+    const failed = expect(storage.read(ref, { range: { offset: 4 } })).rejects.toMatchObject({
+      code: 'NetworkError',
+    });
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    await vi.advanceTimersByTimeAsync(20_000);
+    await failed;
+    expect(event).toHaveBeenCalledExactlyOnceWith('google-drive.request.failed', {
+      stage: 'headers',
+      timedOut: true,
+      rangeRequested: true,
+      errorCode: 'NetworkError',
+    });
+  } finally {
+    vi.useRealTimers();
+    await registry.dispose();
+  }
+});
+
+it('identifies metadata request failures before a resumed content request can start', async () => {
+  const { registry, storage, ref, request, event } = await fixture(() => new Response('unused'));
+  request.mockRejectedValueOnce(new TypeError('fetch failed', { cause: { code: 'ENOTFOUND' } }));
+  try {
+    await expect(storage.read(ref, { range: { offset: 4 } })).rejects.toMatchObject({
+      code: 'NetworkError',
+    });
+    expect(request).toHaveBeenCalledOnce();
+    expect(event).toHaveBeenCalledExactlyOnceWith('google-drive.request.failed', {
+      stage: 'metadata',
+      timedOut: false,
+      errorCode: 'NetworkError',
+      networkCode: 'ENOTFOUND',
+    });
   } finally {
     await registry.dispose();
   }

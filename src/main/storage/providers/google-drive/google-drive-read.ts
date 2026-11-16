@@ -3,7 +3,9 @@ import type { ByteRange } from '../../../../shared/storage';
 import type { GoogleDriveAuthorization } from '../../../accounts/providers/google-drive/credential-resolver';
 import type { OperationContext, ReadHandle } from '../../core/contracts';
 import { StorageError, throwIfAborted } from '../../core/errors';
+import type { StorageLogger } from '../../ports/services';
 import { driveFailure } from './google-drive-adapter';
+import { logGoogleDriveFailure } from './google-drive-diagnostics';
 
 /** A header timeout and an inactivity timeout allow large, continuously flowing downloads. */
 export async function readGoogleDriveContent(
@@ -12,6 +14,7 @@ export async function readGoogleDriveContent(
   request: typeof fetch,
   context: OperationContext,
   range?: ByteRange,
+  logger?: StorageLogger,
 ): Promise<ReadHandle> {
   throwIfAborted(context.signal);
   const accessToken = await authorization.getAccessToken(context);
@@ -19,11 +22,26 @@ export async function readGoogleDriveContent(
   const controller = new AbortController();
   const abort = () => controller.abort();
   context.signal?.addEventListener('abort', abort, { once: true });
-  let timeout = setTimeout(abort, 20_000);
+  let timedOut = false;
+  const abortOnTimeout = () => {
+    timedOut = true;
+    abort();
+  };
+  let timeout = setTimeout(abortOnTimeout, 20_000);
   timeout.unref();
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   let stream: Readable | undefined;
   let disposed = false;
+  let status: number | undefined;
+  function logFailure(error: unknown, stage: 'headers' | 'body') {
+    if (logger)
+      logGoogleDriveFailure(logger, error, {
+        stage,
+        timedOut,
+        rangeRequested: range !== undefined,
+        ...(status !== undefined ? { status } : {}),
+      });
+  }
   async function dispose(destroyStream = true) {
     if (disposed) return;
     disposed = true;
@@ -50,6 +68,7 @@ export async function readGoogleDriveContent(
         signal: controller.signal,
       },
     );
+    status = response.status;
     if (!response.ok) {
       const payload: unknown = await response.json().catch(() => undefined);
       throw driveFailure(response.status, payload);
@@ -63,7 +82,7 @@ export async function readGoogleDriveContent(
       (async function* () {
         try {
           while (true) {
-            timeout = setTimeout(abort, 60_000);
+            timeout = setTimeout(abortOnTimeout, 60_000);
             timeout.unref();
             const chunk = await bodyReader.read();
             clearTimeout(timeout);
@@ -73,7 +92,9 @@ export async function readGoogleDriveContent(
           }
         } catch (error) {
           throwIfAborted(context.signal);
-          throw new StorageError('NetworkError', { cause: error });
+          const failure = new StorageError('NetworkError', { cause: error });
+          logFailure(failure, 'body');
+          throw failure;
         } finally {
           await dispose(false);
         }
@@ -85,8 +106,10 @@ export async function readGoogleDriveContent(
   } catch (error) {
     await dispose();
     throwIfAborted(context.signal);
-    if (error instanceof StorageError) throw error;
-    throw new StorageError('NetworkError', { cause: error });
+    const failure =
+      error instanceof StorageError ? error : new StorageError('NetworkError', { cause: error });
+    logFailure(failure, 'headers');
+    throw failure;
   }
 }
 

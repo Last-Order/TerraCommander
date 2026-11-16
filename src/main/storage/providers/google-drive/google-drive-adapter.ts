@@ -15,6 +15,8 @@ import type { OperationContext } from '../../core/contracts';
 import { StorageError, throwIfAborted } from '../../core/errors';
 import { parse } from '../../core/validation';
 import type { AdapterFactory, StorageAdapter } from '../../ports/adapter';
+import type { StorageLogger } from '../../ports/services';
+import { logGoogleDriveFailure } from './google-drive-diagnostics';
 import { readGoogleDriveContent } from './google-drive-read';
 
 const myDriveId = 'my-drive';
@@ -68,13 +70,13 @@ export function myDriveSpace(connectionId: string): Space {
 export function googleDriveAdapterFactory(request: typeof fetch = fetch): AdapterFactory {
   return {
     provider: 'google-drive',
-    async create(connection, { credentials }, context) {
+    async create(connection, { credentials, logger }, context) {
       if (!connection.credentialRef) throw new StorageError('AuthRequired');
       const authorization = await credentials.resolve(connection.credentialRef, context);
       if (!matchesGoogleDriveAuthorization(authorization, connection)) {
         throw new StorageError('AuthRequired');
       }
-      return new GoogleDriveAdapter(authorization, request);
+      return new GoogleDriveAdapter(authorization, request, logger);
     },
   };
 }
@@ -85,6 +87,7 @@ class GoogleDriveAdapter implements StorageAdapter {
   constructor(
     private readonly authorization: GoogleDriveAuthorization,
     private readonly request: typeof fetch,
+    private readonly logger: StorageLogger,
   ) {
     this.connectionId = authorization.connectionId;
   }
@@ -190,6 +193,7 @@ class GoogleDriveAdapter implements StorageAdapter {
       this.request,
       context,
       options.range,
+      this.logger,
     );
   }
 
@@ -231,7 +235,7 @@ class GoogleDriveAdapter implements StorageAdapter {
     const accessToken = await this.authorization.getAccessToken(context);
     const timeout = AbortSignal.timeout(20_000);
     const signal = context.signal ? AbortSignal.any([timeout, context.signal]) : timeout;
-    let response: Response;
+    let response: Response | undefined;
     try {
       response = await this.request(
         `https://www.googleapis.com/drive/v3/${path}?${params.toString()}`,
@@ -245,15 +249,22 @@ class GoogleDriveAdapter implements StorageAdapter {
           signal,
         },
       );
+      const payload: unknown = await response.json().catch(() => undefined);
+      throwIfAborted(context.signal);
+      if (timeout.aborted) throw new StorageError('NetworkError');
+      if (!response.ok) throw driveFailure(response.status, payload);
+      return parse(schema, payload, 'OutcomeUnknown');
     } catch (error) {
       throwIfAborted(context.signal);
-      throw new StorageError('NetworkError', { cause: error });
+      const failure =
+        error instanceof StorageError ? error : new StorageError('NetworkError', { cause: error });
+      logGoogleDriveFailure(this.logger, failure, {
+        stage: 'metadata',
+        timedOut: timeout.aborted,
+        ...(response ? { status: response.status } : {}),
+      });
+      throw failure;
     }
-    const payload: unknown = await response.json().catch(() => undefined);
-    throwIfAborted(context.signal);
-    if (timeout.aborted) throw new StorageError('NetworkError');
-    if (!response.ok) throw driveFailure(response.status, payload);
-    return parse(schema, payload, 'OutcomeUnknown');
   }
 }
 
