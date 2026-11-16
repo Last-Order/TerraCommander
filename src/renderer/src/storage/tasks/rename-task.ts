@@ -14,7 +14,10 @@ export function createRenameTaskHandler({
   return {
     category: 'operation',
     conflictKeys: ({ entry }) => [directoryKey(entry.ref)],
-    execute: ({ entry, name }) => resultOf(window.desktop.storage.renameEntry(entry.ref, name)),
+    execute: async ({ entry, name }) => ({
+      status: 'completed',
+      result: await resultOf(window.desktop.storage.renameEntry(entry.ref, name)),
+    }),
     onSuccess: ({ parent, entry }, result) => {
       try {
         directoryCache.rename({ parent, previous: entry.ref, entry: result });

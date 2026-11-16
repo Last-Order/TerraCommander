@@ -87,3 +87,62 @@ it('cancels the HTTP body when an unconsumed handle is abandoned', async () => {
     await registry.dispose();
   }
 });
+
+it.each([undefined, 2])(
+  'requests an exact byte range and preserves its response length; length: %s',
+  async (length) => {
+    const body = length === undefined ? 'ent' : 'en';
+    const { registry, storage, ref, request } = await fixture(
+      () =>
+        new Response(body, {
+          status: 206,
+          headers: { 'Content-Range': `bytes 4-${length === undefined ? 6 : 5}/7` },
+        }),
+      { size: '7', sha256Checksum: 'a'.repeat(64), md5Checksum: 'b'.repeat(32) },
+    );
+    try {
+      const handle = await storage.read(ref, {
+        range: { offset: 4, ...(length !== undefined ? { length } : {}) },
+      });
+      expect(handle.length).toBe(body.length);
+      const chunks: Buffer[] = [];
+      for await (const chunk of handle.stream) chunks.push(chunk as Buffer);
+      expect(Buffer.concat(chunks).toString()).toBe(body);
+      const media = request.mock.calls.find(
+        ([input]) =>
+          new URL(input instanceof Request ? input.url : input).searchParams.get('alt') === 'media',
+      );
+      expect(new Headers(media?.[1]?.headers).get('range')).toBe(
+        length === undefined ? 'bytes=4-' : 'bytes=4-5',
+      );
+      expect((await storage.stat(ref)).checksums).toEqual([
+        { algorithm: 'sha256', value: 'a'.repeat(64) },
+        { algorithm: 'md5', value: 'b'.repeat(32) },
+      ]);
+    } finally {
+      await registry.dispose();
+    }
+  },
+);
+
+it.each([
+  { status: 200, headers: {} },
+  { status: 206, headers: { 'Content-Range': 'bytes 0-6/7' } },
+  { status: 206, headers: { 'Content-Range': 'bytes 4-7/7' } },
+  { status: 206, headers: { 'Content-Range': 'bytes 4-5/7' } },
+  { status: 206, headers: { 'Content-Range': 'bytes 4-6/7', 'Content-Length': '7' } },
+  { status: 206, headers: { 'Content-Range': 'bytes 4-6/7', 'Content-Encoding': 'gzip' } },
+])('rejects an ignored or invalid range response: %j', async ({ status, headers }) => {
+  const cancel = vi.fn();
+  const { registry, storage, ref } = await fixture(
+    () => new Response(new ReadableStream({ cancel }), { status, headers }),
+  );
+  try {
+    await expect(storage.read(ref, { range: { offset: 4 } })).rejects.toMatchObject({
+      code: 'OutcomeUnknown',
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+  } finally {
+    await registry.dispose();
+  }
+});

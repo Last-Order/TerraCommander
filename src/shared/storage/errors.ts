@@ -7,7 +7,7 @@ export const storageErrorMessages = {
   RateLimited: 'The storage service is rate limiting requests.',
   Unsupported: 'The requested storage capability is unavailable.',
   PreconditionFailed: 'The storage operation precondition failed.',
-  SourceChanged: 'The upload source has changed.',
+  SourceChanged: 'The transfer source has changed.',
   ResumeExpired: 'The upload recovery session has expired.',
   ResumeInvalid: 'The upload recovery state cannot be used safely.',
   Cancelled: 'The storage operation was cancelled.',

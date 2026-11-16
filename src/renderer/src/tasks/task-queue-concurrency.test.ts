@@ -10,6 +10,7 @@ function setup(overrides: Partial<TaskHandler<string, void>> = {}) {
   const pending = new Map<string, ReturnType<typeof pausePage<void>>>();
   const execute = vi.fn<TaskHandler<string, void>['execute']>(async (input) => {
     await pending.get(input)?.promise;
+    return { status: 'completed', result: undefined };
   });
   const operation: TaskHandler<string, void> = {
     category: 'operation',
@@ -94,6 +95,7 @@ it.each([false, true])(
     execute.mockImplementationOnce(async () => {
       await execution.promise;
       if (failed) throw new Error('private provider error');
+      return { status: 'completed', result: undefined };
     });
     const operations = Array.from({ length: 17 }, (_, index) =>
       enqueue('rename', `operation-${index}`),

@@ -10,7 +10,7 @@ export class DownloadProgressReporter {
     private readonly id: string,
     private readonly totalBytes: number | undefined,
     private readonly completedBytes: () => number,
-    private readonly onProgress: (progress: DownloadProgress) => void,
+    private readonly onProgress: (progress: Omit<DownloadProgress, 'attempt' | 'controls'>) => void,
   ) {
     this.timer = setInterval(() => this.downloading(), 500);
     this.timer.unref();
@@ -51,7 +51,7 @@ export class DownloadProgressReporter {
     this.emit({ ...snapshot, stage: 'downloading', bytesPerSecond });
   }
 
-  private emit(progress: DownloadProgress): void {
+  private emit(progress: Omit<DownloadProgress, 'attempt' | 'controls'>): void {
     try {
       this.onProgress(progress);
     } catch {

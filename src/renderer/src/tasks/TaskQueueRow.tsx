@@ -1,4 +1,4 @@
-import { Check, CircleAlert, Clock3, LoaderCircle, X } from 'lucide-react';
+import { Check, CircleAlert, Clock3, LoaderCircle, Pause, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { rendererNamespaces } from '../i18n/create-renderer-i18n';
 import { formatSize } from '../format/size';
@@ -9,6 +9,7 @@ import classes from './TaskQueueRow.module.css';
 const statusIcons = {
   queued: Clock3,
   running: LoaderCircle,
+  paused: Pause,
   completed: Check,
   failed: CircleAlert,
   cancelled: X,
@@ -20,13 +21,31 @@ interface TaskQueueRowProps {
   progress?: TaskProgress | undefined;
   failure?: TaskFailure | undefined;
   onCancel?: (() => void) | undefined;
+  onPause?: (() => void) | undefined;
+  onResume?: (() => void) | undefined;
+  pauseSupported?: boolean | undefined;
+  cancelSupported?: boolean | undefined;
+  pausing?: boolean | undefined;
 }
 
-export function TaskQueueRow({ status, model, progress, failure, onCancel }: TaskQueueRowProps) {
+export function TaskQueueRow({
+  status,
+  model,
+  progress,
+  failure,
+  onCancel,
+  onPause,
+  onResume,
+  pauseSupported = onPause !== undefined || onResume !== undefined,
+  cancelSupported = onCancel !== undefined,
+  pausing,
+}: TaskQueueRowProps) {
   const { t, i18n } = useTranslation(rendererNamespaces);
   const formatter = new Intl.NumberFormat(i18n.resolvedLanguage, { maximumFractionDigits: 1 });
   const Icon = statusIcons[status];
   const label = t(model.typeLabel.key, { ...model.typeLabel.values });
+  const resume = status === 'paused';
+  const onTogglePause = resume ? onResume : onPause;
   const determinate =
     progress?.kind === 'determinate' &&
     Number.isFinite(progress.total) &&
@@ -35,7 +54,12 @@ export function TaskQueueRow({ status, model, progress, failure, onCancel }: Tas
 
   return (
     <li className={classes.task} data-status={status}>
-      <Icon className={classes.statusIcon} size={16} strokeWidth={1.5} aria-hidden="true" />
+      <Icon
+        className={classes.statusIcon}
+        size={16}
+        strokeWidth={1.5}
+        aria-label={t(`tasks:taskStatus_${pausing ? 'pausing' : status}`)}
+      />
       <div className={classes.description}>
         <div className={classes.operation}>
           <span className={classes.type}>{label}</span>
@@ -55,9 +79,11 @@ export function TaskQueueRow({ status, model, progress, failure, onCancel }: Tas
             {model.summary}
           </div>
         )}
-        {status === 'running' && progress && (
+        {(status === 'running' || status === 'paused') && progress && (
           <div className={classes.progress}>
-            {progress.stage && <span>{t(progress.stage.key, { ...progress.stage.values })}</span>}
+            {status === 'running' && progress.stage && (
+              <span>{t(progress.stage.key, { ...progress.stage.values })}</span>
+            )}
             <progress
               aria-label={t('tasks:progress', { task: label })}
               max={determinate ? progress.total : undefined}
@@ -84,7 +110,9 @@ export function TaskQueueRow({ status, model, progress, failure, onCancel }: Tas
               progress.completedBytes >= 0 && (
                 <span>{formatSize(progress.completedBytes, formatter)}</span>
               )}
-            {progress.bytesPerSecond !== undefined &&
+            {status === 'running' &&
+              !pausing &&
+              progress.bytesPerSecond !== undefined &&
               Number.isFinite(progress.bytesPerSecond) &&
               progress.bytesPerSecond >= 0 && (
                 <span aria-label={t('tasks:transferRate')}>
@@ -99,9 +127,23 @@ export function TaskQueueRow({ status, model, progress, failure, onCancel }: Tas
           <p className={classes.error}>{t(failure.message.key, { ...failure.message.values })}</p>
         )}
       </div>
-      <span className={classes.status}>{t(`tasks:taskStatus_${status}`)}</span>
-      {onCancel && (
-        <button className={classes.cancel} type="button" onClick={onCancel}>
+      {pauseSupported && (
+        <button
+          className={classes.control}
+          type="button"
+          onClick={onTogglePause}
+          disabled={!onTogglePause}
+        >
+          <span className={classes.controlLabel} aria-hidden={resume}>
+            {t('tasks:pause')}
+          </span>
+          <span className={classes.controlLabel} aria-hidden={!resume}>
+            {t('tasks:resume')}
+          </span>
+        </button>
+      )}
+      {cancelSupported && (
+        <button className={classes.control} type="button" onClick={onCancel} disabled={!onCancel}>
           {t('common:cancel')}
         </button>
       )}

@@ -20,7 +20,7 @@
   color: var(--storage-accent);
 }
 
-.task[data-status='failed'] :is(.statusIcon, .status),
+.task[data-status='failed'] .statusIcon,
 .error {
   color: light-dark(var(--mantine-color-red-8), var(--mantine-color-red-3));
 }
@@ -85,12 +85,8 @@
   overflow-wrap: anywhere;
 }
 
-.status {
-  flex: none;
-  color: var(--storage-secondary);
-}
-
-.cancel {
+.control {
+  display: grid;
   flex: none;
   border: 0;
   border-radius: var(--mantine-radius-sm);
@@ -100,6 +96,19 @@
   cursor: pointer;
 }
 
-.cancel:hover {
+.control:hover:enabled {
   background: var(--storage-hover);
+}
+
+.control:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.controlLabel {
+  grid-area: 1 / 1;
+}
+
+.controlLabel[aria-hidden='true'] {
+  visibility: hidden;
 }

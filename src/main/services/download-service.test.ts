@@ -56,6 +56,8 @@ it.each([false, true])(
     expect(await readdir(temporary.path)).toEqual([entry.name]);
     expect(progress).toHaveBeenLastCalledWith({
       id: prepared.id,
+      attempt: expect.any(String),
+      controls: { cancellable: false, pausable: false },
       stage: 'saving',
       completedBytes: 7,
       totalBytes: 7,

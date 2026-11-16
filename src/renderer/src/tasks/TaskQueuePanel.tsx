@@ -53,6 +53,17 @@ export function TaskQueuePanel<Definitions extends TaskDefinitions>({
                 model={presentTask(task)}
                 progress={task.progress}
                 failure={task.status === 'failed' ? task.failure : undefined}
+                pausing={task.controlRequest === 'pause'}
+                pauseSupported={queue.supportsControl(task, 'pause')}
+                cancelSupported={queue.supportsControl(task, 'cancel')}
+                onPause={
+                  queue.canPause(task)
+                    ? () => {
+                        void queue.pause(task.id);
+                      }
+                    : undefined
+                }
+                onResume={queue.canResume(task) ? () => queue.resume(task.id) : undefined}
                 onCancel={
                   queue.canCancel(task)
                     ? () => {

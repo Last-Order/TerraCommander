@@ -23,7 +23,7 @@ const listSupported = { list: { support: 'supported' } } as const;
 const identifier = z.string().regex(/^[A-Za-z0-9_-]+$/);
 const token = z.string().min(1);
 const fileFields =
-  'id,name,mimeType,driveId,trashed,size,modifiedTime,capabilities(canRename,canTrash,canDownload)';
+  'id,name,mimeType,driveId,trashed,size,modifiedTime,sha256Checksum,md5Checksum,capabilities(canRename,canTrash,canDownload)';
 const fileSchema = z.object({
   id: identifier,
   name: z.string(),
@@ -32,6 +32,14 @@ const fileSchema = z.object({
   trashed: z.boolean().optional(),
   size: z.string().regex(/^\d+$/).optional(),
   modifiedTime: z.iso.datetime({ offset: true }).optional(),
+  sha256Checksum: z
+    .string()
+    .regex(/^[a-fA-F0-9]{64}$/)
+    .optional(),
+  md5Checksum: z
+    .string()
+    .regex(/^[a-fA-F0-9]{32}$/)
+    .optional(),
   capabilities: z
     .object({
       canRename: z.boolean().optional(),
@@ -106,6 +114,7 @@ class GoogleDriveAdapter implements StorageAdapter {
     return {
       ...listSupported,
       read: { support: 'supported' },
+      rangeRead: { support: 'supported' },
       rename: { support: 'supported' },
       remove: { support: 'supported' },
     } as const;
@@ -169,14 +178,19 @@ class GoogleDriveAdapter implements StorageAdapter {
   }
 
   async read(ref: EntryRef, options: ReadOptions, context: OperationContext) {
-    if (options.range || options.expectedRevision !== undefined)
-      throw new StorageError('Unsupported');
+    if (options.expectedRevision !== undefined) throw new StorageError('Unsupported');
     const entry = await this.stat(ref, context);
     if (entry.kind !== 'file' || entry.mediaType?.startsWith('application/vnd.google-apps.'))
       throw new StorageError('Unsupported');
     if (entry.capabilities.read?.support === 'unsupported')
       throw new StorageError('PermissionDenied');
-    return readGoogleDriveContent(ref.locator, this.authorization, this.request, context);
+    return readGoogleDriveContent(
+      ref.locator,
+      this.authorization,
+      this.request,
+      context,
+      options.range,
+    );
   }
 
   async remove(ref: EntryRef, context: OperationContext): Promise<void> {
@@ -259,7 +273,19 @@ function fileEntry(ref: EntryRef, file: z.infer<typeof fileSchema>): Entry {
     mediaType: file.mimeType,
     modifiedAt: file.modifiedTime,
     size: Number.isSafeInteger(size) ? size : undefined,
+    checksums: [
+      ...(file.sha256Checksum
+        ? [{ algorithm: 'sha256', value: file.sha256Checksum.toLowerCase() }]
+        : []),
+      ...(file.md5Checksum ? [{ algorithm: 'md5', value: file.md5Checksum.toLowerCase() }] : []),
+    ],
     capabilities: {
+      rangeRead: {
+        support:
+          kind === 'file' && !file.mimeType.startsWith('application/vnd.google-apps.')
+            ? 'supported'
+            : 'unsupported',
+      },
       read: {
         support:
           kind !== 'file' ||

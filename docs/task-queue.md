@@ -6,15 +6,19 @@ The [task contracts](../src/renderer/src/tasks/task-types.ts) define requests, s
 
 ## Scheduling and Conflicts
 
-Handlers declare an execution category. Each category has an independent concurrency limit, so a full category does not block another. Tasks start in enqueue order within a category. Execution and its result hook occupy the slot until both settle, whether the task succeeds or fails.
+Handlers declare an execution category. Categories govern scheduling capacity only; control support and current availability belong to handlers. Each category has an independent concurrency limit, so a full category does not block another. Tasks start in enqueue order within a category. Execution and its result hook occupy the slot until both settle, whether the task succeeds or fails.
 
 Handlers supply opaque resource conflict keys. Enqueue rejects overlap with queued or running work; keys remain reserved until the task finishes. Storage handlers must agree on keys for operations that cannot safely overlap.
 
 Result-hook failure must not turn an already successful storage operation into a failed task or stop queue processing. Result handlers apply successful changes to the directory cache and invalidate affected listings if applying a result fails. Logs omit raw errors that could contain provider details.
 
-Progress can be determinate or indeterminate. Only reports for the matching running task may update its state; late callbacks must not recreate completed or cleared rows.
+Progress can be determinate or indeterminate. Control availability is independent of progress; the queue does not interpret or rewrite task-specific measurements. Only reports for the matching running task may update its state; late callbacks must not recreate completed or cleared rows.
 
-Cancellation is cooperative. Resource reservations and execution slots remain owned until execution and cleanup settle. A committed result takes precedence over a late cancellation request. Transfer resources and local destination safety belong to the backend application service; the renderer queue owns scheduling and presentation. Closing a renderer session releases its backend transfer resources.
+Expected lifecycle outcomes are values, distinct from operational failures. Handlers are authoritative about execution outcomes; control-request acknowledgements do not establish those outcomes. Provider-specific interruption signals are translated by task integrations before reaching the common queue.
+
+Cancellation is cooperative. Resource reservations and execution slots remain owned until execution and cleanup settle. A committed result takes precedence over a late cancellation request. The backend transfer owns its internal lifecycle and local destination safety; the application service owns session membership and destination reservations. The renderer queue owns scheduling and presentation. Closing a renderer session releases its backend transfer resources.
+
+Transfer suspension is cooperative and available only during active content transfer. Suspension releases execution capacity after the backend settles its reads and writes, while retaining conflict and destination reservations. A suspended task remains unfinished. Resuming preserves task identity and requires another scheduling opportunity. Backend services own partial content and source-integrity checks; resumability requires range access and verifiable content identity. Session suspension does not provide recovery across application restarts.
 
 Local destination policies distinguish exclusive creation from replacement. Exclusive creation does not promise that only complete content is visible; replacement preserves the existing file until commit. Session cleanup is best effort and must not remove a destination that no longer refers to the task's own creation. Abnormal shutdown can leave unfinished local content because session tasks have no durable recovery state.
 

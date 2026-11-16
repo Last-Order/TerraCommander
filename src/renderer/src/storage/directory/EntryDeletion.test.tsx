@@ -113,7 +113,7 @@ it.each(['file', 'link'] as const)(
     const queue = within(screen.getByRole('region', { name: '任务队列' }));
     expect(queue.getByText(file.name)).toBeInTheDocument();
     expect(queue.getByText('删除')).toBeInTheDocument();
-    expect(queue.getByText('已完成')).toBeInTheDocument();
+    expect(queue.getByLabelText('已完成')).toBeInTheDocument();
   },
 );
 

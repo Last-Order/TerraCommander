@@ -197,11 +197,11 @@ it('runs renames in the background and shows errors in the task queue', async ()
   const toggle = screen.getByRole('button', { name: '任务队列' });
   expect(toggle).toHaveAttribute('aria-expanded', 'true');
   const panel = within(screen.getByRole('region', { name: '任务队列' }));
-  expect(panel.getByText('执行中')).toBeInTheDocument();
+  expect(panel.getByLabelText('执行中')).toBeInTheDocument();
   expect(panel.getByText('冲突.txt')).toBeInTheDocument();
   await act(async () => pending.resolve({ ok: false, code: 'AlreadyExists' }));
   expect(await panel.findByText('已存在同名项目。')).toBeInTheDocument();
-  expect(panel.getByText('失败')).toBeInTheDocument();
+  expect(panel.getByLabelText('失败')).toBeInTheDocument();
   const restored = screen.getByRole('button', { name: file.name });
   expect(restored.closest('tr')).not.toHaveAttribute('data-disabled');
   expect(restored.closest('tr')).not.toHaveAttribute('aria-busy');
@@ -211,7 +211,7 @@ it('runs renames in the background and shows errors in the task queue', async ()
   await user.type(retry.getByRole('textbox', { name: '名称' }), '修正.txt');
   await user.click(retry.getByRole('button', { name: '保存' }));
   expect(await screen.findByRole('button', { name: '修正.txt' })).toBeInTheDocument();
-  expect(await panel.findByText('已完成')).toBeInTheDocument();
+  expect(await panel.findByLabelText('已完成')).toBeInTheDocument();
   await user.click(panel.getByRole('button', { name: '清除已结束任务' }));
   expect(panel.getByText('暂无任务')).toBeInTheDocument();
 });
@@ -256,7 +256,7 @@ it('continues a queued rename after switching directories and updates its cached
   entries[0] = renamed;
   await act(async () => pending.resolve(success(renamed)));
   const panel = within(screen.getByRole('region', { name: '任务队列' }));
-  expect(await panel.findByText('已完成')).toBeInTheDocument();
+  expect(await panel.findByLabelText('已完成')).toBeInTheDocument();
   expect(panel.getByText('后台重命名.txt')).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: '项目盘' }));
   const reopenedFile = await screen.findByRole('button', { name: '后台重命名.txt' });

@@ -13,7 +13,10 @@ export function createDeleteTaskHandler({
   return {
     category: 'operation',
     conflictKeys: ({ entry }) => [directoryKey(entry.ref)],
-    execute: ({ entry }) => resultOf(window.desktop.storage.deleteEntry(entry.ref)),
+    execute: async ({ entry }) => {
+      await resultOf(window.desktop.storage.deleteEntry(entry.ref));
+      return { status: 'completed', result: undefined };
+    },
     onSuccess: ({ parent, entry }) => {
       try {
         directoryCache.remove({ parent, ref: entry.ref });

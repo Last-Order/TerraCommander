@@ -26,18 +26,28 @@ export interface PreparedDownload {
 
 export interface DownloadProgress {
   id: string;
+  attempt: string;
+  controls: {
+    cancellable: boolean;
+    pausable: boolean;
+  };
   stage: 'downloading' | 'saving';
   completedBytes: number;
   totalBytes?: number;
   bytesPerSecond?: number;
 }
 
+export type DownloadRunResult =
+  | { status: 'completed' }
+  | { status: 'paused'; completedBytes: number; totalBytes?: number };
+
 export interface DownloadsApi {
   getSettings(): Promise<BrowserResult<DownloadSettings>>;
   setDirectory(directory: string): Promise<BrowserResult<DownloadSettings>>;
   chooseDirectory(initialPath: string): Promise<BrowserResult<string | null>>;
   prepare(request: DownloadRequest): Promise<BrowserResult<PreparedDownload>>;
-  run(id: string): Promise<BrowserResult<void>>;
+  run(id: string, attempt: string): Promise<BrowserResult<DownloadRunResult>>;
+  pause(id: string): Promise<BrowserResult<void>>;
   cancel(id: string): Promise<BrowserResult<void>>;
   onProgress(listener: (progress: DownloadProgress) => void): () => void;
 }

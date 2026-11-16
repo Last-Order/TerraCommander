@@ -1,5 +1,5 @@
 import type { EntryRef } from '../../../../shared/storage';
-import { isActiveTask } from '../../tasks/task-selectors';
+import { isFinishedTask } from '../../tasks/task-selectors';
 import type { QueueTask } from '../../tasks/task-types';
 import { directoryKey } from '../directory/directory-cache';
 import type { StorageTaskDefinitions } from './storage-task-types';
@@ -16,7 +16,7 @@ export function selectPendingEntryEffects(
   const effects = new Map<string, PendingEntryEffect>();
   const parentKey = directoryKey(parent);
   for (const task of tasks) {
-    if (!isActiveTask(task)) continue;
+    if (isFinishedTask(task)) continue;
     switch (task.request.type) {
       case 'rename': {
         const { input } = task.request;

@@ -65,8 +65,8 @@ export class StorageBrowser {
     });
     this.downloads = new DownloadService({
       stat: (ref, context) => this.withBrowsableSpace(ref, () => this.storage.stat(ref, context)),
-      read: (ref, context) =>
-        this.withBrowsableSpace(ref, () => this.storage.read(ref, {}, context)),
+      read: (ref, options, context) =>
+        this.withBrowsableSpace(ref, () => this.storage.read(ref, options, context)),
     });
   }
 

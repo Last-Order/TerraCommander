@@ -30,7 +30,8 @@ it('retranslates task labels and failures when the language changes', async () =
     await i18n.changeLanguage('en');
   });
   expect(screen.getByText('Rename')).toBeInTheDocument();
-  expect(screen.getByText('Failed')).toBeInTheDocument();
+  expect(screen.getByLabelText('Failed')).toBeInTheDocument();
+  expect(screen.queryByText('Failed')).not.toBeInTheDocument();
   expect(screen.getByText('Enter a valid name.')).toBeInTheDocument();
   expect(screen.getByText('old.txt')).toBeInTheDocument();
   expect(screen.getByText('new.txt')).toBeInTheDocument();
@@ -57,19 +58,30 @@ it('renders optional progress without inventing a total and updates known progre
   expect(screen.queryByText('0 / 0 项')).not.toBeInTheDocument();
 });
 
-it('renders the queue cancellation control only when cancellation is available', async () => {
+it('keeps supported cancellation controls mounted and disables unavailable actions', async () => {
   const i18n = await createRendererI18n('zh-CN');
   const user = userEvent.setup();
   const cancel = vi.fn();
-  const row = (onCancel?: () => void) => (
+  const row = (onCancel?: () => void, cancelSupported = true) => (
     <I18nextProvider i18n={i18n}>
-      <TaskQueueRow status="running" model={model} onCancel={onCancel} />
+      <TaskQueueRow
+        status="running"
+        model={model}
+        onCancel={onCancel}
+        cancelSupported={cancelSupported}
+      />
     </I18nextProvider>
   );
   const { rerender } = render(row(cancel));
-  await user.click(screen.getByRole('button', { name: '取消' }));
+  const button = screen.getByRole('button', { name: '取消' });
+  await user.click(button);
   expect(cancel).toHaveBeenCalledOnce();
   rerender(row());
+  expect(screen.getByRole('button', { name: '取消' })).toBe(button);
+  expect(button).toBeDisabled();
+  await user.click(button);
+  expect(cancel).toHaveBeenCalledOnce();
+  rerender(row(undefined, false));
   expect(screen.queryByRole('button')).not.toBeInTheDocument();
 });
 

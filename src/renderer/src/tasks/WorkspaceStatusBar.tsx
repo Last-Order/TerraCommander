@@ -24,12 +24,17 @@ export function WorkspaceStatusBar<Definitions extends TaskDefinitions>({
 }: WorkspaceStatusBarProps<Definitions>) {
   const { t } = useTranslation('tasks');
   const tasks = useStore(queue.store, (state) => state.tasks);
-  const { active, failed } = summarizeTasks(tasks);
+  const { active, failed, paused } = summarizeTasks(tasks);
 
   return (
     <footer className={classes.bar} aria-label={t('statusBar')}>
       <span className={classes.summary} aria-live="polite">
-        {active > 0 ? t('activeTasks', { count: active }) : t('tasksIdle')}
+        {active > 0
+          ? t('activeTasks', { count: active })
+          : paused > 0
+            ? t('pausedTasks', { count: paused })
+            : t('tasksIdle')}
+        {active > 0 && paused > 0 && <span> · {t('pausedTasks', { count: paused })}</span>}
       </span>
       <button
         type="button"
@@ -42,9 +47,9 @@ export function WorkspaceStatusBar<Definitions extends TaskDefinitions>({
       >
         <ListTodo size={14} strokeWidth={1.5} aria-hidden="true" />
         {t('taskQueue')}
-        {active > 0 && (
+        {active + paused > 0 && (
           <span className={classes.count} aria-hidden="true">
-            {active}
+            {active + paused}
           </span>
         )}
         {failed > 0 && (

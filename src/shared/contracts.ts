@@ -23,6 +23,7 @@ export const channels = {
   chooseDownloadDirectory: 'downloads:choose-directory',
   prepareDownload: 'downloads:prepare',
   runDownload: 'downloads:run',
+  pauseDownload: 'downloads:pause',
   cancelDownload: 'downloads:cancel',
   downloadProgress: 'downloads:progress',
 } as const;

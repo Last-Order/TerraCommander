@@ -1,4 +1,5 @@
 import { Readable } from 'node:stream';
+import type { ByteRange } from '../../../../shared/storage';
 import type { GoogleDriveAuthorization } from '../../../accounts/providers/google-drive/credential-resolver';
 import type { OperationContext, ReadHandle } from '../../core/contracts';
 import { StorageError, throwIfAborted } from '../../core/errors';
@@ -10,6 +11,7 @@ export async function readGoogleDriveContent(
   authorization: GoogleDriveAuthorization,
   request: typeof fetch,
   context: OperationContext,
+  range?: ByteRange,
 ): Promise<ReadHandle> {
   throwIfAborted(context.signal);
   const accessToken = await authorization.getAccessToken(context);
@@ -35,7 +37,15 @@ export async function readGoogleDriveContent(
     const response = await request(
       `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?alt=media&supportsAllDrives=true`,
       {
-        headers: { Authorization: 'Bearer ' + accessToken, 'Accept-Encoding': 'identity' },
+        headers: {
+          Authorization: 'Bearer ' + accessToken,
+          'Accept-Encoding': 'identity',
+          ...(range
+            ? {
+                Range: `bytes=${range.offset}-${range.length === undefined ? '' : range.offset + range.length - 1}`,
+              }
+            : {}),
+        },
         redirect: 'error',
         signal: controller.signal,
       },
@@ -46,13 +56,8 @@ export async function readGoogleDriveContent(
     }
     clearTimeout(timeout);
     if (!response.body) throw new StorageError('OutcomeUnknown');
-    const encoded = response.headers.get('content-encoding');
-    const lengthHeader =
-      !encoded || encoded === 'identity' ? response.headers.get('content-length') : null;
-    const length = lengthHeader === null ? undefined : Number(lengthHeader);
-    if (length !== undefined && (!Number.isSafeInteger(length) || length < 0))
-      throw new StorageError('OutcomeUnknown');
     reader = response.body.getReader();
+    const length = responseLength(response, range);
     const bodyReader = reader;
     stream = Readable.from(
       (async function* () {
@@ -83,4 +88,37 @@ export async function readGoogleDriveContent(
     if (error instanceof StorageError) throw error;
     throw new StorageError('NetworkError', { cause: error });
   }
+}
+
+function responseLength(response: Response, range: ByteRange | undefined): number | undefined {
+  const encoded = response.headers.get('content-encoding');
+  const lengthHeader = response.headers.get('content-length');
+  const length =
+    lengthHeader === null || (encoded && encoded !== 'identity') ? undefined : Number(lengthHeader);
+  if (length !== undefined && (!Number.isSafeInteger(length) || length < 0))
+    throw new StorageError('OutcomeUnknown');
+  if (!range) {
+    if (response.status !== 200) throw new StorageError('OutcomeUnknown');
+    return length;
+  }
+  const match = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(response.headers.get('content-range') ?? '');
+  const start = Number(match?.[1]);
+  const end = Number(match?.[2]);
+  const total = Number(match?.[3]);
+  if (
+    response.status !== 206 ||
+    !match ||
+    !Number.isSafeInteger(start) ||
+    !Number.isSafeInteger(end) ||
+    !Number.isSafeInteger(total) ||
+    start !== range.offset ||
+    end < start ||
+    end >= total ||
+    end !==
+      Math.min(total - 1, range.length === undefined ? total - 1 : start + range.length - 1) ||
+    (lengthHeader !== null && Number(lengthHeader) !== end - start + 1) ||
+    (encoded && encoded !== 'identity')
+  )
+    throw new StorageError('OutcomeUnknown');
+  return end - start + 1;
 }

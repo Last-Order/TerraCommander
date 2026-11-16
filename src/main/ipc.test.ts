@@ -116,3 +116,18 @@ it('reads download defaults without loading storage or accounts and validates do
   expect(getBrowser).not.toHaveBeenCalled();
   await expect(get({ ...event, sender: {} })).rejects.toThrow('Untrusted IPC sender');
 });
+
+it('validates download run attempts and pause requests before loading transfer services', async () => {
+  const { event, getBrowser } = setup();
+  const id = '5e45885a-89f0-462e-9821-7195cba174e5';
+  const run = handlers.get(channels.runDownload)!;
+  const pause = handlers.get(channels.pauseDownload)!;
+  for (const args of [[], [id], [id, 'invalid'], [id, id, 'unexpected']]) {
+    expect(await run(event, ...args)).toEqual({ ok: false, code: 'InvalidArgument' });
+  }
+  for (const args of [[], ['invalid'], [id, 'unexpected']]) {
+    expect(await pause(event, ...args)).toEqual({ ok: false, code: 'InvalidArgument' });
+  }
+  await expect(pause({ ...event, sender: {} }, id)).rejects.toThrow('Untrusted IPC sender');
+  expect(getBrowser).not.toHaveBeenCalled();
+});

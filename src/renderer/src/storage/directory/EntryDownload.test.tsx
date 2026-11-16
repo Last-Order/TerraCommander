@@ -35,7 +35,11 @@ async function setup() {
     prepare: vi.fn<DownloadsApi['prepare']>(async (request) =>
       success({ id: 'download', path: `${request.directory}\\${request.expectedName}` }),
     ),
-    run: vi.fn(() => pending.promise),
+    run: vi.fn<DownloadsApi['run']>(() => pending.promise),
+    pause: vi.fn<DownloadsApi['pause']>(async () => {
+      pending.resolve(success({ status: 'paused', completedBytes: 4, totalBytes: 10 }));
+      return success(undefined);
+    }),
     cancel: vi.fn(async () => {
       pending.resolve({ ok: false, code: 'Cancelled' });
       return success(undefined);
@@ -81,7 +85,20 @@ async function setup() {
     downloads,
     pending,
     unsubscribe,
-    report: (progress: DownloadProgress) => act(() => listener?.(progress)),
+    report: (
+      progress: Omit<DownloadProgress, 'attempt' | 'controls'> &
+        Partial<Pick<DownloadProgress, 'attempt' | 'controls'>>,
+    ) =>
+      act(() =>
+        listener?.({
+          ...progress,
+          attempt: progress.attempt ?? downloads.run.mock.lastCall?.[1] ?? '',
+          controls: progress.controls ?? {
+            cancellable: progress.stage === 'downloading',
+            pausable: progress.stage === 'downloading',
+          },
+        }),
+      ),
   };
 }
 
@@ -92,7 +109,7 @@ it('opens an editable overlay and starts a background download without opening t
   await user.clear(directory);
   await user.type(directory, 'E:\\Saved');
   await user.click(modal.getByRole('button', { name: '开始下载' }));
-  await waitFor(() => expect(downloads.run).toHaveBeenCalledWith('download'));
+  await waitFor(() => expect(downloads.run).toHaveBeenCalledWith('download', expect.any(String)));
   expect(downloads.prepare).toHaveBeenCalledExactlyOnceWith({
     ref: entry.ref,
     directory: 'E:\\Saved',
@@ -118,12 +135,13 @@ it('opens an editable overlay and starts a background download without opening t
   report({ id: 'download', stage: 'saving', completedBytes: 10, totalBytes: 10 });
   expect(screen.queryByLabelText('当前速率')).not.toBeInTheDocument();
   const queue = within(screen.getByRole('region', { name: '任务队列' }));
-  expect(queue.queryByRole('button', { name: '取消' })).not.toBeInTheDocument();
+  expect(queue.getByRole('button', { name: '取消' })).toBeDisabled();
   await act(async () => {
-    pending.resolve(success(undefined));
+    pending.resolve(success({ status: 'completed' }));
   });
-  expect(await queue.findByText('已完成')).toBeInTheDocument();
-  expect(within(queue.getByRole('listitem')).queryByRole('button')).not.toBeInTheDocument();
+  expect(await queue.findByLabelText('已完成')).toBeInTheDocument();
+  expect(queue.getByRole('button', { name: '暂停' })).toBeDisabled();
+  expect(queue.getByRole('button', { name: '取消' })).toBeDisabled();
   expect(unsubscribe).toHaveBeenCalledOnce();
 });
 
@@ -141,7 +159,7 @@ it('requires explicit replacement confirmation while retaining the download dial
   await user.click(confirmation.getByRole('button', { name: '覆盖并下载' }));
   expect(downloads.prepare).toHaveBeenLastCalledWith(expect.objectContaining({ replace: true }));
   await act(async () => {
-    pending.resolve(success(undefined));
+    pending.resolve(success({ status: 'completed' }));
   });
 });
 
@@ -151,10 +169,79 @@ it('cancels a running transfer without offering task-specific controls', async (
   const queue = within(await screen.findByRole('region', { name: '任务队列' }));
   await user.click(await queue.findByRole('button', { name: '取消' }));
   expect(downloads.cancel).toHaveBeenCalledWith('download');
-  expect(await queue.findByText('已取消')).toBeInTheDocument();
+  expect(await queue.findByLabelText('已取消')).toBeInTheDocument();
   expect(unsubscribe).toHaveBeenCalledOnce();
-  expect(within(queue.getByRole('listitem')).queryByRole('button')).not.toBeInTheDocument();
+  expect(queue.getByRole('button', { name: '暂停' })).toBeDisabled();
+  expect(queue.getByRole('button', { name: '取消' })).toBeDisabled();
   expect(downloads.prepare).toHaveBeenCalledOnce();
+});
+
+it('only pauses active content transfer and resumes the same task while ignoring old attempt progress', async () => {
+  const { user, modal, downloads, pending, report, unsubscribe } = await setup();
+  await user.click(modal.getByRole('button', { name: '开始下载' }));
+  await waitFor(() => expect(downloads.run).toHaveBeenCalledOnce());
+  const queue = within(screen.getByRole('region', { name: '任务队列' }));
+  const pauseButton = queue.getByRole('button', { name: '暂停' });
+  const cancelButton = queue.getByRole('button', { name: '取消' });
+  expect(pauseButton).toBeDisabled();
+  report({ id: 'download', stage: 'downloading', completedBytes: 4, totalBytes: 10 });
+  const oldAttempt = downloads.run.mock.lastCall?.[1];
+  expect(pauseButton).toBeEnabled();
+  const pausing = pausePage<Awaited<ReturnType<DownloadsApi['pause']>>>();
+  downloads.pause.mockReturnValueOnce(pausing.promise);
+  await user.click(pauseButton);
+  expect(downloads.pause).toHaveBeenCalledExactlyOnceWith('download');
+  expect(queue.getByLabelText('正在暂停…')).toBeInTheDocument();
+  expect(queue.getByRole('button', { name: '暂停' })).toBe(pauseButton);
+  expect(pauseButton).toBeDisabled();
+  expect(queue.getByRole('button', { name: '取消' })).toBe(cancelButton);
+  expect(cancelButton).toBeDisabled();
+  await act(async () => {
+    pending.resolve(success({ status: 'paused', completedBytes: 4, totalBytes: 10 }));
+    pausing.resolve(success(undefined));
+  });
+  expect(await queue.findByLabelText('已暂停')).toBeInTheDocument();
+  expect(queue.getByRole('button', { name: '继续' })).toBe(pauseButton);
+  expect(pauseButton).toBeEnabled();
+  expect(cancelButton).toBeEnabled();
+  expect(queue.getByRole('progressbar')).toHaveAttribute('value', '4');
+  expect(screen.getByRole('contentinfo', { name: '状态栏' })).toHaveTextContent('1 项已暂停');
+  expect(queue.getByRole('button', { name: '清除已结束任务' })).toBeDisabled();
+  expect(unsubscribe).toHaveBeenCalledOnce();
+
+  const resumed = pausePage<Awaited<ReturnType<DownloadsApi['run']>>>();
+  downloads.run.mockReturnValueOnce(resumed.promise);
+  await user.click(queue.getByRole('button', { name: '继续' }));
+  await waitFor(() => expect(downloads.run).toHaveBeenCalledTimes(2));
+  expect(downloads.run.mock.lastCall?.[0]).toBe('download');
+  expect(downloads.run.mock.lastCall?.[1]).not.toBe(oldAttempt);
+  expect(downloads.prepare).toHaveBeenCalledOnce();
+  expect(queue.getByRole('button', { name: '暂停' })).toBe(pauseButton);
+  expect(pauseButton).toBeDisabled();
+  expect(queue.getByRole('button', { name: '取消' })).toBe(cancelButton);
+  report({
+    id: 'download',
+    attempt: oldAttempt!,
+    stage: 'downloading',
+    completedBytes: 1,
+    totalBytes: 10,
+  });
+  expect(queue.getByRole('progressbar')).toHaveAttribute('value', '4');
+  report({ id: 'download', stage: 'downloading', completedBytes: 8, totalBytes: 10 });
+  expect(queue.getByRole('progressbar')).toHaveAttribute('value', '8');
+  expect(pauseButton).toBeEnabled();
+  report({ id: 'download', stage: 'saving', completedBytes: 10, totalBytes: 10 });
+  expect(pauseButton).toBeDisabled();
+  expect(cancelButton).toBeDisabled();
+  await act(async () => {
+    resumed.resolve(success({ status: 'completed' }));
+  });
+  expect(await queue.findByLabelText('已完成')).toBeInTheDocument();
+  expect(queue.getByRole('button', { name: '暂停' })).toBe(pauseButton);
+  expect(queue.getByRole('button', { name: '取消' })).toBe(cancelButton);
+  expect(pauseButton).toBeDisabled();
+  expect(cancelButton).toBeDisabled();
+  expect(queue.getAllByRole('listitem')).toHaveLength(1);
 });
 
 it('only dismisses the top confirmation when Escape is pressed', async () => {
@@ -187,6 +274,6 @@ it('returns to directory editing without authorizing an overwrite', async () => 
     expect.objectContaining({ directory: 'E:\\Other', replace: false }),
   );
   await act(async () => {
-    pending.resolve(success(undefined));
+    pending.resolve(success({ status: 'completed' }));
   });
 });

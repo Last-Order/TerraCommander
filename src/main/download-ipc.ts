@@ -89,20 +89,28 @@ export function registerDownloadIpc(
     ]),
     async (window, request) => (await downloads(window)).prepare(window.webContents.id, request),
   );
-  handle(channels.runDownload, z.tuple([z.uuid()]), async (window, id) => {
+  handle(channels.runDownload, z.tuple([z.uuid(), z.uuid()]), async (window, id, attempt) => {
     const service = await downloads(window);
-    await service.run(window.webContents.id, id, (progress) => {
-      try {
-        if (
-          !window.webContents.isDestroyed() &&
-          isTrustedRenderer(window.webContents.mainFrame.url, entryUrl)
-        )
-          window.webContents.send(channels.downloadProgress, progress);
-      } catch {
-        /* A closed renderer must not interrupt file publication or cleanup. */
-      }
-    });
+    return service.run(
+      window.webContents.id,
+      id,
+      (progress) => {
+        try {
+          if (
+            !window.webContents.isDestroyed() &&
+            isTrustedRenderer(window.webContents.mainFrame.url, entryUrl)
+          )
+            window.webContents.send(channels.downloadProgress, progress);
+        } catch {
+          /* A closed renderer must not interrupt file publication or cleanup. */
+        }
+      },
+      attempt,
+    );
   });
+  handle(channels.pauseDownload, z.tuple([z.uuid()]), async (window, id) =>
+    (await downloads(window)).pause(window.webContents.id, id),
+  );
   handle(channels.cancelDownload, z.tuple([z.uuid()]), async (window, id) =>
     (await downloads(window)).cancel(window.webContents.id, id),
   );
