@@ -67,6 +67,8 @@ export class StorageBrowser {
       stat: (ref, context) => this.withBrowsableSpace(ref, () => this.storage.stat(ref, context)),
       read: (ref, options, context) =>
         this.withBrowsableSpace(ref, () => this.storage.read(ref, options, context)),
+      list: (ref, request, context) =>
+        this.withBrowsableSpace(ref, () => this.storage.list(ref, request, context)),
     });
   }
 
@@ -154,10 +156,12 @@ export class StorageBrowser {
   }
 
   async renameEntry(ref: EntryRef, name: string) {
+    this.downloads.assertSourceAvailable(ref);
     return this.withBrowsableSpace(ref, () => this.storage.rename(ref, name));
   }
 
   async deleteEntry(ref: EntryRef): Promise<void> {
+    this.downloads.assertSourceAvailable(ref);
     return this.withBrowsableSpace(ref, () => this.storage.remove(ref));
   }
 

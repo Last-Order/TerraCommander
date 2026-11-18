@@ -22,8 +22,9 @@ it.each(['pause', 'cancel'] as const)(
     vi.stubGlobal('desktop', {
       downloads: {
         run,
+        resolveWork: async () => success({ id: 'download', path: 'D:\\Downloads\\file.txt' }),
         pause: stop,
-        cancel: stop,
+        cancelWork: stop,
         onProgress: (next: (progress: DownloadProgress) => void) => {
           listener = next;
           return unsubscribe;
@@ -39,7 +40,7 @@ it.each(['pause', 'cancel'] as const)(
         capabilities: {},
       },
       directoryPath: 'Drive',
-      destination: { id: 'download', path: 'D:\\Downloads\\file.txt' },
+      destination: { ref: { planId: 'plan', itemId: 0 }, path: 'D:\\Downloads\\file.txt' },
     };
     const handler = createDownloadTaskHandler({
       directoryCache: new DirectoryCache(),
@@ -51,10 +52,11 @@ it.each(['pause', 'cancel'] as const)(
     handler.onFailure = onFailure;
     const queue = new TaskQueue<Pick<StorageTaskDefinitions, 'download'>>({ download: handler });
     queue.enqueue({ type: 'download', input });
+    await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
     const attempt = run.mock.lastCall?.[1];
     if (!attempt) throw new Error('Missing download attempt');
     listener?.({
-      id: input.destination.id,
+      id: 'download',
       attempt,
       controls: { cancellable: false, pausable: false },
       stage: 'downloading',
@@ -66,7 +68,7 @@ it.each(['pause', 'cancel'] as const)(
     expect(queue.canCancel(task)).toBe(false);
     expect(queue.canPause(task)).toBe(false);
     listener?.({
-      id: input.destination.id,
+      id: 'download',
       attempt,
       controls: { cancellable: true, pausable: true },
       stage: 'downloading',

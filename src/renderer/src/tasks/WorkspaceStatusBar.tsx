@@ -1,30 +1,32 @@
+import type { TaskGroupDefinitions } from './task-group-types';
 import { ListTodo } from 'lucide-react';
 import type { Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
 import type { TaskQueue } from './task-queue';
-import { summarizeTasks } from './task-selectors';
+import { summarizeTasks, topLevelEntries } from './task-selectors';
 import type { TaskDefinitions } from './task-types';
 import classes from './WorkspaceStatusBar.module.css';
 
-interface WorkspaceStatusBarProps<Definitions extends TaskDefinitions> {
-  queue: TaskQueue<Definitions>;
+interface WorkspaceStatusBarProps<
+  Definitions extends TaskDefinitions,
+  Groups extends TaskGroupDefinitions,
+> {
+  queue: TaskQueue<Definitions, Groups>;
   panelId: string;
   opened: boolean;
   onToggle: () => void;
   buttonRef: Ref<HTMLButtonElement>;
 }
 
-export function WorkspaceStatusBar<Definitions extends TaskDefinitions>({
-  queue,
-  panelId,
-  opened,
-  onToggle,
-  buttonRef,
-}: WorkspaceStatusBarProps<Definitions>) {
+export function WorkspaceStatusBar<
+  Definitions extends TaskDefinitions,
+  Groups extends TaskGroupDefinitions,
+>({ queue, panelId, opened, onToggle, buttonRef }: WorkspaceStatusBarProps<Definitions, Groups>) {
   const { t } = useTranslation('tasks');
   const tasks = useStore(queue.store, (state) => state.tasks);
-  const { active, failed, paused } = summarizeTasks(tasks);
+  const groups = useStore(queue.store, (state) => state.groups);
+  const { active, failed, paused } = summarizeTasks(topLevelEntries(tasks, groups));
 
   return (
     <footer className={classes.bar} aria-label={t('statusBar')}>

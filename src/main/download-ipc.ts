@@ -108,6 +108,54 @@ export function registerDownloadIpc(
       attempt,
     );
   });
+  handle(
+    channels.prepareDownloadBatch,
+    z.tuple([
+      z.strictObject({
+        directory: pathSchema,
+        entries: z
+          .array(
+            z.strictObject({
+              ref: entryRefSchema.extend({ connectionId: z.uuid() }),
+              expectedName: z.string().min(1).max(32_768),
+            }),
+          )
+          .min(1)
+          .max(100_000),
+      }),
+    ]),
+    async (window, request) =>
+      (await downloads(window)).prepareBatch(window.webContents.id, request),
+  );
+  handle(channels.confirmDownloadBatch, z.tuple([z.uuid()]), async (window, id) =>
+    (await downloads(window)).confirmBatch(window.webContents.id, id),
+  );
+  const index = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+  handle(
+    channels.discoverDownloadDirectory,
+    z.tuple([z.uuid(), index, index]),
+    async (window, id, itemId, offset) =>
+      (await downloads(window)).discoverBatchDirectory(window.webContents.id, id, itemId, offset),
+  );
+  const work = z.strictObject({ planId: z.uuid(), itemId: index });
+  handle(channels.resolveDownloadWork, z.tuple([work]), async (window, ref) =>
+    (await downloads(window)).resolveWork(window.webContents.id, ref),
+  );
+  handle(channels.cancelDownloadWork, z.tuple([work]), async (window, ref) =>
+    (await downloads(window)).cancelWork(window.webContents.id, ref),
+  );
+  handle(channels.releaseDownloadWork, z.tuple([work]), async (window, ref) =>
+    (await downloads(window)).releaseWork(window.webContents.id, ref),
+  );
+  handle(channels.cancelDownloadBatchItem, z.tuple([z.uuid(), index]), async (window, id, itemId) =>
+    (await downloads(window)).cancelBatchItem(window.webContents.id, id, itemId),
+  );
+  handle(channels.finishDownloadBatch, z.tuple([z.uuid()]), async (window, id) =>
+    (await downloads(window)).finishBatch(window.webContents.id, id),
+  );
+  handle(channels.releaseDownloadBatch, z.tuple([z.uuid()]), async (window, id) =>
+    (await downloads(window)).releaseBatch(window.webContents.id, id),
+  );
   handle(channels.pauseDownload, z.tuple([z.uuid()]), async (window, id) =>
     (await downloads(window)).pause(window.webContents.id, id),
   );

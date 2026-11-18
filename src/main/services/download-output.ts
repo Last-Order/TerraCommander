@@ -31,6 +31,7 @@ export class DownloadOutput {
     private readonly directory: string,
     private readonly replace: boolean,
     algorithm: string | undefined,
+    private readonly assertDirectory?: () => Promise<void>,
   ) {
     this.contentDigest = algorithm ? createHash(algorithm) : undefined;
   }
@@ -48,6 +49,7 @@ export class DownloadOutput {
   }
 
   async open(signal: AbortSignal): Promise<void> {
+    await this.assertDirectory?.();
     if (this.created) {
       await this.assertOwned();
       this.handle = await open(this.outputPath, 'r+');
@@ -126,6 +128,7 @@ export class DownloadOutput {
   }
 
   async publish(): Promise<void> {
+    await this.assertDirectory?.();
     await this.assertOwned();
     if (this.temporary) {
       await checkDownloadTarget(this.path, true);
@@ -134,6 +137,7 @@ export class DownloadOutput {
   }
 
   async cleanup(completed: boolean): Promise<void> {
+    if (this.temporary || (!completed && this.created)) await this.assertDirectory?.();
     if (this.temporary) await rm(this.temporary, { recursive: true, force: true });
     else if (!completed && this.created && !this.ownershipLost) {
       if (!this.identity) throw new DownloadError('DownloadCleanupFailed');

@@ -1,4 +1,11 @@
-import { mkdtempDisposable, readFile, readdir, rename, writeFile } from 'node:fs/promises';
+import {
+  mkdtempDisposable,
+  readFile,
+  readdir,
+  realpath,
+  rename,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Readable } from 'node:stream';
@@ -49,7 +56,7 @@ it.each([false, true])(
         dispose: async () => {},
       };
     });
-    const prepared = await service.prepare(1, { ...request, replace });
+    const prepared = await prepareExecution(service, 1, { ...request, replace });
     const progress = vi.fn();
     await service.run(1, prepared.id, progress);
     expect(await readFile(path, 'utf8')).toBe('content');
@@ -72,7 +79,7 @@ it('rejects a file created after preparation before opening the source', async (
   const path = join(temporary.path, entry.name);
   const read = vi.fn();
   const { service, request } = fixture(temporary.path, read);
-  const prepared = await service.prepare(1, request);
+  const prepared = await prepareExecution(service, 1, request);
   await writeFile(path, 'external');
   await expect(service.run(1, prepared.id, () => {})).rejects.toMatchObject({
     code: 'AlreadyExists',
@@ -98,7 +105,7 @@ it.each(['network', 'length'])(
       length: 100,
       dispose,
     }));
-    const prepared = await service.prepare(1, request);
+    const prepared = await prepareExecution(service, 1, request);
     await expect(service.run(1, prepared.id, () => {})).rejects.toMatchObject({
       code: failure === 'network' ? 'NetworkError' : 'OutcomeUnknown',
     });
@@ -123,7 +130,7 @@ it.each(['failed', 'completed'])(
         dispose: async () => {},
       };
     });
-    const prepared = await service.prepare(1, request);
+    const prepared = await prepareExecution(service, 1, request);
     await expect(service.run(1, prepared.id, () => {})).rejects.toMatchObject({
       code: outcome === 'failed' ? 'NetworkError' : 'PreconditionFailed',
     });
@@ -147,7 +154,7 @@ it.each(['network', 'length'])('preserves an existing file on %s failure', async
     length: 100,
     dispose,
   }));
-  const prepared = await service.prepare(1, { ...request, replace: true });
+  const prepared = await prepareExecution(service, 1, { ...request, replace: true });
   await expect(service.run(1, prepared.id, () => {})).rejects.toMatchObject({
     code: failure === 'network' ? 'NetworkError' : 'OutcomeUnknown',
   });
@@ -169,7 +176,7 @@ it.each([false, true])(
     });
     const { service, request } = fixture(temporary.path, async () => ({ stream, dispose }));
     const downloadRequest = { ...request, replace };
-    const prepared = await service.prepare(1, downloadRequest);
+    const prepared = await prepareExecution(service, 1, downloadRequest);
     await expect(service.prepare(2, downloadRequest)).rejects.toMatchObject({
       code: 'DownloadTargetBusy',
     });
@@ -184,7 +191,7 @@ it.each([false, true])(
     expect(dispose).toHaveBeenCalledOnce();
     expect(await readdir(temporary.path)).toEqual(replace ? [entry.name] : []);
     if (replace) expect(await readFile(path, 'utf8')).toBe('old');
-    const next = await service.prepare(2, downloadRequest);
+    const next = await prepareExecution(service, 2, downloadRequest);
     await service.cancel(2, next.id);
     await service.dispose();
   },
@@ -200,7 +207,7 @@ it.each([
     ...(length !== undefined ? { length } : {}),
     dispose: async () => {},
   }));
-  const prepared = await service.prepare(1, request);
+  const prepared = await prepareExecution(service, 1, request);
   await service.run(1, prepared.id, () => {});
   expect(await readFile(prepared.path, 'utf8')).toBe(content);
   await service.dispose();
@@ -236,9 +243,18 @@ it('uses the provider name and refuses a different name even when replacement is
     service.prepare(1, { ...request, expectedName: 'other.txt', replace: true }),
   ).rejects.toMatchObject({ code: 'PreconditionFailed' });
   expect(await readFile(other, 'utf8')).toBe('preserved');
-  const prepared = await service.prepare(1, request);
-  expect(prepared.path).toBe(join(temporary.path, sourceEntry.name));
+  const prepared = await prepareExecution(service, 1, request);
+  expect(prepared.path).toBe(join(await realpath(temporary.path), sourceEntry.name));
   await service.cancel(1, prepared.id);
   expect(read).not.toHaveBeenCalled();
   await service.dispose();
 });
+
+async function prepareExecution(
+  service: DownloadService,
+  owner: number,
+  request: Parameters<DownloadService['prepare']>[1],
+) {
+  const work = await service.prepare(owner, request);
+  return service.resolveWork(owner, work.ref);
+}

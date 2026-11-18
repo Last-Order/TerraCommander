@@ -78,7 +78,7 @@ it('resumes a paused Drive download over HTTP with a fresh signal and the saved 
       configuration: { subject: 'subject', oauthClientId: 'client' },
       credentialRef: 'credential',
     });
-    const prepared = await service.prepare(1, {
+    const prepared = await prepareExecution(service, 1, {
       ref: { connectionId: 'account', spaceId: 'my-drive', locator: file.id },
       directory: temporary.path,
       expectedName: file.name,
@@ -102,3 +102,12 @@ it('resumes a paused Drive download over HTTP with a fresh signal and the saved 
     );
   }
 });
+
+async function prepareExecution(
+  service: DownloadService,
+  owner: number,
+  request: Parameters<DownloadService['prepare']>[1],
+) {
+  const work = await service.prepare(owner, request);
+  return service.resolveWork(owner, work.ref);
+}

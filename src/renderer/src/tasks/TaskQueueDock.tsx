@@ -1,19 +1,25 @@
+import type { TaskGroupDefinitions } from './task-group-types';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { TaskQueuePanel } from './TaskQueuePanel';
 import { WorkspaceStatusBar } from './WorkspaceStatusBar';
 import classes from './TaskQueueDock.module.css';
 import type { TaskQueue } from './task-queue';
-import type { TaskPresenter } from './task-row-model';
+import type { TaskGroupPresenter, TaskPresenter } from './task-row-model';
 import type { TaskDefinitions } from './task-types';
 
-export function TaskQueueDock<Definitions extends TaskDefinitions>({
+export function TaskQueueDock<
+  Definitions extends TaskDefinitions,
+  Groups extends TaskGroupDefinitions,
+>({
   children,
   queue,
   presentTask,
+  presentGroup,
 }: {
   children: ReactNode;
-  queue: TaskQueue<Definitions>;
+  queue: TaskQueue<Definitions, Groups>;
   presentTask: TaskPresenter<Definitions>;
+  presentGroup: TaskGroupPresenter<Groups>;
 }) {
   const [opened, setOpened] = useState(false);
   const panelId = useId();
@@ -22,7 +28,12 @@ export function TaskQueueDock<Definitions extends TaskDefinitions>({
   useEffect(
     () =>
       queue.store.subscribe((state, previous) => {
-        if (state.tasks.length > previous.tasks.length) setOpened(true);
+        if (
+          state.groups.length > previous.groups.length ||
+          state.tasks.filter((task) => task.groupId === undefined).length >
+            previous.tasks.filter((task) => task.groupId === undefined).length
+        )
+          setOpened(true);
       }),
     [queue],
   );
@@ -42,6 +53,7 @@ export function TaskQueueDock<Definitions extends TaskDefinitions>({
           onClose={close}
           queue={queue}
           presentTask={presentTask}
+          presentGroup={presentGroup}
         />
       </div>
       <WorkspaceStatusBar

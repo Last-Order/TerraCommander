@@ -1,5 +1,12 @@
 import type { DownloadProgress, DownloadRequest, DownloadRunResult } from '../../shared/downloads';
-import type { ContentChecksum, Entry, EntryRef, ReadOptions } from '../../shared/storage';
+import type {
+  ContentChecksum,
+  Entry,
+  EntryPage,
+  EntryRef,
+  ListRequest,
+  ReadOptions,
+} from '../../shared/storage';
 import type { OperationContext, ReadHandle } from '../storage/core/contracts';
 import { normalizeStorageError, StorageError, throwIfAborted } from '../storage/core/errors';
 import { DownloadOutput } from './download-output';
@@ -9,6 +16,7 @@ import { DownloadProgressReporter } from './download-progress-reporter';
 export interface DownloadSource {
   stat(ref: EntryRef, context: OperationContext): Promise<Entry>;
   read(ref: EntryRef, options: ReadOptions, context: OperationContext): Promise<ReadHandle>;
+  list?(ref: EntryRef, request: ListRequest, context: OperationContext): Promise<EntryPage>;
 }
 
 type TransferStage =
@@ -40,6 +48,7 @@ export class DownloadTransfer {
     private readonly directory: string,
     path: string,
     entry: Entry,
+    assertDirectory?: () => Promise<void>,
   ) {
     this.checksum = ['sha256', 'md5'].flatMap(
       (algorithm) => entry.checksums?.filter((checksum) => checksum.algorithm === algorithm) ?? [],
@@ -50,7 +59,13 @@ export class DownloadTransfer {
       this.checksum !== undefined &&
       Number.isSafeInteger(entry.size) &&
       (entry.size ?? -1) >= 0;
-    this.output = new DownloadOutput(path, directory, request.replace, this.checksum?.algorithm);
+    this.output = new DownloadOutput(
+      path,
+      directory,
+      request.replace,
+      this.checksum?.algorithm,
+      assertDirectory,
+    );
   }
 
   run(

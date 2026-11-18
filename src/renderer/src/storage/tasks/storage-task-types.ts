@@ -1,5 +1,5 @@
 import type { Entry, EntryRef } from '../../../../shared/storage';
-import type { PreparedDownload } from '../../../../shared/downloads';
+import type { DownloadWork, PreparedDownloadBatch } from '../../../../shared/downloads';
 
 export interface RenameTaskInput {
   parent: EntryRef;
@@ -14,11 +14,23 @@ export type StorageTaskDefinitions = {
   download: { input: DownloadTaskInput; result: void };
 };
 
+export type StorageTaskGroupDefinitions = {
+  download: { input: { names: readonly string[]; sourcePath: string; destinationPath: string } };
+};
+
+export interface DownloadGroupInput {
+  parent: EntryRef;
+  entries: readonly Entry[];
+  directoryPath: string;
+  destination: PreparedDownloadBatch;
+}
+
 export interface DownloadTaskInput {
   parent: EntryRef;
   entry: Entry;
   directoryPath: string;
-  destination: PreparedDownload;
+  destination: DownloadWork;
+  displayName?: string;
 }
 
 export interface DeleteTaskInput {

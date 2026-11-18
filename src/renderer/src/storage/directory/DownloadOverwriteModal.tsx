@@ -1,12 +1,15 @@
 import { Button, getDefaultZIndex, Group, Modal, Stack, Text } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
+import classes from './DownloadOverwriteModal.module.css';
 
 export function DownloadOverwriteModal({
   busy,
+  conflicts,
   onConfirm,
   onCancel,
 }: {
   busy: boolean;
+  conflicts?: readonly string[] | undefined;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -26,7 +29,12 @@ export function DownloadOverwriteModal({
       closeButtonProps={{ disabled: busy, 'aria-label': t('common:close') }}
     >
       <Stack>
-        <Text>{t('downloadFileExists')}</Text>
+        <Text>{t(conflicts ? 'downloadItemsExist' : 'downloadFileExists')}</Text>
+        {conflicts && (
+          <Text size="sm" className={classes.conflicts}>
+            {conflicts.join('、')}
+          </Text>
+        )}
         <Group justify="flex-end">
           <Button data-autofocus variant="default" disabled={busy} onClick={onCancel}>
             {t('common:cancel')}

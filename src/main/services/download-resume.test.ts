@@ -38,7 +38,7 @@ async function fixture(directory: string, replace = false) {
   const service = new DownloadService({ stat, read });
   const request: DownloadRequest = { ref: entry.ref, directory, expectedName: entry.name, replace };
   if (replace) await writeFile(join(directory, entry.name), 'original');
-  const prepared = await service.prepare(1, request);
+  const prepared = await prepareExecution(service, 1, request);
   const partialPath = async () => {
     if (!replace) return prepared.path;
     const temporary = (await readdir(directory)).find((name) =>
@@ -92,7 +92,7 @@ it('refuses paused resumption once cancellation begins', async () => {
     expect(() => f.service.run(1, f.prepared.id, () => {}, 'second')).toThrow();
     await cancelling;
     expect(await readdir(temporary.path)).toEqual([]);
-    const next = await f.service.prepare(2, f.request);
+    const next = await prepareExecution(f.service, 2, f.request);
     await f.service.cancel(2, next.id);
   } finally {
     await f.service.dispose();
@@ -194,7 +194,7 @@ it.each([false, true])(
       expect(await third.running).toEqual({ status: 'completed' });
       expect(await readFile(f.prepared.path)).toEqual(f.content);
       expect(await readdir(temporary.path)).toEqual(['file.bin']);
-      const next = await f.service.prepare(2, { ...f.request, replace: true });
+      const next = await prepareExecution(f.service, 2, { ...f.request, replace: true });
       await f.service.cancel(2, next.id);
     } finally {
       await f.service.dispose();
@@ -323,3 +323,12 @@ it.each([0, 16])(
     }
   },
 );
+
+async function prepareExecution(
+  service: DownloadService,
+  owner: number,
+  request: Parameters<DownloadService['prepare']>[1],
+) {
+  const work = await service.prepare(owner, request);
+  return service.resolveWork(owner, work.ref);
+}

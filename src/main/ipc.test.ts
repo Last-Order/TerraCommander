@@ -131,3 +131,57 @@ it('validates download run attempts and pause requests before loading transfer s
   await expect(pause({ ...event, sender: {} }, id)).rejects.toThrow('Untrusted IPC sender');
   expect(getBrowser).not.toHaveBeenCalled();
 });
+
+it('validates batch inputs and every batch lifecycle request before loading services', async () => {
+  const { event, getBrowser } = setup();
+  const id = '5e45885a-89f0-462e-9821-7195cba174e5';
+  const request = {
+    directory: 'D:\\Downloads',
+    entries: [
+      { ref: { connectionId: id, spaceId: 'drive', locator: 'file' }, expectedName: 'file.txt' },
+    ],
+  };
+  const prepare = handlers.get(channels.prepareDownloadBatch)!;
+  for (const invalid of [
+    null,
+    { ...request, entries: [] },
+    { ...request, replace: true },
+    { ...request, entries: [{ ...request.entries[0], path: '../outside' }] },
+  ])
+    expect(await prepare(event, invalid)).toEqual({ ok: false, code: 'InvalidArgument' });
+  for (const channel of [
+    channels.confirmDownloadBatch,
+    channels.finishDownloadBatch,
+    channels.releaseDownloadBatch,
+  ]) {
+    const handler = handlers.get(channel)!;
+    expect(await handler(event, 'invalid')).toEqual({ ok: false, code: 'InvalidArgument' });
+    await expect(handler({ ...event, sender: {} }, id)).rejects.toThrow('Untrusted IPC sender');
+  }
+  const items = handlers.get(channels.discoverDownloadDirectory)!;
+  for (const offset of [-1, 1.5, Infinity, '0'])
+    expect(await items(event, id, 0, offset)).toEqual({ ok: false, code: 'InvalidArgument' });
+  for (const channel of [channels.cancelDownloadBatchItem]) {
+    const handler = handlers.get(channel)!;
+    expect(await handler(event, id, -1)).toEqual({ ok: false, code: 'InvalidArgument' });
+    await expect(handler({ ...event, sender: {} }, id, 0)).rejects.toThrow('Untrusted IPC sender');
+  }
+  for (const channel of [
+    channels.resolveDownloadWork,
+    channels.cancelDownloadWork,
+    channels.releaseDownloadWork,
+  ]) {
+    const handler = handlers.get(channel)!;
+    for (const ref of [
+      null,
+      { planId: 'invalid', itemId: 0 },
+      { planId: id, itemId: -1 },
+      { planId: id, itemId: 0, path: '../outside' },
+    ])
+      expect(await handler(event, ref)).toEqual({ ok: false, code: 'InvalidArgument' });
+    await expect(handler({ ...event, sender: {} }, { planId: id, itemId: 0 })).rejects.toThrow(
+      'Untrusted IPC sender',
+    );
+  }
+  expect(getBrowser).not.toHaveBeenCalled();
+});

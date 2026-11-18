@@ -7,6 +7,17 @@ const api: DesktopApi = {
     setDirectory: (path) => ipcRenderer.invoke(channels.setDownloadDirectory, path),
     chooseDirectory: (path) => ipcRenderer.invoke(channels.chooseDownloadDirectory, path),
     prepare: (request) => ipcRenderer.invoke(channels.prepareDownload, request),
+    prepareBatch: (request) => ipcRenderer.invoke(channels.prepareDownloadBatch, request),
+    confirmBatch: (id) => ipcRenderer.invoke(channels.confirmDownloadBatch, id),
+    discoverBatchDirectory: (id, itemId, offset) =>
+      ipcRenderer.invoke(channels.discoverDownloadDirectory, id, itemId, offset),
+    resolveWork: (ref) => ipcRenderer.invoke(channels.resolveDownloadWork, ref),
+    releaseWork: (ref) => ipcRenderer.invoke(channels.releaseDownloadWork, ref),
+    cancelWork: (ref) => ipcRenderer.invoke(channels.cancelDownloadWork, ref),
+    cancelBatchItem: (id, itemId) =>
+      ipcRenderer.invoke(channels.cancelDownloadBatchItem, id, itemId),
+    finishBatch: (id) => ipcRenderer.invoke(channels.finishDownloadBatch, id),
+    releaseBatch: (id) => ipcRenderer.invoke(channels.releaseDownloadBatch, id),
     run: (id, attempt) => ipcRenderer.invoke(channels.runDownload, id, attempt),
     pause: (id) => ipcRenderer.invoke(channels.pauseDownload, id),
     cancel: (id) => ipcRenderer.invoke(channels.cancelDownload, id),

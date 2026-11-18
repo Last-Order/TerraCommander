@@ -15,7 +15,7 @@ import { EntryRenameModal } from './EntryRenameModal';
 import { EntryDeleteModal } from './EntryDeleteModal';
 import { EntryDownloadModal } from './EntryDownloadModal';
 import { canDeleteEntry } from './entry-deletion';
-import type { DirectoryCache } from './directory-cache';
+import { directoryKey, type DirectoryCache } from './directory-cache';
 import { useDirectoryListing } from './useDirectoryListing';
 import { useDirectorySearch } from './useDirectorySearch';
 import { useDirectorySelection } from './useDirectorySelection';
@@ -64,7 +64,7 @@ export function DirectoryListing({
   const [informationEntries, setInformationEntries] = useState<EntrySelection | null>(null);
   const [renameEntry, setRenameEntry] = useState<Entry | null>(null);
   const [deleteEntry, setDeleteEntry] = useState<Entry | null>(null);
-  const [downloadEntry, setDownloadEntry] = useState<Entry | null>(null);
+  const [downloadEntries, setDownloadEntries] = useState<Entry[] | null>(null);
   const [sort, setSort] = useState<DirectorySort | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const refreshButton = useRef<HTMLButtonElement>(null);
@@ -77,7 +77,18 @@ export function DirectoryListing({
   });
   const queue = useStorageTaskQueue();
   const tasks = useStore(queue.store, (state) => state.tasks);
-  const pendingEntries = useMemo(() => selectPendingEntryEffects(tasks, parent), [tasks, parent]);
+  const groups = useStore(queue.store, (state) => state.groups);
+  const pendingEntries = useMemo(() => {
+    const effects = new Map(selectPendingEntryEffects(tasks, parent));
+    const resources = new Set(
+      groups
+        .filter((group) => group.state.phase !== 'settled')
+        .flatMap((group) => group.request.resources ?? []),
+    );
+    for (const entry of entries.values())
+      if (resources.has(directoryKey(entry.ref))) effects.set(entry.ref.locator, { busy: true });
+    return effects;
+  }, [tasks, groups, parent, entries]);
   const loading = phase === 'loading' || phase === 'refreshing';
   const loadingWithoutEntries = phase === 'loading' && entries.size === 0;
   const menuEntry = menuLocator === null ? undefined : entries.get(menuLocator);
@@ -115,12 +126,22 @@ export function DirectoryListing({
   const renamePending =
     renamableEntry !== undefined && pendingEntries.get(renamableEntry.ref.locator)?.busy === true;
   const deletableEntry = canDeleteEntry(selectedEntry) ? selectedEntry : undefined;
-  const downloadableEntry =
-    selectedEntry?.kind === 'file' &&
-    selectedEntry.ref.connectionId !== 'local' &&
-    selectedEntry.capabilities.read?.support !== 'unsupported'
-      ? selectedEntry
-      : undefined;
+  const selectedEntries = [...selectedLocators].flatMap((locator) => {
+    const entry = entries.get(locator);
+    return entry ? [entry] : [];
+  });
+  const canDownload =
+    selectedEntries.length > 0 &&
+    selectedEntries.every(
+      (entry) =>
+        entry.ref.connectionId !== 'local' &&
+        (entry.kind === 'file'
+          ? entry.capabilities.read?.support !== 'unsupported'
+          : entry.kind === 'directory' && entry.capabilities.list?.support !== 'unsupported'),
+    );
+  const downloadPending = selectedEntries.some(
+    (entry) => pendingEntries.get(entry.ref.locator)?.busy === true,
+  );
   const deletePending =
     deletableEntry !== undefined && pendingEntries.get(deletableEntry.ref.locator)?.busy === true;
   const selectSearchMatch = useCallback(
@@ -305,13 +326,13 @@ export function DirectoryListing({
                 onOpen={onOpen}
               />
               <Menu.Dropdown>
-                {downloadableEntry && (
+                {canDownload && (
                   <Menu.Item
-                    disabled={pendingEntries.get(downloadableEntry.ref.locator)?.busy === true}
+                    disabled={downloadPending}
                     leftSection={<Download size={16} strokeWidth={1.5} aria-hidden="true" />}
                     onClick={() => {
                       setMenuLocator(null);
-                      setDownloadEntry(downloadableEntry);
+                      setDownloadEntries(selectedEntries);
                     }}
                   >
                     {t('downloadEntry')}
@@ -359,13 +380,14 @@ export function DirectoryListing({
           onClose={() => setRenameEntry(null)}
         />
       )}
-      {downloadEntry && (
+      {downloadEntries && (
         <EntryDownloadModal
-          entry={downloadEntry}
+          entries={downloadEntries}
           parent={parent}
           directoryPath={directoryPath}
-          onClose={() => setDownloadEntry(null)}
+          onClose={() => setDownloadEntries(null)}
           onAuthRequired={onAuthRequired}
+          onLocalChanged={() => cache.invalidateConnection('local')}
         />
       )}
       {deleteEntry && (

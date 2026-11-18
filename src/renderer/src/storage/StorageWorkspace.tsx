@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import useSWR from 'swr';
 import type { Space } from '../../../shared/storage';
@@ -14,9 +14,12 @@ import { TaskQueueDock } from '../tasks/TaskQueueDock';
 import { createRenameTaskHandler } from './tasks/rename-task';
 import { createDeleteTaskHandler } from './tasks/delete-task';
 import { createDownloadTaskHandler } from './tasks/download-task';
-import { presentStorageTask } from './tasks/storage-task-presenter';
+import { presentStorageTask, presentStorageTaskGroup } from './tasks/storage-task-presenter';
 import { StorageTaskQueueContext } from './tasks/storage-task-queue-context';
-import type { StorageTaskDefinitions } from './tasks/storage-task-types';
+import type {
+  StorageTaskDefinitions,
+  StorageTaskGroupDefinitions,
+} from './tasks/storage-task-types';
 
 export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { t } = useTranslation('errors');
@@ -33,14 +36,24 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
   const refresh = useCallback(() => {
     void mutate();
   }, [mutate]);
-  const [queue] = useState(
-    () =>
-      new TaskQueue<StorageTaskDefinitions>({
-        rename: createRenameTaskHandler({ directoryCache, onAuthRequired: refresh }),
-        delete: createDeleteTaskHandler({ directoryCache, onAuthRequired: refresh }),
-        download: createDownloadTaskHandler({ directoryCache, onAuthRequired: refresh }),
-      }),
-  );
+  const [queue] = useState(() => {
+    const queue: TaskQueue<StorageTaskDefinitions, StorageTaskGroupDefinitions> = new TaskQueue<
+      StorageTaskDefinitions,
+      StorageTaskGroupDefinitions
+    >({
+      rename: createRenameTaskHandler({ directoryCache, onAuthRequired: refresh }),
+      delete: createDeleteTaskHandler({ directoryCache, onAuthRequired: refresh }),
+      download: createDownloadTaskHandler({ directoryCache, onAuthRequired: refresh }),
+    });
+    return queue;
+  });
+  useEffect(() => {
+    const close = () => {
+      void queue.dispose();
+    };
+    window.addEventListener('beforeunload', close);
+    return () => window.removeEventListener('beforeunload', close);
+  }, [queue]);
 
   return (
     <StorageTaskQueueContext.Provider value={queue}>
@@ -59,7 +72,11 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
             setLocation((previous) => ({ space, generation: (previous?.generation ?? 0) + 1 }))
           }
         />
-        <TaskQueueDock queue={queue} presentTask={presentStorageTask}>
+        <TaskQueueDock
+          queue={queue}
+          presentTask={presentStorageTask}
+          presentGroup={presentStorageTaskGroup}
+        >
           {location ? (
             <DirectoryPane
               key={location.generation}

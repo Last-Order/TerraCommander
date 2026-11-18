@@ -8,7 +8,7 @@ import { pausePage, success } from '../../testing/storage-browser-fixtures';
 
 afterEach(() => vi.unstubAllGlobals());
 
-async function setup() {
+async function setup(options: { multiple?: boolean; folder?: boolean } = {}) {
   const user = userEvent.setup();
   const space: Space = {
     id: 'my-drive',
@@ -19,8 +19,39 @@ async function setup() {
   const entry: Entry = {
     ref: { ...space.root, locator: 'file' },
     name: '笔记.txt',
-    kind: 'file',
+    kind: options.folder ? 'directory' : 'file',
     capabilities: { read: { support: 'supported' } },
+  };
+  const entries = [
+    entry,
+    ...(options.multiple
+      ? [
+          {
+            ...entry,
+            kind: 'file' as const,
+            name: '另一个.txt',
+            ref: { ...entry.ref, locator: 'second' },
+          },
+        ]
+      : []),
+  ];
+  const items = entries.map((selected, id) => ({
+    id,
+    entry: selected,
+    path: selected.name,
+    targetPath: `D:\\Downloads\\${selected.name}`,
+  }));
+  const child = {
+    id: 10,
+    path: `${entry.name}/file.txt`,
+    targetPath: `D:\\Downloads\\${entry.name}\\file.txt`,
+    parent: entry.ref,
+    entry: {
+      ...entry,
+      kind: 'file' as const,
+      name: 'file.txt',
+      ref: { ...entry.ref, locator: 'child' },
+    },
   };
   const pending = pausePage<Awaited<ReturnType<DownloadsApi['run']>>>();
   let listener: ((progress: DownloadProgress) => void) | undefined;
@@ -33,8 +64,32 @@ async function setup() {
     ),
     chooseDirectory: vi.fn<DownloadsApi['chooseDirectory']>(async () => success(null)),
     prepare: vi.fn<DownloadsApi['prepare']>(async (request) =>
-      success({ id: 'download', path: `${request.directory}\\${request.expectedName}` }),
+      success({
+        ref: { planId: 'single', itemId: 0 },
+        path: `${request.directory}\\${request.expectedName}`,
+      }),
     ),
+    prepareBatch: vi.fn<DownloadsApi['prepareBatch']>(async (request) =>
+      success({ id: 'batch', path: request.directory, conflicts: [], items }),
+    ),
+    confirmBatch: vi.fn<DownloadsApi['confirmBatch']>(async () => success(undefined)),
+    releaseWork: vi.fn<DownloadsApi['releaseWork']>(async () => success(undefined)),
+    releaseBatch: vi.fn<DownloadsApi['releaseBatch']>(async () => success(undefined)),
+    discoverBatchDirectory: vi.fn<DownloadsApi['discoverBatchDirectory']>(async () =>
+      success({ items: [child] }),
+    ),
+    resolveWork: vi.fn<DownloadsApi['resolveWork']>(async (ref) =>
+      success({
+        id: ref.planId === 'single' ? 'download' : `file-${ref.itemId}`,
+        path: 'D:\\Downloads\\file.txt',
+      }),
+    ),
+    cancelWork: vi.fn<DownloadsApi['cancelWork']>(async () => {
+      pending.resolve({ ok: false, code: 'Cancelled' });
+      return success(undefined);
+    }),
+    cancelBatchItem: vi.fn<DownloadsApi['cancelBatchItem']>(async () => success(undefined)),
+    finishBatch: vi.fn<DownloadsApi['finishBatch']>(async () => success(undefined)),
     run: vi.fn<DownloadsApi['run']>(() => pending.promise),
     pause: vi.fn<DownloadsApi['pause']>(async () => {
       pending.resolve(success({ status: 'paused', completedBytes: 4, totalBytes: 10 }));
@@ -62,11 +117,17 @@ async function setup() {
             needsAuthorization: false,
           },
         ]),
-      listDirectory: async () => success({ entries: [entry] }),
+      listDirectory: async () => success({ entries }),
     },
   });
   await renderWorkspace();
   await user.click(await screen.findByRole('button', { name: '云盘' }));
+  if (options.multiple) {
+    await user.click(await screen.findByRole('button', { name: entry.name }));
+    await user.keyboard('{Control>}');
+    await user.click(await screen.findByRole('button', { name: '另一个.txt' }));
+    await user.keyboard('{/Control}');
+  }
   await user.pointer({
     target: await screen.findByRole('button', { name: entry.name }),
     keys: '[MouseRight]',
@@ -80,6 +141,8 @@ async function setup() {
   return {
     user,
     entry,
+    entries,
+    items,
     modal,
     dialog,
     downloads,
@@ -145,6 +208,226 @@ it('opens an editable overlay and starts a background download without opening t
   expect(unsubscribe).toHaveBeenCalledOnce();
 });
 
+it('downloads the entire multiple selection and releases its plan when cleared', async () => {
+  const { user, modal, downloads, pending, entries } = await setup({ multiple: true });
+  expect(modal.getByText('已选择 2 个文件和 0 个文件夹')).toBeInTheDocument();
+  await user.click(modal.getByRole('button', { name: '开始下载' }));
+  expect(downloads.prepareBatch).toHaveBeenCalledExactlyOnceWith({
+    directory: 'D:\\Downloads',
+    entries: entries.map((entry) => ({ ref: entry.ref, expectedName: entry.name })),
+  });
+  await waitFor(() => expect(downloads.run).toHaveBeenCalledTimes(2));
+  expect(downloads.run.mock.calls.map(([id]) => id).sort()).toEqual(['file-0', 'file-1']);
+  expect(downloads.prepare).not.toHaveBeenCalled();
+  const queue = within(screen.getByRole('region', { name: '任务队列' }));
+  expect(queue.queryByRole('button', { name: '暂停' })).not.toBeInTheDocument();
+  expect(queue.queryByRole('button', { name: '取消' })).not.toBeInTheDocument();
+  await act(async () => {
+    pending.resolve(success({ status: 'completed' }));
+  });
+  expect(await screen.findByLabelText('已完成')).toBeInTheDocument();
+  expect(
+    screen.getByText('共 2 项任务 · 已完成 2 项 · 失败 0 项 · 跳过 0 项 · 取消 0 项'),
+  ).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: '查看明细' }));
+  expect(queue.getAllByRole('listitem')).toHaveLength(3);
+  await user.click(screen.getByRole('button', { name: '清除已结束任务' }));
+  expect(downloads.releaseBatch).toHaveBeenCalledWith('batch');
+});
+
+it('requires confirmation before transferring a conflicting folder', async () => {
+  const { user, modal, downloads, pending, entry, items } = await setup({ folder: true });
+  downloads.prepareBatch.mockResolvedValueOnce(
+    success({ id: 'batch', path: 'D:\\Downloads', conflicts: [entry.name], items }),
+  );
+  await user.click(modal.getByRole('button', { name: '开始下载' }));
+  const confirmation = within(await screen.findByRole('dialog', { name: '确认覆盖' }));
+  expect(confirmation.getByText('已存在同名项目，是否覆盖？')).toBeInTheDocument();
+  expect(confirmation.getByText(entry.name)).toBeInTheDocument();
+  expect(downloads.run).not.toHaveBeenCalled();
+  await user.click(confirmation.getByRole('button', { name: '覆盖并下载' }));
+  expect(downloads.confirmBatch).toHaveBeenCalledExactlyOnceWith('batch');
+  expect(downloads.prepareBatch).toHaveBeenCalledOnce();
+  await waitFor(() => expect(downloads.run).toHaveBeenCalledOnce());
+  await act(async () => {
+    pending.resolve(success({ status: 'completed' }));
+  });
+});
+
+it('releases a cancelled confirmation and leaves the editable folder download dialog open', async () => {
+  const { user, modal, downloads, items } = await setup({ folder: true });
+  downloads.prepareBatch.mockResolvedValueOnce(
+    success({ id: 'batch', path: 'D:\\Downloads', conflicts: ['A'], items }),
+  );
+  await user.click(modal.getByRole('button', { name: '开始下载' }));
+  const confirmation = within(await screen.findByRole('dialog', { name: '确认覆盖' }));
+  await user.click(confirmation.getByRole('button', { name: '取消' }));
+  await waitFor(() => expect(modal.getByRole('button', { name: '开始下载' })).toBeEnabled());
+  expect(downloads.releaseBatch).toHaveBeenCalledExactlyOnceWith('batch');
+  expect(downloads.run).not.toHaveBeenCalled();
+  expect(modal.getByRole('textbox', { name: '保存目录' })).toHaveValue('D:\\Downloads');
+});
+
+it('derives partial group results and only exposes retries on individual child tasks', async () => {
+  const { user, modal, downloads } = await setup({ multiple: true });
+  downloads.run.mockImplementation(async (id) =>
+    id === 'file-0' ? success({ status: 'completed' }) : { ok: false, code: 'NetworkError' },
+  );
+  await user.click(modal.getByRole('button', { name: '开始下载' }));
+  expect(await screen.findByLabelText('部分完成')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: '查看明细' }));
+  downloads.run.mockResolvedValueOnce(success({ status: 'completed' }));
+  await user.click(screen.getByRole('button', { name: '重试' }));
+  await waitFor(() => expect(screen.queryByLabelText('部分完成')).not.toBeInTheDocument());
+  expect(downloads.resolveWork.mock.calls.map(([ref]) => ref.itemId)).toEqual([0, 1, 1]);
+  expect(downloads.prepareBatch).toHaveBeenCalledOnce();
+});
+
+it('retries standalone work without creating a group or preparing a different destination', async () => {
+  const { user, modal, downloads } = await setup();
+  downloads.run.mockResolvedValueOnce({ ok: false, code: 'NetworkError' });
+  await user.click(modal.getByRole('button', { name: '开始下载' }));
+  const retry = await screen.findByRole('button', { name: '重试' });
+  downloads.run.mockResolvedValueOnce(success({ status: 'completed' }));
+  await user.click(retry);
+  expect(await screen.findByLabelText('已完成')).toBeInTheDocument();
+  expect(downloads.resolveWork.mock.calls.map(([ref]) => ref)).toEqual([
+    { planId: 'single', itemId: 0 },
+    { planId: 'single', itemId: 0 },
+  ]);
+  expect(downloads.prepare).toHaveBeenCalledOnce();
+  expect(downloads.prepareBatch).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: '查看明细' })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: '清除已结束任务' }));
+  expect(downloads.releaseWork).toHaveBeenCalledExactlyOnceWith({ planId: 'single', itemId: 0 });
+});
+
+it('shows every member in an expanded group without pagination', async () => {
+  const { user, modal, downloads, entry } = await setup({ folder: true });
+  const children = Array.from({ length: 101 }, (_, index) => ({
+    id: index + 1,
+    path: `${entry.name}/task-${index + 1}.txt`,
+    targetPath: `D:\\Downloads\\${entry.name}\\task-${index + 1}.txt`,
+    parent: entry.ref,
+    entry: {
+      ...entry,
+      kind: 'file' as const,
+      name: `task-${index + 1}.txt`,
+      ref: { ...entry.ref, locator: `child-${index + 1}` },
+    },
+  }));
+  downloads.discoverBatchDirectory.mockImplementation(async (_id, _itemId, offset) =>
+    success({
+      items: children.slice(offset, offset + 32),
+      ...(offset + 32 < children.length ? { nextOffset: offset + 32 } : {}),
+    }),
+  );
+  downloads.run.mockResolvedValue(success({ status: 'completed' }));
+  await user.click(modal.getByRole('button', { name: '开始下载' }));
+  await waitFor(() => expect(downloads.finishBatch).toHaveBeenCalledWith('batch'));
+  const queue = within(screen.getByRole('region', { name: '任务队列' }));
+  expect(queue.getAllByRole('listitem')).toHaveLength(1);
+  await user.click(queue.getByRole('button', { name: '查看明细' }));
+  expect(queue.getAllByRole('listitem')).toHaveLength(102);
+  expect(queue.queryByRole('button', { name: '下一页' })).not.toBeInTheDocument();
+  expect(queue.getByText(`${entry.name}/task-101.txt`)).toBeInTheDocument();
+});
+
+it('keeps the queue panel closed when discovery adds members to an existing group', async () => {
+  const { user, modal, downloads, entry } = await setup({ folder: true });
+  const discovering = pausePage<Awaited<ReturnType<DownloadsApi['discoverBatchDirectory']>>>();
+  downloads.discoverBatchDirectory.mockReturnValueOnce(discovering.promise);
+  downloads.run.mockResolvedValue(success({ status: 'completed' }));
+  await user.click(modal.getByRole('button', { name: '开始下载' }));
+  await waitFor(() => expect(downloads.discoverBatchDirectory).toHaveBeenCalledOnce());
+  const panel = screen.getByRole('region', { name: '任务队列' });
+  await user.click(within(panel).getByRole('button', { name: '关闭任务队列' }));
+  await act(async () =>
+    discovering.resolve(
+      success({
+        items: [
+          {
+            id: 1,
+            path: 'A/file.txt',
+            targetPath: 'D:\\Downloads\\A\\file.txt',
+            entry: { ...entry, kind: 'file' },
+          },
+        ],
+      }),
+    ),
+  );
+  await waitFor(() => expect(downloads.finishBatch).toHaveBeenCalledWith('batch'));
+  expect(panel).not.toBeVisible();
+});
+
+it('keeps folder preparation problems separate from download members', async () => {
+  const { user, modal, downloads, pending, entry } = await setup({ folder: true, multiple: true });
+  downloads.discoverBatchDirectory.mockResolvedValueOnce({ ok: false, code: 'PermissionDenied' });
+  await user.click(modal.getByRole('button', { name: '开始下载' }));
+  await waitFor(() => expect(downloads.run).toHaveBeenCalledOnce());
+  await act(async () => pending.resolve(success({ status: 'completed' })));
+  expect(await screen.findByLabelText('部分完成')).toBeInTheDocument();
+  expect(screen.getByText(/1 项准备问题/)).toBeInTheDocument();
+  expect(
+    screen.getByText('共 1 项任务 · 已完成 1 项 · 失败 0 项 · 跳过 0 项 · 取消 0 项'),
+  ).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: '查看明细' }));
+  const issues = within(screen.getByRole('list', { name: '准备问题' }));
+  expect(issues.getByText(entry.name)).toBeInTheDocument();
+  expect(issues.getByText('没有权限访问这个位置。')).toBeInTheDocument();
+  expect(
+    within(screen.getByRole('list', { name: '任务组成员' })).getAllByRole('listitem'),
+  ).toHaveLength(1);
+});
+
+it('shows fatal preparation failure on the group without adding a failed member', async () => {
+  const { user, modal, downloads } = await setup({ folder: true });
+  downloads.discoverBatchDirectory.mockResolvedValueOnce({ ok: false, code: 'AuthRequired' });
+  await user.click(modal.getByRole('button', { name: '开始下载' }));
+  expect(await screen.findByText('准备失败')).toBeInTheDocument();
+  expect(await screen.findByLabelText('失败')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: '查看明细' }));
+  expect(screen.getByRole('alert')).toHaveTextContent('请重新授权这个账号。');
+  expect(
+    within(screen.getByRole('list', { name: '任务组成员' })).queryAllByRole('listitem'),
+  ).toHaveLength(0);
+});
+
+it('allows files to finish while preparation of other folders is still running', async () => {
+  const { user, modal, downloads, pending, entry } = await setup({ folder: true });
+  const later = pausePage<Awaited<ReturnType<DownloadsApi['discoverBatchDirectory']>>>();
+  downloads.discoverBatchDirectory
+    .mockResolvedValueOnce(
+      success({
+        items: [
+          {
+            id: 1,
+            path: 'A/file.txt',
+            targetPath: 'D:\\Downloads\\A\\file.txt',
+            entry: { ...entry, kind: 'file', ref: { ...entry.ref, locator: 'child' } },
+          },
+          {
+            id: 2,
+            path: 'A/Sub',
+            targetPath: 'D:\\Downloads\\A\\Sub',
+            entry: { ...entry, name: 'Sub', ref: { ...entry.ref, locator: 'sub' } },
+          },
+        ],
+      }),
+    )
+    .mockReturnValueOnce(later.promise);
+  await user.click(modal.getByRole('button', { name: '开始下载' }));
+  await waitFor(() => expect(downloads.run).toHaveBeenCalledOnce());
+  await waitFor(() => expect(downloads.discoverBatchDirectory).toHaveBeenCalledTimes(2));
+  await act(async () => pending.resolve(success({ status: 'completed' })));
+  expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  expect(screen.queryByText('正在准备')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '清除已结束任务' })).toBeDisabled();
+  await act(async () => later.resolve(success({ items: [] })));
+  expect(await screen.findByLabelText('已完成')).toBeInTheDocument();
+});
+
 it('requires explicit replacement confirmation while retaining the download dialog underneath', async () => {
   const { user, modal, dialog, downloads, pending } = await setup();
   downloads.prepare.mockResolvedValueOnce({ ok: false, code: 'AlreadyExists' });
@@ -168,7 +451,7 @@ it('cancels a running transfer and unsubscribes from progress', async () => {
   await user.click(modal.getByRole('button', { name: '开始下载' }));
   const queue = within(await screen.findByRole('region', { name: '任务队列' }));
   await user.click(await queue.findByRole('button', { name: '取消' }));
-  expect(downloads.cancel).toHaveBeenCalledWith('download');
+  expect(downloads.cancelWork).toHaveBeenCalledWith({ planId: 'single', itemId: 0 });
   expect(await queue.findByLabelText('已取消')).toBeInTheDocument();
   expect(unsubscribe).toHaveBeenCalledOnce();
   expect(queue.getByRole('button', { name: '暂停' })).toBeDisabled();

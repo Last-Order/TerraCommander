@@ -14,6 +14,7 @@ import type { StorageBrowser } from './services/storage-browser';
 import { normalizeStorageError } from './storage/core/errors';
 import { entryNameSchema, entryRefSchema } from './storage/core/validation';
 import { registerDownloadIpc } from './download-ipc';
+import { DownloadError } from './services/download-paths';
 
 const connectionId = z.union([z.literal(localConnectionId), z.uuid()]);
 const spaceId = z.string().min(1).max(1024);
@@ -85,7 +86,10 @@ export function registerIpcHandlers(
         const browser = await services.storageBrowser.get();
         return { ok: true, value: await run(browser, window, ...parsed.data) };
       } catch (error) {
-        const code = error instanceof AccountError ? error.code : normalizeStorageError(error).code;
+        const code =
+          error instanceof AccountError || error instanceof DownloadError
+            ? error.code
+            : normalizeStorageError(error).code;
         return { ok: false, code };
       }
     });

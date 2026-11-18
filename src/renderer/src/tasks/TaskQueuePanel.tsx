@@ -1,37 +1,51 @@
+import type { TaskGroupDefinitions } from './task-group-types';
 import { X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
 import type { TaskQueue } from './task-queue';
-import type { TaskPresenter } from './task-row-model';
-import { isFinishedTask } from './task-selectors';
+import type { TaskGroupPresenter, TaskPresenter } from './task-row-model';
+import { isFinishedGroup, isFinishedTask, topLevelEntries } from './task-selectors';
 import type { TaskDefinitions } from './task-types';
-import { TaskQueueRow } from './TaskQueueRow';
+import { TaskQueueItem } from './TaskQueueItem';
+import { TaskQueueGroupRow } from './TaskQueueGroupRow';
 import classes from './TaskQueuePanel.module.css';
 
-interface TaskQueuePanelProps<Definitions extends TaskDefinitions> {
+interface TaskQueuePanelProps<
+  Definitions extends TaskDefinitions,
+  Groups extends TaskGroupDefinitions,
+> {
   id: string;
   opened: boolean;
   onClose: () => void;
-  queue: TaskQueue<Definitions>;
+  queue: TaskQueue<Definitions, Groups>;
   presentTask: TaskPresenter<Definitions>;
+  presentGroup: TaskGroupPresenter<Groups>;
 }
 
-export function TaskQueuePanel<Definitions extends TaskDefinitions>({
+export function TaskQueuePanel<
+  Definitions extends TaskDefinitions,
+  Groups extends TaskGroupDefinitions,
+>({
   id,
   opened,
   onClose,
   queue,
   presentTask,
-}: TaskQueuePanelProps<Definitions>) {
+  presentGroup,
+}: TaskQueuePanelProps<Definitions, Groups>) {
   const { t } = useTranslation('tasks');
   const tasks = useStore(queue.store, (state) => state.tasks);
-  const hasFinished = tasks.some(isFinishedTask);
+  const groups = useStore(queue.store, (state) => state.groups);
+  const entries = topLevelEntries(tasks, groups);
+  const hasFinished = entries.some((entry) =>
+    entry.kind === 'group' ? isFinishedGroup(entry.group) : isFinishedTask(entry.task),
+  );
 
   return (
     <section id={id} className={classes.panel} hidden={!opened} aria-label={t('taskQueue')}>
       <header className={classes.header}>
         <h2>{t('taskQueue')}</h2>
-        <span className={classes.total}>{tasks.length}</span>
+        <span className={classes.total}>{entries.length}</span>
         <div className={classes.actions}>
           <button type="button" disabled={!hasFinished} onClick={() => queue.clearFinished()}>
             {t('clearFinishedTasks')}
@@ -42,37 +56,28 @@ export function TaskQueuePanel<Definitions extends TaskDefinitions>({
         </div>
       </header>
       <div className={classes.contents}>
-        {tasks.length === 0 ? (
+        {entries.length === 0 ? (
           <p className={classes.empty}>{t('emptyTaskQueue')}</p>
         ) : (
           <ol className={classes.tasks} aria-label={t('taskQueue')}>
-            {tasks.map((task) => (
-              <TaskQueueRow
-                key={task.id}
-                status={task.status}
-                model={presentTask(task)}
-                progress={task.progress}
-                failure={task.status === 'failed' ? task.failure : undefined}
-                pausing={task.controlRequest === 'pause'}
-                pauseSupported={queue.supportsControl(task, 'pause')}
-                cancelSupported={queue.supportsControl(task, 'cancel')}
-                onPause={
-                  queue.canPause(task)
-                    ? () => {
-                        void queue.pause(task.id);
-                      }
-                    : undefined
-                }
-                onResume={queue.canResume(task) ? () => queue.resume(task.id) : undefined}
-                onCancel={
-                  queue.canCancel(task)
-                    ? () => {
-                        void queue.cancel(task.id);
-                      }
-                    : undefined
-                }
-              />
-            ))}
+            {entries.map((entry) =>
+              entry.kind === 'task' ? (
+                <TaskQueueItem
+                  key={entry.id}
+                  task={entry.task}
+                  queue={queue}
+                  presentTask={presentTask}
+                />
+              ) : (
+                <TaskQueueGroupRow
+                  key={entry.id}
+                  group={entry.group}
+                  presentGroup={presentGroup}
+                  queue={queue}
+                  presentTask={presentTask}
+                />
+              ),
+            )}
           </ol>
         )}
       </div>

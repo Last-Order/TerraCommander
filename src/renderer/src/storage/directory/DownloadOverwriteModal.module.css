@@ -1,0 +1,5 @@
+.conflicts {
+  max-height: 12rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}

@@ -61,6 +61,11 @@ export const en = {
     overwriteAndDownload: 'Overwrite and download',
     downloadReceiving: 'Downloading',
     downloadSaving: 'Saving',
+    downloadScanning: 'Scanning folders',
+    downloadPreparationProgress:
+      '{{discoveredFiles}} files found · {{preparedFolders}} folders prepared',
+    downloadSelection: '{{files}} files and {{folders}} folders selected',
+    downloadItemsExist: 'Items with the same names already exist. Overwrite them?',
     deleteEntry: 'Delete',
     deleteEntryConfirmation: 'Delete “{{name}}”? This action cannot be undone.',
     invalidEntryName: 'Enter a valid name.',
@@ -158,7 +163,7 @@ export const en = {
     OutcomeUnknown: 'Could not confirm the result. Refresh to check the current state.',
     InvalidDownloadDirectory: 'Enter an absolute path to an existing directory.',
     InvalidDownloadName:
-      'The cloud file name cannot be saved locally, or the destination is not a regular file.',
+      'The cloud name cannot be saved locally, or the destination has an incompatible type.',
     DownloadTargetBusy: 'The file or destination is in use by another task.',
     DownloadCleanupFailed:
       'Temporary file cleanup failed. Check the destination before retrying; the downloaded file may already be saved.',
