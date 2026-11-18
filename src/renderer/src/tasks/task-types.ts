@@ -20,6 +20,7 @@ export type TaskProgress =
       stage?: TaskMessage;
       completedBytes?: number;
       bytesPerSecond?: number;
+      summary?: TaskMessage;
     }
   | {
       kind: 'determinate';
@@ -28,6 +29,7 @@ export type TaskProgress =
       unit: 'bytes' | 'items';
       stage?: TaskMessage;
       bytesPerSecond?: number;
+      summary?: TaskMessage;
     };
 
 export type TaskDefinitions = Record<string, { input: unknown; result: unknown }>;
@@ -55,14 +57,15 @@ export type TaskState<Result> =
     }
   | ({ controlRequest?: never; controls?: never } & (
       | { status: 'completed'; result: Result }
-      | { status: 'cancelled' }
+      | { status: 'cancelled' | 'skipped' }
       | { status: 'failed'; failure: TaskFailure }
     ));
 
 export type TaskExecutionOutcome<Result> =
   | { status: 'completed'; result: Result }
+  | { status: 'failed'; failure: TaskFailure }
   | { status: 'paused' }
-  | { status: 'cancelled' };
+  | { status: 'cancelled' | 'skipped' };
 
 export type QueueTask<
   Definitions extends TaskDefinitions,
@@ -72,6 +75,8 @@ export type QueueTask<
     id: number;
     request: TaskRequest<Definitions, Kind>;
     progress?: TaskProgress;
+    groupId?: number;
+    memberKey?: string;
   } & TaskState<Definitions[Kind]['result']>;
 }[Type];
 
@@ -80,6 +85,9 @@ export type TaskStatus = TaskState<unknown>['status'];
 export interface TaskContext {
   reportProgress(progress: TaskProgress): void;
   reportControls(controls: TaskControls): void;
+  taskId: number;
+  groupId?: number;
+  signal: AbortSignal;
 }
 
 export interface TaskHandler<Input, Result> {
@@ -91,6 +99,9 @@ export interface TaskHandler<Input, Result> {
   onSuccess?(input: Input, result: Result): void | Promise<void>;
   toFailure(error: unknown): TaskFailure;
   onFailure?(input: Input, failure: TaskFailure): void | Promise<void>;
+  retry?(input: Input): Promise<void>;
+  canRetry?(input: Input): boolean;
+  release?(input: Input): Promise<void>;
 }
 
 export type TaskHandlers<Definitions extends TaskDefinitions> = {

@@ -1,9 +1,10 @@
 import { Check, CircleAlert, Clock3, LoaderCircle, Pause, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import type { ReactNode } from 'react';
 import { rendererNamespaces } from '../i18n/create-renderer-i18n';
 import { formatSize } from '../format/size';
-import type { TaskRowModel } from './task-row-model';
-import type { TaskFailure, TaskProgress, TaskStatus } from './task-types';
+import type { TaskRowModel, TaskRowStatus } from './task-row-model';
+import type { TaskFailure, TaskProgress } from './task-types';
 import classes from './TaskQueueRow.module.css';
 
 const statusIcons = {
@@ -13,10 +14,12 @@ const statusIcons = {
   completed: Check,
   failed: CircleAlert,
   cancelled: X,
+  partial: CircleAlert,
+  skipped: X,
 };
 
 interface TaskQueueRowProps {
-  status: TaskStatus;
+  status: TaskRowStatus;
   model: TaskRowModel;
   progress?: TaskProgress | undefined;
   failure?: TaskFailure | undefined;
@@ -26,6 +29,10 @@ interface TaskQueueRowProps {
   pauseSupported?: boolean | undefined;
   cancelSupported?: boolean | undefined;
   pausing?: boolean | undefined;
+  onRetry?: (() => void) | undefined;
+  summaryNote?: ReactNode;
+  action?: ReactNode;
+  details?: ReactNode;
 }
 
 export function TaskQueueRow({
@@ -39,6 +46,10 @@ export function TaskQueueRow({
   pauseSupported = onPause !== undefined || onResume !== undefined,
   cancelSupported = onCancel !== undefined,
   pausing,
+  onRetry,
+  summaryNote,
+  action,
+  details,
 }: TaskQueueRowProps) {
   const { t, i18n } = useTranslation(rendererNamespaces);
   const formatter = new Intl.NumberFormat(i18n.resolvedLanguage, { maximumFractionDigits: 1 });
@@ -53,7 +64,7 @@ export function TaskQueueRow({
     Number.isFinite(progress.completed);
 
   return (
-    <li className={classes.task} data-status={status}>
+    <li className={classes.task} data-status={status} data-compact={model.compact || undefined}>
       <Icon
         className={classes.statusIcon}
         size={16}
@@ -61,29 +72,46 @@ export function TaskQueueRow({
         aria-label={t(`tasks:taskStatus_${pausing ? 'pausing' : status}`)}
       />
       <div className={classes.description}>
-        <div className={classes.operation}>
-          <span className={classes.type}>{label}</span>
-          {model.title.map((part, index) => (
-            <span
-              key={index}
-              className={classes.titlePart}
-              data-secondary={part.secondary || undefined}
-              title={part.text}
-            >
-              {part.text}
-            </span>
-          ))}
-        </div>
-        {model.summary && (
-          <div className={classes.summary} title={model.summary}>
-            {model.summary}
+        <div className={classes.information}>
+          <div className={classes.operation}>
+            <span className={classes.type}>{label}</span>
+            {model.title.map((part, index) => (
+              <span
+                key={index}
+                className={classes.titlePart}
+                data-secondary={part.secondary || undefined}
+                title={part.text}
+              >
+                {part.text}
+              </span>
+            ))}
           </div>
+          {model.summary && (
+            <div className={classes.summary} title={model.summary}>
+              {model.summary}
+            </div>
+          )}
+          {model.resultMessage && (
+            <p className={classes.summary}>
+              {t(model.resultMessage.key, { ...model.resultMessage.values })}
+            </p>
+          )}
+          {summaryNote && <p className={classes.summary}>{summaryNote}</p>}
+          {status === 'failed' && failure && (
+            <p className={classes.error}>{t(failure.message.key, { ...failure.message.values })}</p>
+          )}
+        </div>
+        {(status === 'running' || status === 'paused') && !model.compact && progress?.summary && (
+          <p className={classes.summary}>
+            {t(progress.summary.key, { ...progress.summary.values })}
+          </p>
         )}
         {(status === 'running' || status === 'paused') && progress && (
           <div className={classes.progress}>
-            {status === 'running' && progress.stage && (
-              <span>{t(progress.stage.key, { ...progress.stage.values })}</span>
+            {model.compact && progress.summary && (
+              <span>{t(progress.summary.key, { ...progress.summary.values })}</span>
             )}
+            {progress.stage && <span>{t(progress.stage.key, { ...progress.stage.values })}</span>}
             <progress
               aria-label={t('tasks:progress', { task: label })}
               max={determinate ? progress.total : undefined}
@@ -123,10 +151,8 @@ export function TaskQueueRow({
               )}
           </div>
         )}
-        {status === 'failed' && failure && (
-          <p className={classes.error}>{t(failure.message.key, { ...failure.message.values })}</p>
-        )}
       </div>
+      {action}
       {pauseSupported && (
         <button
           className={classes.control}
@@ -147,6 +173,12 @@ export function TaskQueueRow({
           {t('common:cancel')}
         </button>
       )}
+      {onRetry && (
+        <button className={classes.control} type="button" onClick={onRetry}>
+          {t('common:retry')}
+        </button>
+      )}
+      {details && <div className={classes.details}>{details}</div>}
     </li>
   );
 }

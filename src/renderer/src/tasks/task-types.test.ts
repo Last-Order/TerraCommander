@@ -1,5 +1,6 @@
 import { expectTypeOf, it } from 'vitest';
 import type { TaskControls, TaskState } from './task-types';
+import type { TaskGroupState } from './task-group-types';
 
 it('restricts control requests to valid lifecycle states', () => {
   expectTypeOf<{
@@ -16,4 +17,11 @@ it('restricts control requests to valid lifecycle states', () => {
     controlRequest: 'cancel';
   }>().not.toExtend<TaskState<void>>();
   expectTypeOf<{ status: 'cancelled'; controls: TaskControls }>().not.toExtend<TaskState<void>>();
+});
+
+it('reserves aggregate outcomes for settled groups', () => {
+  expectTypeOf<{ status: 'partial'; result: void }>().not.toExtend<TaskState<void>>();
+  expectTypeOf<{ phase: 'settled'; outcome: 'partial' }>().toExtend<TaskGroupState>();
+  expectTypeOf<{ phase: 'active'; outcome: 'partial' }>().not.toExtend<TaskGroupState>();
+  expectTypeOf<{ phase: 'settled' }>().not.toExtend<TaskGroupState>();
 });
