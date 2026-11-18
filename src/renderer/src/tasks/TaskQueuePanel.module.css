@@ -5,7 +5,8 @@
   z-index: 1;
   display: flex;
   height: var(--task-panel-height);
-  min-height: 0;
+  min-height: var(--task-panel-min-height);
+  max-height: 70vh;
   flex: none;
   flex-direction: column;
   border-top: 1px solid var(--storage-border);
@@ -15,6 +16,22 @@
 
 .panel[hidden] {
   display: none;
+}
+
+.panel::before {
+  position: absolute;
+  z-index: 1;
+  inset-inline: 0;
+  top: 0;
+  height: 4px;
+  cursor: ns-resize;
+  touch-action: none;
+  content: '';
+}
+
+.panel[data-resize-active] {
+  border-top-color: var(--storage-accent);
+  cursor: ns-resize;
 }
 
 .header {

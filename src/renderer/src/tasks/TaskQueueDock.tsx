@@ -1,5 +1,5 @@
 import type { TaskGroupDefinitions } from './task-group-types';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { TaskQueuePanel } from './TaskQueuePanel';
 import { WorkspaceStatusBar } from './WorkspaceStatusBar';
 import classes from './TaskQueueDock.module.css';
@@ -22,6 +22,7 @@ export function TaskQueueDock<
   presentGroup: TaskGroupPresenter<Groups>;
 }) {
   const [opened, setOpened] = useState(false);
+  const [height, setHeight] = useState<number>();
   const panelId = useId();
   const button = useRef<HTMLButtonElement | null>(null);
 
@@ -45,12 +46,20 @@ export function TaskQueueDock<
 
   return (
     <>
-      <div className={classes.content}>
+      <div
+        className={classes.content}
+        style={
+          {
+            '--task-panel-resized-height': height === undefined ? undefined : `${height}px`,
+          } as CSSProperties
+        }
+      >
         {children}
         <TaskQueuePanel
           id={panelId}
           opened={opened}
           onClose={close}
+          onResize={setHeight}
           queue={queue}
           presentTask={presentTask}
           presentGroup={presentGroup}

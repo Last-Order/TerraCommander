@@ -1,4 +1,10 @@
 .content {
+  --task-panel-height: clamp(
+    var(--task-panel-min-height),
+    var(--task-panel-resized-height, var(--task-panel-min-height)),
+    70vh
+  );
+
   position: relative;
   isolation: isolate;
   display: flex;

@@ -1,4 +1,5 @@
 import type { TaskGroupDefinitions } from './task-group-types';
+import { useRef, useState, type PointerEvent } from 'react';
 import { X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
@@ -17,6 +18,7 @@ interface TaskQueuePanelProps<
   id: string;
   opened: boolean;
   onClose: () => void;
+  onResize: (height: number) => void;
   queue: TaskQueue<Definitions, Groups>;
   presentTask: TaskPresenter<Definitions>;
   presentGroup: TaskGroupPresenter<Groups>;
@@ -29,11 +31,15 @@ export function TaskQueuePanel<
   id,
   opened,
   onClose,
+  onResize,
   queue,
   presentTask,
   presentGroup,
 }: TaskQueuePanelProps<Definitions, Groups>) {
   const { t } = useTranslation('tasks');
+  const panel = useRef<HTMLElement>(null);
+  const drag = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);
+  const [resizeActive, setResizeActive] = useState(false);
   const tasks = useStore(queue.store, (state) => state.tasks);
   const groups = useStore(queue.store, (state) => state.groups);
   const entries = topLevelEntries(tasks, groups);
@@ -41,8 +47,72 @@ export function TaskQueuePanel<
     entry.kind === 'group' ? isFinishedGroup(entry.group) : isFinishedTask(entry.task),
   );
 
+  const resize = (height: number) => {
+    if (!panel.current) return;
+    const style = getComputedStyle(panel.current);
+    onResize(Math.min(parseFloat(style.maxHeight), Math.max(parseFloat(style.minHeight), height)));
+  };
+
+  const isResizeEdge = (clientY: number) => {
+    const top = panel.current?.getBoundingClientRect().top;
+    return top !== undefined && clientY >= top && clientY <= top + 4;
+  };
+
+  const startResize = (event: PointerEvent<HTMLElement>) => {
+    if (
+      event.target !== event.currentTarget ||
+      event.button !== 0 ||
+      !event.isPrimary ||
+      !panel.current ||
+      !isResizeEdge(event.clientY)
+    )
+      return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setResizeActive(true);
+    drag.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      startHeight: panel.current.getBoundingClientRect().height,
+    };
+  };
+
+  const moveResize = (event: PointerEvent<HTMLElement>) => {
+    const current = drag.current;
+    if (current) {
+      if (current.pointerId === event.pointerId)
+        resize(current.startHeight + current.startY - event.clientY);
+    } else {
+      setResizeActive(isResizeEdge(event.clientY));
+    }
+  };
+
+  const stopResize = (event: PointerEvent<HTMLElement>) => {
+    if (drag.current?.pointerId !== event.pointerId) return;
+    drag.current = null;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+
   return (
-    <section id={id} className={classes.panel} hidden={!opened} aria-label={t('taskQueue')}>
+    <section
+      ref={panel}
+      id={id}
+      className={classes.panel}
+      hidden={!opened}
+      aria-label={t('taskQueue')}
+      data-resize-active={resizeActive || undefined}
+      onPointerDown={startResize}
+      onPointerMove={moveResize}
+      onPointerUp={stopResize}
+      onPointerCancel={stopResize}
+      onPointerLeave={() => {
+        if (!drag.current) setResizeActive(false);
+      }}
+      onLostPointerCapture={() => {
+        drag.current = null;
+        setResizeActive(false);
+      }}
+    >
       <header className={classes.header}>
         <h2>{t('taskQueue')}</h2>
         <span className={classes.total}>{entries.length}</span>
