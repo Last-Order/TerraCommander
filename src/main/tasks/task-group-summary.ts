@@ -1,13 +1,13 @@
 import type {
   TaskGroup,
-  TaskGroupPreparation,
-  TaskGroupRequest,
-  TaskGroupSummary,
   TaskGroupDefinitions,
   TaskGroupOutcome,
+  TaskGroupPreparation,
+  TaskGroupRequest,
   TaskGroupState,
-} from './task-group-types';
-import type { TaskStatus } from './task-types';
+  TaskGroupSummary,
+  TaskStatus,
+} from './types';
 
 export function summarizeGroup<Definitions extends TaskGroupDefinitions>(
   id: number,

@@ -1,19 +1,20 @@
 import { expect, it, vi } from 'vitest';
-import { pausePage } from '../testing/storage-browser-fixtures';
+import { summarizeTasks } from '../../shared/task-selectors';
+import { deferred } from '../testing/deferred';
 import { TaskQueue } from './task-queue';
-import { summarizeTasks } from './task-selectors';
-import type { TaskCategory, TaskContext, TaskExecutionOutcome, TaskHandler } from './task-types';
+import type { TaskContext, TaskExecutionOutcome, TaskHandler } from './types';
 
 type Definitions = {
   transfer: { input: string; result: void };
   operation: { input: string; result: void };
 };
+type Category = 'operation' | 'transfer';
 
-function setup(category: TaskCategory = 'transfer') {
+function setup(category: Category = 'transfer') {
   const executions: {
     input: string;
     context: TaskContext;
-    pending: ReturnType<typeof pausePage<TaskExecutionOutcome<void>>>;
+    pending: ReturnType<typeof deferred<TaskExecutionOutcome<void>>>;
   }[] = [];
   const onSuccess = vi.fn();
   const onFailure = vi.fn();
@@ -22,11 +23,11 @@ function setup(category: TaskCategory = 'transfer') {
       .findLast((execution) => execution.input === input)
       ?.pending.resolve({ status: 'paused' });
   });
-  const handler: TaskHandler<string, void> = {
+  const handler: TaskHandler<string, void, Category> = {
     category,
     conflictKeys: (input) => [input],
     execute: async (input, context) => {
-      const pending = pausePage<TaskExecutionOutcome<void>>();
+      const pending = deferred<TaskExecutionOutcome<void>>();
       executions.push({ input, context, pending });
       context.reportControls({ cancellable: true, pausable: true });
       context.reportProgress({
@@ -43,19 +44,22 @@ function setup(category: TaskCategory = 'transfer') {
     onFailure,
     toFailure: () => ({ code: 'failed', message: { key: 'tasks:unknownError' } }),
   };
-  const queue = new TaskQueue<Definitions>({
-    transfer: handler,
-    operation: {
-      category: 'operation',
-      conflictKeys: (input) => [input],
-      execute: async (_input, context) => {
-        context.reportControls({ cancellable: true, pausable: true });
-        context.reportProgress({ kind: 'indeterminate' });
-        return { status: 'completed', result: undefined };
+  const queue = new TaskQueue<Definitions, Record<string, { input: unknown }>, Category>(
+    {
+      transfer: handler,
+      operation: {
+        category: 'operation',
+        conflictKeys: (input) => [input],
+        execute: async (_input, context) => {
+          context.reportControls({ cancellable: true, pausable: true });
+          context.reportProgress({ kind: 'indeterminate' });
+          return { status: 'completed', result: undefined };
+        },
+        toFailure: () => ({ code: 'failed', message: { key: 'tasks:unknownError' } }),
       },
-      toFailure: () => ({ code: 'failed', message: { key: 'tasks:unknownError' } }),
     },
-  });
+    { concurrencyLimits: { operation: 16, transfer: 8 } },
+  );
   const task = (id: number) => {
     const current = queue.store.getState().tasks.find((candidate) => candidate.id === id);
     if (!current) throw new Error('Missing task');
@@ -167,7 +171,7 @@ it('waits for paused cancellation cleanup before releasing its conflict keys', a
   queue.enqueue({ type: 'transfer', input: 'file' });
   await queue.pause(1);
   await vi.waitFor(() => expect(task(1).status).toBe('paused'));
-  const cleanup = pausePage<void>();
+  const cleanup = deferred<void>();
   handler.cancel = async () => cleanup.promise;
   const cancel = queue.cancel(1);
   expect(queue.canResume(task(1))).toBe(false);

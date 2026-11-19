@@ -1,6 +1,7 @@
+import type { DownloadsApi } from './downloads';
 import type { LanguagePreference, LanguageSettings } from './language';
 import type { BrowserResult, StorageBrowserApi } from './storage-browser';
-import type { DownloadsApi } from './downloads';
+import type { TasksApi } from './tasks';
 
 export const channels = {
   getAppInfo: 'app:get-info',
@@ -14,27 +15,23 @@ export const channels = {
   reauthorize: 'storage:reauthorize',
   cancelAuthorization: 'storage:cancel-authorization',
   listDirectory: 'storage:list-directory',
-  renameEntry: 'storage:rename-entry',
-  deleteEntry: 'storage:delete-entry',
   measureDirectorySize: 'storage:measure-directory-size',
   cancelDirectoryMeasurement: 'storage:cancel-directory-measurement',
   getDownloadSettings: 'downloads:get-settings',
   setDownloadDirectory: 'downloads:set-directory',
   chooseDownloadDirectory: 'downloads:choose-directory',
-  prepareDownload: 'downloads:prepare',
-  prepareDownloadBatch: 'downloads:prepare-batch',
-  confirmDownloadBatch: 'downloads:confirm-batch',
-  discoverDownloadDirectory: 'downloads:discover-directory',
-  resolveDownloadWork: 'downloads:resolve-work',
-  cancelDownloadWork: 'downloads:cancel-work',
-  releaseDownloadWork: 'downloads:release-work',
-  cancelDownloadBatchItem: 'downloads:cancel-batch-item',
-  finishDownloadBatch: 'downloads:finish-batch',
-  releaseDownloadBatch: 'downloads:release-batch',
-  runDownload: 'downloads:run',
-  pauseDownload: 'downloads:pause',
-  cancelDownload: 'downloads:cancel',
-  downloadProgress: 'downloads:progress',
+  getTaskSnapshot: 'tasks:snapshot',
+  enqueueRenameTask: 'tasks:enqueue-rename',
+  enqueueDeleteTask: 'tasks:enqueue-delete',
+  prepareDownloadTask: 'tasks:prepare-download',
+  confirmDownloadTask: 'tasks:confirm-download',
+  cancelDownloadConfirmation: 'tasks:cancel-download-confirmation',
+  pauseTask: 'tasks:pause',
+  resumeTask: 'tasks:resume',
+  cancelTask: 'tasks:cancel',
+  retryTask: 'tasks:retry',
+  clearFinishedTasks: 'tasks:clear-finished',
+  taskEvent: 'tasks:event',
 } as const;
 
 export interface AppInfo {
@@ -52,4 +49,5 @@ export interface DesktopApi {
   };
   storage: StorageBrowserApi;
   downloads: DownloadsApi;
+  tasks: TasksApi;
 }

@@ -1,13 +1,16 @@
 import { expect, it, vi } from 'vitest';
+import { topLevelEntries } from '../../shared/task-selectors';
 import { TaskQueue } from './task-queue';
-import { topLevelEntries } from './task-selectors';
-import type { TaskExecutionOutcome, TaskHandler } from './task-types';
+import type { TaskExecutionOutcome, TaskHandler } from './types';
 
 type Definitions = {
   work: { input: { name: string }; result: void };
   discover: { input: { name: string }; result: void };
 };
+type Groups = { fixture: { input: { name: string } } };
+type Category = 'operation' | 'transfer';
 type Outcome = TaskExecutionOutcome<void>;
+
 function pending<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
@@ -17,28 +20,35 @@ function pending<T>() {
 }
 const completed: Outcome = { status: 'completed', result: undefined };
 const groupRequest = {
-  kind: 'fixture',
+  kind: 'fixture' as const,
   input: { name: 'Group' },
 };
 
 function setup(
-  workOverrides: Partial<TaskHandler<{ name: string }, void>> = {},
-  discoverOverrides: Partial<TaskHandler<{ name: string }, void>> = {},
+  workOverrides: Partial<TaskHandler<{ name: string }, void, Category>> = {},
+  discoverOverrides: Partial<TaskHandler<{ name: string }, void, Category>> = {},
 ) {
   const work = {
     category: 'transfer' as const,
     conflictKeys: ({ name }: { name: string }) => [name],
-    execute: vi.fn<TaskHandler<{ name: string }, void>['execute']>(async () => completed),
+    execute: vi.fn<TaskHandler<{ name: string }, void, Category>['execute']>(async () => completed),
     toFailure: () => ({ code: 'failed', message: { key: 'tasks:unknownError' as const } }),
     ...workOverrides,
   };
   const discover = { ...work, category: 'operation' as const, ...discoverOverrides };
-  return { queue: new TaskQueue<Definitions>({ work, discover }), work, discover };
+  return {
+    queue: new TaskQueue<Definitions, Groups, Category>(
+      { work, discover },
+      { concurrencyLimits: { operation: 16, transfer: 8 } },
+    ),
+    work,
+    discover,
+  };
 }
 
 it('schedules group children alongside standalone tasks under the same global capacity', async () => {
   const gates = Array.from({ length: 10 }, () => pending<Outcome>());
-  const execute = vi.fn<TaskHandler<{ name: string }, void>['execute']>(
+  const execute = vi.fn<TaskHandler<{ name: string }, void, Category>['execute']>(
     ({ name }) => gates[Number(name)]!.promise,
   );
   const { queue } = setup({ execute });
@@ -293,7 +303,9 @@ it('does not finish while preparation is still active after an early member comp
 
 it('bounds concurrent preparations independently of task capacity', async () => {
   const gates = Array.from({ length: 6 }, () => pending<void>());
-  const execute = vi.fn<TaskHandler<{ name: string }, void>['execute']>(async () => completed);
+  const execute = vi.fn<TaskHandler<{ name: string }, void, Category>['execute']>(
+    async () => completed,
+  );
   const { queue } = setup({ execute });
   const starts = vi.fn();
   for (const [index, gate] of gates.entries())

@@ -33,6 +33,7 @@ describe('application service ownership', () => {
     await closing;
     expect(whenReady).not.toHaveBeenCalled();
     await expect(owner.accounts.get()).rejects.toBeInstanceOf(ServiceClosedError);
+    await expect(owner.tasks.get()).rejects.toBeInstanceOf(ServiceClosedError);
   });
 
   it('opens the account runtime after Electron is ready and disposes it with the host', async () => {

@@ -1,36 +1,32 @@
-import { waitFor } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
-import type { Entry } from '../../../shared/storage';
-import type { RenameTaskInput, StorageTaskDefinitions } from '../storage/tasks/storage-task-types';
-import { pausePage } from '../testing/storage-browser-fixtures';
+import { deferred } from '../testing/deferred';
 import { TaskQueue } from './task-queue';
-import type { TaskExecutionOutcome, TaskHandler, TaskRequest } from './task-types';
+import type { TaskExecutionOutcome, TaskHandler, TaskRequest } from './types';
 
-type RenameTaskDefinitions = Pick<StorageTaskDefinitions, 'rename'>;
+interface RenameInput {
+  id: string;
+  name: string;
+}
+type RenameDefinitions = { rename: { input: RenameInput; result: string } };
+type Category = 'operation';
 
-function request(locator: string): TaskRequest<RenameTaskDefinitions> {
-  const parent = { connectionId: 'local', spaceId: 'disk', locator: '.' };
+function request(id: string): TaskRequest<RenameDefinitions> {
   return {
     type: 'rename',
-    input: {
-      parent,
-      entry: { ref: { ...parent, locator }, name: locator, kind: 'file', capabilities: {} },
-      name: 'new-' + locator,
-      directoryPath: 'Disk',
-    },
+    input: { id, name: 'new-' + id },
   };
 }
 
-function setup(overrides: Partial<TaskHandler<RenameTaskInput, Entry>> = {}) {
-  const execute = vi.fn<TaskHandler<RenameTaskInput, Entry>['execute']>(async (input) => ({
+function setup(overrides: Partial<TaskHandler<RenameInput, string, Category>> = {}) {
+  const execute = vi.fn<TaskHandler<RenameInput, string, Category>['execute']>(async (input) => ({
     status: 'completed',
-    result: { ...input.entry, name: input.name },
+    result: input.name,
   }));
   const onSuccess = vi.fn();
   const onFailure = vi.fn();
-  const handler: TaskHandler<RenameTaskInput, Entry> = {
+  const handler: TaskHandler<RenameInput, string, Category> = {
     category: 'operation',
-    conflictKeys: (input) => [JSON.stringify(input.entry.ref)],
+    conflictKeys: (input) => [input.id],
     execute,
     onSuccess,
     onFailure,
@@ -38,7 +34,10 @@ function setup(overrides: Partial<TaskHandler<RenameTaskInput, Entry>> = {}) {
     ...overrides,
   };
   return {
-    queue: new TaskQueue<RenameTaskDefinitions>({ rename: handler }),
+    queue: new TaskQueue<RenameDefinitions, Record<string, { input: unknown }>, Category>(
+      { rename: handler },
+      { concurrencyLimits: { operation: 16 } },
+    ),
     execute,
     onSuccess,
     onFailure,
@@ -48,14 +47,14 @@ function setup(overrides: Partial<TaskHandler<RenameTaskInput, Entry>> = {}) {
 it('records failures, continues the queue and only clears finished tasks', async () => {
   const first = request('first.txt');
   const second = request('second.txt');
-  const pending = pausePage<TaskExecutionOutcome<Entry>>();
+  const pending = deferred<TaskExecutionOutcome<string>>();
   const { queue, execute, onSuccess, onFailure } = setup();
   execute
     .mockRejectedValueOnce(new Error('private provider error'))
     .mockReturnValueOnce(pending.promise);
   queue.enqueue(first);
   queue.enqueue(second);
-  await waitFor(() =>
+  await vi.waitFor(() =>
     expect(queue.store.getState().tasks).toMatchObject([
       { status: 'failed', failure: { code: 'failed', message: { key: 'tasks:unknownError' } } },
       { status: 'running' },
@@ -66,11 +65,8 @@ it('records failures, continues the queue and only clears finished tasks', async
   expect(onSuccess).not.toHaveBeenCalled();
   queue.clearFinished();
   expect(queue.store.getState().tasks).toMatchObject([{ request: second, status: 'running' }]);
-  pending.resolve({
-    status: 'completed',
-    result: { ...second.input.entry, name: second.input.name },
-  });
-  await waitFor(() => expect(queue.store.getState().tasks[0]?.status).toBe('completed'));
+  pending.resolve({ status: 'completed', result: second.input.name });
+  await vi.waitFor(() => expect(queue.store.getState().tasks[0]?.status).toBe('completed'));
   queue.clearFinished();
   expect(queue.store.getState().tasks).toEqual([]);
 });
@@ -78,11 +74,11 @@ it('records failures, continues the queue and only clears finished tasks', async
 it('rejects additional writes to running and queued entries until they finish', async () => {
   const first = request('first.txt');
   const second = request('second.txt');
-  const pending = pausePage<void>();
+  const pending = deferred<void>();
   const { queue, execute, onSuccess } = setup();
   execute.mockImplementation(async (input) => {
     await pending.promise;
-    return { status: 'completed', result: { ...input.entry, name: input.name } };
+    return { status: 'completed', result: input.name };
   });
   expect(queue.enqueue(first)).toBe(true);
   for (let index = 0; index < 15; index++) {
@@ -104,21 +100,17 @@ it('rejects additional writes to running and queued entries until they finish', 
     first.input,
     expect.objectContaining({ reportProgress: expect.any(Function) }),
   );
-  const firstResult = { ...first.input.entry, name: first.input.name };
   pending.resolve();
-  await waitFor(() =>
+  await vi.waitFor(() =>
     expect(queue.store.getState().tasks.every(({ status }) => status === 'completed')).toBe(true),
   );
   expect(onSuccess).toHaveBeenCalledTimes(17);
-  expect(onSuccess).toHaveBeenCalledWith(first.input, firstResult);
-  expect(onSuccess).toHaveBeenCalledWith(second.input, {
-    ...second.input.entry,
-    name: second.input.name,
-  });
+  expect(onSuccess).toHaveBeenCalledWith(first.input, first.input.name);
+  expect(onSuccess).toHaveBeenCalledWith(second.input, second.input.name);
   expect(
     queue.enqueue({ ...first, input: { ...first.input, name: 'allowed-after-completion.txt' } }),
   ).toBe(true);
-  await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(18));
+  await vi.waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(18));
 });
 
 it('keeps successful operations completed when a result callback rejects and continues executing', async () => {
@@ -127,13 +119,13 @@ it('keeps successful operations completed when a result callback rejects and con
   const { queue, execute } = setup({ onSuccess });
   queue.enqueue(request('first.txt'));
   queue.enqueue(request('second.txt'));
-  await waitFor(() =>
+  await vi.waitFor(() =>
     expect(queue.store.getState().tasks.every(({ status }) => status === 'completed')).toBe(true),
   );
   expect(execute).toHaveBeenCalledTimes(2);
   expect(log).toHaveBeenCalledExactlyOnceWith('Task result callback failed.', { taskId: 1 });
   expect(queue.enqueue(request('first.txt'))).toBe(true);
-  await waitFor(() => expect(execute).toHaveBeenCalledTimes(3));
+  await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(3));
 });
 
 it('survives error mapping and failure callback errors without leaking the underlying error', async () => {
@@ -149,7 +141,7 @@ it('survives error mapping and failure callback errors without leaking the under
   execute.mockRejectedValueOnce(new Error('private provider error'));
   queue.enqueue(request('first.txt'));
   queue.enqueue(request('second.txt'));
-  await waitFor(() =>
+  await vi.waitFor(() =>
     expect(queue.store.getState().tasks.map(({ status }) => status)).toEqual([
       'failed',
       'completed',
@@ -165,7 +157,7 @@ it('survives error mapping and failure callback errors without leaking the under
 });
 
 it('reports progress only while its own task is running and ignores late callbacks', async () => {
-  const pending = pausePage<TaskExecutionOutcome<Entry>>();
+  const pending = deferred<TaskExecutionOutcome<string>>();
   const { queue, execute } = setup();
   execute.mockReturnValueOnce(pending.promise);
   const first = request('first.txt');
@@ -176,8 +168,8 @@ it('reports progress only while its own task is running and ignores late callbac
   expect(queue.store.getState().tasks[0]).toMatchObject({ progress: { kind: 'indeterminate' } });
   context?.reportProgress({ kind: 'determinate', completed: 2, total: 4, unit: 'items' });
   expect(queue.store.getState().tasks[0]).toMatchObject({ progress: { completed: 2, total: 4 } });
-  pending.resolve({ status: 'completed', result: first.input.entry });
-  await waitFor(() => expect(queue.store.getState().tasks[0]?.status).toBe('completed'));
+  pending.resolve({ status: 'completed', result: first.input.name });
+  await vi.waitFor(() => expect(queue.store.getState().tasks[0]?.status).toBe('completed'));
   const finished = queue.store.getState();
   context?.reportProgress({ kind: 'indeterminate' });
   context?.reportControls({ cancellable: true, pausable: true });
@@ -186,4 +178,24 @@ it('reports progress only while its own task is running and ignores late callbac
   context?.reportProgress({ kind: 'indeterminate' });
   context?.reportControls({ cancellable: true, pausable: true });
   expect(queue.store.getState().tasks).toEqual([]);
+});
+
+it('cancels safely if disposed while an async retry preparation is pending', async () => {
+  const retryGate = deferred<void>();
+  const execute = vi.fn<TaskHandler<RenameInput, string, Category>['execute']>(async () => {
+    throw new Error('fail');
+  });
+  const { queue } = setup({
+    execute,
+    retry: () => retryGate.promise,
+  });
+  queue.enqueue(request('retry-dispose.txt'));
+  await vi.waitFor(() => expect(queue.store.getState().tasks[0]?.status).toBe('failed'));
+  const retrying = queue.retry(1);
+  expect(queue.store.getState().tasks[0]?.status).toBe('queued');
+  expect(queue.store.getState().tasks[0]?.controlRequest).toBeUndefined();
+  const disposing = queue.dispose();
+  retryGate.resolve();
+  await Promise.all([retrying, disposing]);
+  expect(queue.store.getState().tasks[0]?.status).toBe('cancelled');
 });

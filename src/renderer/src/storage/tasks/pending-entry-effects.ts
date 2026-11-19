@@ -1,8 +1,7 @@
 import type { EntryRef } from '../../../../shared/storage';
 import { isFinishedTask } from '../../tasks/task-selectors';
-import type { QueueTask } from '../../tasks/task-types';
 import { directoryKey } from '../directory/directory-cache';
-import type { StorageTaskDefinitions } from './storage-task-types';
+import type { StorageTaskItem } from './storage-task-types';
 
 interface PendingEntryEffect {
   busy: boolean;
@@ -10,7 +9,7 @@ interface PendingEntryEffect {
 }
 
 export function selectPendingEntryEffects(
-  tasks: readonly QueueTask<StorageTaskDefinitions>[],
+  tasks: readonly StorageTaskItem[],
   parent: EntryRef,
 ): ReadonlyMap<string, PendingEntryEffect> {
   const effects = new Map<string, PendingEntryEffect>();

@@ -1,7 +1,7 @@
-import type { QueueTask, TaskDefinitions, TaskMessage, TaskStatus } from './task-types';
-import type { TaskGroup, TaskGroupDefinitions } from './task-group-types';
+import { presentGroupStatus, type TaskRowStatus } from '../../../shared/task-selectors';
+import type { TaskGroupViewItem, TaskMessage, TaskViewItem } from './task-types';
 
-export type TaskRowStatus = TaskStatus | 'partial';
+export { presentGroupStatus, type TaskRowStatus };
 
 export interface TaskRowModel {
   compact?: boolean;
@@ -11,21 +11,10 @@ export interface TaskRowModel {
   resultMessage?: TaskMessage;
 }
 
-export type TaskPresenter<Definitions extends TaskDefinitions> = (
-  task: QueueTask<Definitions>,
+export type TaskPresenter<TTask extends TaskViewItem = TaskViewItem> = (
+  task: TTask,
 ) => TaskRowModel;
 
-export type TaskGroupPresenter<Definitions extends TaskGroupDefinitions> = (
-  group: TaskGroup<Definitions>,
+export type TaskGroupPresenter<TGroup extends TaskGroupViewItem = TaskGroupViewItem> = (
+  group: TGroup,
 ) => TaskRowModel;
-
-export function presentGroupStatus(
-  group: Pick<TaskGroup, 'state' | 'sealed' | 'preparation' | 'summary'>,
-): TaskRowStatus {
-  if (group.state.phase === 'settled') return group.state.outcome;
-  if (group.preparation.status === 'queued' && !group.summary.running) return 'queued';
-  if (!group.sealed || group.summary.running || group.state.phase === 'settling') return 'running';
-  if (group.summary.queued) return 'queued';
-  if (group.summary.paused) return 'paused';
-  return 'running';
-}

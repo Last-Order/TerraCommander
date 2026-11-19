@@ -1,13 +1,14 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { Entry, Space } from '../../../../shared/storage';
+import type { Entry, EntryRef, Space } from '../../../../shared/storage';
 import {
   emptyLocalConnection,
   localConnectionId,
   type BrowserResult,
   type StorageBrowserApi,
 } from '../../../../shared/storage-browser';
+import { createFakeTasksApi } from '../../testing/fake-tasks-api';
 import { renderWorkspace } from '../../testing/render-app';
 import { pausePage, success } from '../../testing/storage-browser-fixtures';
 
@@ -42,20 +43,23 @@ async function setup(kind: Entry['kind'] = 'file') {
   const listDirectory = vi.fn<StorageBrowserApi['listDirectory']>(async (parent) =>
     success({ entries: parent.spaceId === space.id ? entries : [] }),
   );
-  const renameEntry = vi.fn<StorageBrowserApi['renameEntry']>(async (ref, name) => {
-    const index = entries.findIndex((entry) => entry.ref.locator === ref.locator);
-    const entry = entries[index];
-    if (!entry) return { ok: false, code: 'NotFound' };
-    const renamed = { ...entry, ref: { ...ref, locator: name }, name };
-    entries[index] = renamed;
-    return success(renamed);
-  });
+  const renameEntry = vi.fn<(ref: EntryRef, name: string) => Promise<BrowserResult<Entry>>>(
+    async (ref, name) => {
+      const index = entries.findIndex((entry) => entry.ref.locator === ref.locator);
+      const entry = entries[index];
+      if (!entry) return { ok: false, code: 'NotFound' };
+      const renamed = { ...entry, ref: { ...ref, locator: name }, name };
+      entries[index] = renamed;
+      return success(renamed);
+    },
+  );
+  const fakeTasks = createFakeTasksApi({ renameEntry });
   vi.stubGlobal('desktop', {
     storage: {
       listConnections: async () => success([{ ...emptyLocalConnection, spaces: [space, archive] }]),
       listDirectory,
-      renameEntry,
     },
+    tasks: fakeTasks.api,
   });
   await renderWorkspace();
   await user.click(await screen.findByRole('button', { name: space.name }));

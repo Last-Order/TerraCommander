@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Readable } from 'node:stream';
 import { expect, it, vi } from 'vitest';
-import type { DownloadPlanItem, PreparedDownloadBatch } from '../../shared/downloads';
+import type { DownloadPlanItem, PreparedDownloadBatch } from './download-types';
 import type { Entry } from '../../shared/storage';
 import { StorageError } from '../storage/core/errors';
 import { DownloadService } from './download-service';

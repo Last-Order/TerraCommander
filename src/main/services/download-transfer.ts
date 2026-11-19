@@ -1,4 +1,4 @@
-import type { DownloadProgress, DownloadRequest, DownloadRunResult } from '../../shared/downloads';
+import type { DownloadProgress, DownloadRequest, DownloadRunResult } from './download-types';
 import type {
   ContentChecksum,
   Entry,

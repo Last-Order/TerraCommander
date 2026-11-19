@@ -1,33 +1,25 @@
-import type { TaskGroupDefinitions } from './task-group-types';
-import { useRef, useState, type PointerEvent } from 'react';
 import { X } from 'lucide-react';
+import { useRef, useState, type PointerEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
-import type { TaskQueue } from './task-queue';
 import type { TaskGroupPresenter, TaskPresenter } from './task-row-model';
 import { isFinishedGroup, isFinishedTask, topLevelEntries } from './task-selectors';
-import type { TaskDefinitions } from './task-types';
-import { TaskQueueItem } from './TaskQueueItem';
+import type { TaskGroupViewItem, TaskQueueViewClient, TaskViewItem } from './task-types';
 import { TaskQueueGroupRow } from './TaskQueueGroupRow';
+import { TaskQueueItem } from './TaskQueueItem';
 import classes from './TaskQueuePanel.module.css';
 
-interface TaskQueuePanelProps<
-  Definitions extends TaskDefinitions,
-  Groups extends TaskGroupDefinitions,
-> {
+interface TaskQueuePanelProps<TTask extends TaskViewItem, TGroup extends TaskGroupViewItem> {
   id: string;
   opened: boolean;
   onClose: () => void;
   onResize: (height: number) => void;
-  queue: TaskQueue<Definitions, Groups>;
-  presentTask: TaskPresenter<Definitions>;
-  presentGroup: TaskGroupPresenter<Groups>;
+  queue: TaskQueueViewClient<TTask, TGroup>;
+  presentTask: TaskPresenter<TTask>;
+  presentGroup: TaskGroupPresenter<TGroup>;
 }
 
-export function TaskQueuePanel<
-  Definitions extends TaskDefinitions,
-  Groups extends TaskGroupDefinitions,
->({
+export function TaskQueuePanel<TTask extends TaskViewItem, TGroup extends TaskGroupViewItem>({
   id,
   opened,
   onClose,
@@ -35,7 +27,7 @@ export function TaskQueuePanel<
   queue,
   presentTask,
   presentGroup,
-}: TaskQueuePanelProps<Definitions, Groups>) {
+}: TaskQueuePanelProps<TTask, TGroup>) {
   const { t } = useTranslation('tasks');
   const panel = useRef<HTMLElement>(null);
   const drag = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);
@@ -117,7 +109,13 @@ export function TaskQueuePanel<
         <h2>{t('taskQueue')}</h2>
         <span className={classes.total}>{entries.length}</span>
         <div className={classes.actions}>
-          <button type="button" disabled={!hasFinished} onClick={() => queue.clearFinished()}>
+          <button
+            type="button"
+            disabled={!hasFinished}
+            onClick={() => {
+              void queue.clearFinished();
+            }}
+          >
             {t('clearFinishedTasks')}
           </button>
           <button type="button" aria-label={t('closeTaskQueue')} onClick={onClose}>

@@ -1,28 +1,26 @@
-import type { TaskGroupDefinitions } from './task-group-types';
 import { ListTodo } from 'lucide-react';
 import type { Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
-import type { TaskQueue } from './task-queue';
 import { summarizeTasks, topLevelEntries } from './task-selectors';
-import type { TaskDefinitions } from './task-types';
+import type { TaskGroupViewItem, TaskQueueViewClient, TaskViewItem } from './task-types';
 import classes from './WorkspaceStatusBar.module.css';
 
-interface WorkspaceStatusBarProps<
-  Definitions extends TaskDefinitions,
-  Groups extends TaskGroupDefinitions,
-> {
-  queue: TaskQueue<Definitions, Groups>;
+interface WorkspaceStatusBarProps<TTask extends TaskViewItem, TGroup extends TaskGroupViewItem> {
+  queue: TaskQueueViewClient<TTask, TGroup>;
   panelId: string;
   opened: boolean;
   onToggle: () => void;
   buttonRef: Ref<HTMLButtonElement>;
 }
 
-export function WorkspaceStatusBar<
-  Definitions extends TaskDefinitions,
-  Groups extends TaskGroupDefinitions,
->({ queue, panelId, opened, onToggle, buttonRef }: WorkspaceStatusBarProps<Definitions, Groups>) {
+export function WorkspaceStatusBar<TTask extends TaskViewItem, TGroup extends TaskGroupViewItem>({
+  queue,
+  panelId,
+  opened,
+  onToggle,
+  buttonRef,
+}: WorkspaceStatusBarProps<TTask, TGroup>) {
   const { t } = useTranslation('tasks');
   const tasks = useStore(queue.store, (state) => state.tasks);
   const groups = useStore(queue.store, (state) => state.groups);

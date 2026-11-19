@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Button, Group, Modal, Stack, Text } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
 import type { Entry, EntryRef } from '../../../../shared/storage';
@@ -16,12 +16,26 @@ export function EntryDeleteModal({ entry, parent, directoryPath, onClose }: Entr
   const { t } = useTranslation(['storage', 'common']);
   const queue = useStorageTaskQueue();
   const submitted = useRef(false);
+  const active = useRef(true);
 
-  const deleteEntry = () => {
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
+
+  const deleteEntry = async () => {
     if (submitted.current) return;
-    if (!queue.enqueue({ type: 'delete', input: { parent, entry, directoryPath } })) return;
     submitted.current = true;
-    onClose();
+    try {
+      const admitted = await queue.enqueueDelete({ parent, entry, directoryPath });
+      if (!active.current) return;
+      if (admitted) onClose();
+      else submitted.current = false;
+    } catch {
+      submitted.current = false;
+    }
   };
 
   return (
@@ -40,7 +54,12 @@ export function EntryDeleteModal({ entry, parent, directoryPath, onClose }: Entr
           <Button data-autofocus variant="default" onClick={onClose}>
             {t('common:cancel')}
           </Button>
-          <Button color="red" onClick={deleteEntry}>
+          <Button
+            color="red"
+            onClick={() => {
+              void deleteEntry();
+            }}
+          >
             {t('deleteEntry')}
           </Button>
         </Group>

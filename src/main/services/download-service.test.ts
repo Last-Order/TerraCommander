@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Readable } from 'node:stream';
 import { expect, it, vi } from 'vitest';
-import type { DownloadRequest } from '../../shared/downloads';
+import type { DownloadRequest } from './download-types';
 import type { Entry } from '../../shared/storage';
 import type { ReadHandle } from '../storage/core/contracts';
 import { StorageError } from '../storage/core/errors';

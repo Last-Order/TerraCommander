@@ -1,30 +1,23 @@
-import { presentGroupStatus } from './task-row-model';
-import type { TaskGroupDefinitions } from './task-group-types';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
-import type { TaskQueue } from './task-queue';
-import type { TaskGroup } from './task-group-types';
-import type { TaskGroupPresenter, TaskPresenter } from './task-row-model';
-import type { TaskDefinitions } from './task-types';
-import { TaskQueueRow } from './TaskQueueRow';
-import { TaskQueueItem } from './TaskQueueItem';
+import { presentGroupStatus, type TaskGroupPresenter, type TaskPresenter } from './task-row-model';
+import type { TaskGroupViewItem, TaskQueueViewClient, TaskViewItem } from './task-types';
 import { TaskGroupPreparationDetails } from './TaskGroupPreparationDetails';
+import { TaskQueueItem } from './TaskQueueItem';
+import { TaskQueueRow } from './TaskQueueRow';
 import classes from './TaskQueueRow.module.css';
 
-export function TaskQueueGroupRow<
-  Definitions extends TaskDefinitions,
-  Groups extends TaskGroupDefinitions,
->({
+export function TaskQueueGroupRow<TTask extends TaskViewItem, TGroup extends TaskGroupViewItem>({
   group,
   queue,
   presentTask,
   presentGroup,
 }: {
-  group: TaskGroup<Groups>;
-  queue: TaskQueue<Definitions, Groups>;
-  presentTask: TaskPresenter<Definitions>;
-  presentGroup: TaskGroupPresenter<Groups>;
+  group: TGroup;
+  queue: TaskQueueViewClient<TTask, TGroup>;
+  presentTask: TaskPresenter<TTask>;
+  presentGroup: TaskGroupPresenter<TGroup>;
 }) {
   const { t } = useTranslation('tasks');
   const tasks = useStore(queue.store, (state) => state.tasks);

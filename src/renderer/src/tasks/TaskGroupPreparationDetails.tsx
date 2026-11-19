@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
-import { rendererNamespaces } from '../i18n/create-renderer-i18n';
-import type { TaskGroupPreparation } from './task-group-types';
+import { useTaskMessageTranslator } from './task-display-context';
+import type { TaskGroupPreparation } from './task-types';
 import classes from './TaskQueueRow.module.css';
 
 export function TaskGroupPreparationDetails({
@@ -8,22 +8,21 @@ export function TaskGroupPreparationDetails({
 }: {
   preparation: TaskGroupPreparation;
 }) {
-  const { t } = useTranslation(rendererNamespaces);
+  const { t } = useTranslation('tasks');
+  const translateMessage = useTaskMessageTranslator();
   return (
     <>
       {preparation.failure && (
         <p className={classes.error} role="alert">
-          {t(preparation.failure.message.key, { ...preparation.failure.message.values })}
+          {translateMessage(preparation.failure.message)}
         </p>
       )}
       {preparation.issues.length > 0 && (
-        <ul className={classes.preparationIssues} aria-label={t('tasks:preparationIssuesTitle')}>
+        <ul className={classes.preparationIssues} aria-label={t('preparationIssuesTitle')}>
           {preparation.issues.map((issue, index) => (
             <li key={index}>
               <span>{issue.label}</span>
-              <span className={classes.error}>
-                {t(issue.failure.message.key, { ...issue.failure.message.values })}
-              </span>
+              <span className={classes.error}>{translateMessage(issue.failure.message)}</span>
             </li>
           ))}
         </ul>

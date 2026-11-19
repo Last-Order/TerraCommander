@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button, Group, Modal, Stack, TextInput } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
 import type { Entry, EntryRef } from '../../../../shared/storage';
@@ -16,13 +16,27 @@ export function EntryRenameModal({ entry, parent, directoryPath, onClose }: Entr
   const queue = useStorageTaskQueue();
   const [name, setName] = useState(entry.name);
   const submitted = useRef(false);
+  const active = useRef(true);
   const valid = name.trim().length > 0 && !name.includes('\0');
 
-  const rename = () => {
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
+
+  const rename = async () => {
     if (submitted.current || !valid || name === entry.name) return;
-    if (!queue.enqueue({ type: 'rename', input: { parent, entry, name, directoryPath } })) return;
     submitted.current = true;
-    onClose();
+    try {
+      const admitted = await queue.enqueueRename({ parent, entry, name, directoryPath });
+      if (!active.current) return;
+      if (admitted) onClose();
+      else submitted.current = false;
+    } catch {
+      submitted.current = false;
+    }
   };
 
   return (
@@ -36,7 +50,7 @@ export function EntryRenameModal({ entry, parent, directoryPath, onClose }: Entr
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          rename();
+          void rename();
         }}
       >
         <Stack>

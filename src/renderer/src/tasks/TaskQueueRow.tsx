@@ -1,8 +1,8 @@
 import { Check, CircleAlert, Clock3, LoaderCircle, Pause, X } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
 import type { ReactNode } from 'react';
-import { rendererNamespaces } from '../i18n/create-renderer-i18n';
+import { useTranslation } from 'react-i18next';
 import { formatSize } from '../format/size';
+import { useTaskMessageTranslator } from './task-display-context';
 import type { TaskRowModel, TaskRowStatus } from './task-row-model';
 import type { TaskFailure, TaskProgress } from './task-types';
 import classes from './TaskQueueRow.module.css';
@@ -51,10 +51,11 @@ export function TaskQueueRow({
   action,
   details,
 }: TaskQueueRowProps) {
-  const { t, i18n } = useTranslation(rendererNamespaces);
+  const { t, i18n } = useTranslation(['tasks', 'common']);
+  const translateMessage = useTaskMessageTranslator();
   const formatter = new Intl.NumberFormat(i18n.resolvedLanguage, { maximumFractionDigits: 1 });
   const Icon = statusIcons[status];
-  const label = t(model.typeLabel.key, { ...model.typeLabel.values });
+  const label = translateMessage(model.typeLabel);
   const resume = status === 'paused';
   const onTogglePause = resume ? onResume : onPause;
   const determinate =
@@ -92,26 +93,20 @@ export function TaskQueueRow({
             </div>
           )}
           {model.resultMessage && (
-            <p className={classes.summary}>
-              {t(model.resultMessage.key, { ...model.resultMessage.values })}
-            </p>
+            <p className={classes.summary}>{translateMessage(model.resultMessage)}</p>
           )}
           {summaryNote && <p className={classes.summary}>{summaryNote}</p>}
           {status === 'failed' && failure && (
-            <p className={classes.error}>{t(failure.message.key, { ...failure.message.values })}</p>
+            <p className={classes.error}>{translateMessage(failure.message)}</p>
           )}
         </div>
         {(status === 'running' || status === 'paused') && !model.compact && progress?.summary && (
-          <p className={classes.summary}>
-            {t(progress.summary.key, { ...progress.summary.values })}
-          </p>
+          <p className={classes.summary}>{translateMessage(progress.summary)}</p>
         )}
         {(status === 'running' || status === 'paused') && progress && (
           <div className={classes.progress}>
-            {model.compact && progress.summary && (
-              <span>{t(progress.summary.key, { ...progress.summary.values })}</span>
-            )}
-            {progress.stage && <span>{t(progress.stage.key, { ...progress.stage.values })}</span>}
+            {model.compact && progress.summary && <span>{translateMessage(progress.summary)}</span>}
+            {progress.stage && <span>{translateMessage(progress.stage)}</span>}
             <progress
               aria-label={t('tasks:progress', { task: label })}
               max={determinate ? progress.total : undefined}

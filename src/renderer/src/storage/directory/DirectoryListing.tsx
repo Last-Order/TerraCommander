@@ -387,7 +387,6 @@ export function DirectoryListing({
           directoryPath={directoryPath}
           onClose={() => setDownloadEntries(null)}
           onAuthRequired={onAuthRequired}
-          onLocalChanged={() => cache.invalidateConnection('local')}
         />
       )}
       {deleteEntry && (

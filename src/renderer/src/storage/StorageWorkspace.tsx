@@ -3,26 +3,20 @@ import { useTranslation } from 'react-i18next';
 import useSWR from 'swr';
 import type { Space } from '../../../shared/storage';
 import { localConnectionId } from '../../../shared/storage-browser';
+import type { TaskMessage } from '../../../shared/tasks';
+import { TaskQueueDock } from '../tasks/TaskQueueDock';
 import { StorageSetupModal, type SetupIntent } from './connections/StorageSetupModal';
 import { StorageSidebar } from './connections/StorageSidebar';
 import { DirectoryCache } from './directory/directory-cache';
 import { DirectoryPane, EmptyDirectoryPane } from './directory/DirectoryPane';
 import { errorKey, resultOf } from './storage-client';
 import classes from './StorageWorkspace.module.css';
-import { TaskQueue } from '../tasks/task-queue';
-import { TaskQueueDock } from '../tasks/TaskQueueDock';
-import { createRenameTaskHandler } from './tasks/rename-task';
-import { createDeleteTaskHandler } from './tasks/delete-task';
-import { createDownloadTaskHandler } from './tasks/download-task';
+import { StorageTaskClient } from './tasks/storage-task-client';
 import { presentStorageTask, presentStorageTaskGroup } from './tasks/storage-task-presenter';
 import { StorageTaskQueueContext } from './tasks/storage-task-queue-context';
-import type {
-  StorageTaskDefinitions,
-  StorageTaskGroupDefinitions,
-} from './tasks/storage-task-types';
 
 export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => void }) {
-  const { t } = useTranslation('errors');
+  const { t, i18n } = useTranslation('errors');
   const {
     data: connections = [],
     isValidating,
@@ -36,24 +30,21 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
   const refresh = useCallback(() => {
     void mutate();
   }, [mutate]);
-  const [queue] = useState(() => {
-    const queue: TaskQueue<StorageTaskDefinitions, StorageTaskGroupDefinitions> = new TaskQueue<
-      StorageTaskDefinitions,
-      StorageTaskGroupDefinitions
-    >({
-      rename: createRenameTaskHandler({ directoryCache, onAuthRequired: refresh }),
-      delete: createDeleteTaskHandler({ directoryCache, onAuthRequired: refresh }),
-      download: createDownloadTaskHandler({ directoryCache, onAuthRequired: refresh }),
-    });
-    return queue;
-  });
-  useEffect(() => {
-    const close = () => {
-      void queue.dispose();
-    };
-    window.addEventListener('beforeunload', close);
-    return () => window.removeEventListener('beforeunload', close);
-  }, [queue]);
+  const [queue] = useState(
+    () => new StorageTaskClient({ directoryCache, onAuthRequired: refresh }),
+  );
+  useEffect(() => queue.connect(), [queue]);
+
+  const translateTaskMessage = useCallback(
+    (message: TaskMessage) => {
+      const value: unknown = i18n.t(
+        message.key as never,
+        (message.values ? { ...message.values } : undefined) as never,
+      );
+      return typeof value === 'string' ? value : '';
+    },
+    [i18n],
+  );
 
   return (
     <StorageTaskQueueContext.Provider value={queue}>
@@ -76,6 +67,7 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
           queue={queue}
           presentTask={presentStorageTask}
           presentGroup={presentStorageTaskGroup}
+          translateMessage={translateTaskMessage}
         >
           {location ? (
             <DirectoryPane

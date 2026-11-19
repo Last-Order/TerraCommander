@@ -1,20 +1,15 @@
-import type { TaskGroupDefinitions } from './task-group-types';
-import type { TaskQueue } from './task-queue';
 import type { TaskPresenter } from './task-row-model';
-import type { QueueTask, TaskDefinitions } from './task-types';
+import type { TaskGroupViewItem, TaskQueueViewClient, TaskViewItem } from './task-types';
 import { TaskQueueRow } from './TaskQueueRow';
 
-export function TaskQueueItem<
-  Definitions extends TaskDefinitions,
-  Groups extends TaskGroupDefinitions,
->({
+export function TaskQueueItem<TTask extends TaskViewItem, TGroup extends TaskGroupViewItem>({
   task,
   queue,
   presentTask,
 }: {
-  task: QueueTask<Definitions>;
-  queue: TaskQueue<Definitions, Groups>;
-  presentTask: TaskPresenter<Definitions>;
+  task: TTask;
+  queue: TaskQueueViewClient<TTask, TGroup>;
+  presentTask: TaskPresenter<TTask>;
 }) {
   return (
     <TaskQueueRow
@@ -23,25 +18,31 @@ export function TaskQueueItem<
       progress={task.progress}
       failure={task.status === 'failed' ? task.failure : undefined}
       pausing={task.controlRequest === 'pause'}
-      pauseSupported={queue.supportsControl(task, 'pause')}
-      cancelSupported={queue.supportsControl(task, 'cancel')}
+      pauseSupported={task.controls.supportsPause}
+      cancelSupported={task.controls.supportsCancel}
       onPause={
-        queue.canPause(task)
+        task.controls.canPause
           ? () => {
               void queue.pause(task.id);
             }
           : undefined
       }
-      onResume={queue.canResume(task) ? () => queue.resume(task.id) : undefined}
+      onResume={
+        task.controls.canResume
+          ? () => {
+              void queue.resume(task.id);
+            }
+          : undefined
+      }
       onCancel={
-        queue.canCancel(task)
+        task.controls.canCancel
           ? () => {
               void queue.cancel(task.id);
             }
           : undefined
       }
       onRetry={
-        queue.canRetry(task)
+        task.controls.canRetry
           ? () => {
               void queue.retry(task.id);
             }

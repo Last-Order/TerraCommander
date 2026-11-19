@@ -1,25 +1,23 @@
-import type { TaskGroupDefinitions } from './task-group-types';
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { TaskQueuePanel } from './TaskQueuePanel';
-import { WorkspaceStatusBar } from './WorkspaceStatusBar';
-import classes from './TaskQueueDock.module.css';
-import type { TaskQueue } from './task-queue';
+import { TaskDisplayContext, type TaskMessageTranslator } from './task-display-context';
 import type { TaskGroupPresenter, TaskPresenter } from './task-row-model';
-import type { TaskDefinitions } from './task-types';
+import type { TaskGroupViewItem, TaskQueueViewClient, TaskViewItem } from './task-types';
+import { TaskQueuePanel } from './TaskQueuePanel';
+import classes from './TaskQueueDock.module.css';
+import { WorkspaceStatusBar } from './WorkspaceStatusBar';
 
-export function TaskQueueDock<
-  Definitions extends TaskDefinitions,
-  Groups extends TaskGroupDefinitions,
->({
+export function TaskQueueDock<TTask extends TaskViewItem, TGroup extends TaskGroupViewItem>({
   children,
   queue,
   presentTask,
   presentGroup,
+  translateMessage,
 }: {
   children: ReactNode;
-  queue: TaskQueue<Definitions, Groups>;
-  presentTask: TaskPresenter<Definitions>;
-  presentGroup: TaskGroupPresenter<Groups>;
+  queue: TaskQueueViewClient<TTask, TGroup>;
+  presentTask: TaskPresenter<TTask>;
+  presentGroup: TaskGroupPresenter<TGroup>;
+  translateMessage?: TaskMessageTranslator | undefined;
 }) {
   const [opened, setOpened] = useState(false);
   const [height, setHeight] = useState<number>();
@@ -45,7 +43,7 @@ export function TaskQueueDock<
   };
 
   return (
-    <>
+    <TaskDisplayContext.Provider value={translateMessage ?? null}>
       <div
         className={classes.content}
         style={
@@ -72,6 +70,6 @@ export function TaskQueueDock<
         onToggle={() => setOpened((previous) => !previous)}
         buttonRef={button}
       />
-    </>
+    </TaskDisplayContext.Provider>
   );
 }

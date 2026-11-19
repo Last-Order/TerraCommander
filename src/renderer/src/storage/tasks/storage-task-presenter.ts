@@ -1,12 +1,11 @@
-import type { TaskRowModel, TaskGroupPresenter } from '../../tasks/task-row-model';
+import type { TaskGroupPresenter, TaskPresenter, TaskRowModel } from '../../tasks/task-row-model';
 import type {
-  RenameTaskInput,
-  StorageTaskDefinitions,
-  StorageTaskGroupDefinitions,
+  RenameTaskRequest,
+  StorageTaskGroupItem,
+  StorageTaskItem,
 } from './storage-task-types';
-import type { QueueTask } from '../../tasks/task-types';
 
-function presentRenameTask(input: RenameTaskInput): TaskRowModel {
+function presentRenameTask(input: RenameTaskRequest): TaskRowModel {
   return {
     typeLabel: { key: 'storage:renameEntry' },
     title: [{ text: input.entry.name }, { text: '→', secondary: true }, { text: input.name }],
@@ -14,7 +13,7 @@ function presentRenameTask(input: RenameTaskInput): TaskRowModel {
   };
 }
 
-export const presentStorageTask = (task: QueueTask<StorageTaskDefinitions>): TaskRowModel => {
+export const presentStorageTask: TaskPresenter<StorageTaskItem> = (task) => {
   switch (task.request.type) {
     case 'rename':
       return presentRenameTask(task.request.input);
@@ -30,7 +29,7 @@ export const presentStorageTask = (task: QueueTask<StorageTaskDefinitions>): Tas
         compact: true,
         typeLabel: { key: 'storage:downloadEntry' },
         title: [{ text: input.displayName ?? input.entry.name }],
-        summary: `${input.directoryPath} → ${input.destination.path}`,
+        summary: `${input.directoryPath} → ${input.destinationPath}`,
         ...(task.status === 'skipped'
           ? { resultMessage: { key: 'errors:Unsupported' as const } }
           : {}),
@@ -39,7 +38,7 @@ export const presentStorageTask = (task: QueueTask<StorageTaskDefinitions>): Tas
   }
 };
 
-export const presentStorageTaskGroup: TaskGroupPresenter<StorageTaskGroupDefinitions> = (group) => {
+export const presentStorageTaskGroup: TaskGroupPresenter<StorageTaskGroupItem> = (group) => {
   const input = group.request.input;
   return {
     typeLabel: { key: 'storage:downloadEntry' },

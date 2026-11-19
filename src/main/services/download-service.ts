@@ -9,7 +9,7 @@ import type {
   DownloadBatchRequest,
   PreparedDownloadBatch,
   DownloadWorkRef,
-} from '../../shared/downloads';
+} from './download-types';
 import { StorageError, throwIfAborted } from '../storage/core/errors';
 import { checkDownloadTarget } from './download-output';
 import { downloadDirectory, DownloadError, validateDownloadName } from './download-paths';

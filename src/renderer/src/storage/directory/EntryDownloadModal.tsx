@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button, Group, Modal, Stack, Text } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
-import type { DownloadRequest, PreparedDownloadBatch } from '../../../../shared/downloads';
 import type { Entry, EntryRef } from '../../../../shared/storage';
 import { DownloadDirectoryInput } from '../../downloads/DownloadDirectoryInput';
 import { errorKey, resultOf, type StorageErrorKey } from '../storage-client';
 import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
 import { DownloadOverwriteModal } from './DownloadOverwriteModal';
-import { enqueueDownloadGroup } from '../tasks/download-group';
+
+interface PendingOverwriteConfirmation {
+  confirmationId: string;
+  conflicts?: readonly string[] | undefined;
+}
 
 export function EntryDownloadModal({
   entries,
@@ -15,14 +18,12 @@ export function EntryDownloadModal({
   directoryPath,
   onClose,
   onAuthRequired,
-  onLocalChanged,
 }: {
   entries: readonly Entry[];
   parent: EntryRef;
   directoryPath: string;
   onClose: () => void;
   onAuthRequired: () => void;
-  onLocalChanged: () => void;
 }) {
   const { t } = useTranslation(['storage', 'common', 'errors']);
   const queue = useStorageTaskQueue();
@@ -30,13 +31,12 @@ export function EntryDownloadModal({
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<StorageErrorKey>();
-  const [overwriteRequest, setOverwriteRequest] = useState<
-    DownloadRequest | PreparedDownloadBatch | null
-  >(null);
-  const preparedBatch = useRef<PreparedDownloadBatch | null>(null);
+  const [pendingConflict, setPendingConflict] = useState<PendingOverwriteConfirmation | null>(null);
+  const pendingConfirmationId = useRef<string | null>(null);
   const active = useRef(true);
   const submitting = useRef(false);
   const directoryEdited = useRef(false);
+
   useEffect(() => {
     let cancelled = false;
     active.current = true;
@@ -54,49 +54,44 @@ export function EntryDownloadModal({
     return () => {
       cancelled = true;
       active.current = false;
-      if (preparedBatch.current) {
-        void window.desktop.downloads.releaseBatch(preparedBatch.current.id).catch(() => {
+      const confirmationId = pendingConfirmationId.current;
+      pendingConfirmationId.current = null;
+      if (confirmationId) {
+        void queue.cancelDownloadConfirmation(confirmationId).catch(() => {
           console.error('Download preparation release failed.');
         });
-        preparedBatch.current = null;
       }
     };
-  }, []);
-  async function submit(request: DownloadRequest) {
-    if (submitting.current || !request.directory) return;
+  }, [queue]);
+
+  async function submit() {
+    if (submitting.current || !directory) return;
     submitting.current = true;
     setBusy(true);
     setError(undefined);
     try {
-      const destination = await resultOf(window.desktop.downloads.prepare(request));
-      if (
-        !active.current ||
-        !queue.enqueue({
-          type: 'download',
-          input: {
-            parent,
-            entry,
-            directoryPath,
-            destination,
-          },
-        })
-      ) {
-        await resultOf(window.desktop.downloads.releaseWork(destination.ref));
-        if (active.current) {
-          setOverwriteRequest(null);
-          setError('DownloadTargetBusy');
+      const response = await queue.prepareDownload({ parent, entries, directory, directoryPath });
+      if (!active.current) {
+        if (response.status === 'conflict') {
+          void queue.cancelDownloadConfirmation(response.confirmationId).catch(() => {
+            console.error('Download preparation release failed.');
+          });
         }
+        return;
+      }
+      if (response.status === 'conflict') {
+        pendingConfirmationId.current = response.confirmationId;
+        setPendingConflict({
+          confirmationId: response.confirmationId,
+          conflicts: response.conflicts,
+        });
         return;
       }
       onClose();
     } catch (error) {
       if (!active.current) return;
       const code = errorKey(error);
-      if (code === 'AlreadyExists') {
-        setOverwriteRequest({ ...request, replace: true });
-        return;
-      }
-      setOverwriteRequest(null);
+      setPendingConflict(null);
       setError(code);
       if (code === 'AuthRequired') onAuthRequired();
     } finally {
@@ -104,52 +99,21 @@ export function EntryDownloadModal({
       if (active.current) setBusy(false);
     }
   }
-  async function enqueueBatch(destination: PreparedDownloadBatch) {
-    if (
-      !active.current ||
-      !enqueueDownloadGroup(
-        queue,
-        { parent, entries, directoryPath, destination },
-        { onAuthRequired, onLocalChanged },
-      )
-    ) {
-      await resultOf(window.desktop.downloads.releaseBatch(destination.id));
-      preparedBatch.current = null;
-      if (active.current) {
-        setOverwriteRequest(null);
-        setError('DownloadTargetBusy');
-      }
-      return;
-    }
-    preparedBatch.current = null;
-    onClose();
-  }
-  async function submitBatch(destination?: PreparedDownloadBatch) {
-    if (submitting.current || !directory) return;
+
+  async function confirmOverwrite() {
+    if (submitting.current || !pendingConflict) return;
     submitting.current = true;
     setBusy(true);
     setError(undefined);
+    const confirmationId = pendingConflict.confirmationId;
+    pendingConfirmationId.current = null;
     try {
-      if (destination) {
-        await resultOf(window.desktop.downloads.confirmBatch(destination.id));
-        await enqueueBatch(destination);
-      } else {
-        const prepared = await resultOf(
-          window.desktop.downloads.prepareBatch({
-            entries: entries.map((entry) => ({ ref: entry.ref, expectedName: entry.name })),
-            directory,
-          }),
-        );
-        preparedBatch.current = prepared;
-        if (!active.current) {
-          await resultOf(window.desktop.downloads.releaseBatch(prepared.id));
-          preparedBatch.current = null;
-        } else if (prepared.conflicts.length) setOverwriteRequest(prepared);
-        else await enqueueBatch(prepared);
-      }
+      await queue.confirmDownload(confirmationId);
+      if (active.current) onClose();
     } catch (error) {
       if (!active.current) return;
       const code = errorKey(error);
+      setPendingConflict(null);
       setError(code);
       if (code === 'AuthRequired') onAuthRequired();
     } finally {
@@ -157,9 +121,24 @@ export function EntryDownloadModal({
       if (active.current) setBusy(false);
     }
   }
-  const entry = entries[0]!;
-  const singleFile = entries.length === 1 && entry.kind === 'file';
-  const blocked = busy || overwriteRequest !== null;
+
+  async function cancelOverwrite() {
+    const confirmationId = pendingConfirmationId.current;
+    pendingConfirmationId.current = null;
+    setPendingConflict(null);
+    if (!confirmationId) return;
+    setBusy(true);
+    try {
+      await queue.cancelDownloadConfirmation(confirmationId);
+    } catch (error) {
+      if (active.current) setError(errorKey(error));
+    } finally {
+      if (active.current) setBusy(false);
+    }
+  }
+
+  const singleFile = entries.length === 1 && entries[0]?.kind === 'file';
+  const blocked = busy || pendingConflict !== null;
   return (
     <>
       <Modal
@@ -171,17 +150,15 @@ export function EntryDownloadModal({
         }}
         closeOnClickOutside={!blocked}
         closeOnEscape={!blocked}
-        trapFocus={overwriteRequest === null}
-        returnFocus={overwriteRequest === null}
-        inert={overwriteRequest !== null}
+        trapFocus={pendingConflict === null}
+        returnFocus={pendingConflict === null}
+        inert={pendingConflict !== null}
         closeButtonProps={{ disabled: blocked, 'aria-label': t('common:close') }}
       >
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            if (singleFile)
-              void submit({ ref: entry.ref, directory, expectedName: entry.name, replace: false });
-            else void submitBatch();
+            void submit();
           }}
         >
           <Stack>
@@ -225,28 +202,15 @@ export function EntryDownloadModal({
           </Stack>
         </form>
       </Modal>
-      {overwriteRequest && (
+      {pendingConflict && (
         <DownloadOverwriteModal
           busy={busy}
-          conflicts={'conflicts' in overwriteRequest ? overwriteRequest.conflicts : undefined}
+          conflicts={pendingConflict.conflicts}
           onConfirm={() => {
-            if ('conflicts' in overwriteRequest) void submitBatch(overwriteRequest);
-            else void submit(overwriteRequest);
+            void confirmOverwrite();
           }}
           onCancel={() => {
-            setOverwriteRequest(null);
-            if (preparedBatch.current) {
-              const id = preparedBatch.current.id;
-              preparedBatch.current = null;
-              setBusy(true);
-              void resultOf(window.desktop.downloads.releaseBatch(id))
-                .catch((error: unknown) => {
-                  if (active.current) setError(errorKey(error));
-                })
-                .finally(() => {
-                  if (active.current) setBusy(false);
-                });
-            }
+            void cancelOverwrite();
           }}
         />
       )}

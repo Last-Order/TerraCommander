@@ -12,7 +12,8 @@ import {
   type LanguagePreferencesPort,
 } from './services/language-preferences';
 import type { StorageBrowser } from './services/storage-browser';
-import { entryNameSchema, entryRefSchema } from './storage/core/validation';
+import { entryRefSchema } from './storage/core/validation';
+import { registerTaskIpc } from './task-ipc';
 
 const connectionId = z.union([z.literal(localConnectionId), z.uuid()]);
 const spaceId = z.string().min(1).max(1024);
@@ -64,7 +65,8 @@ export function registerIpcHandlers(
     },
   }));
 
-  registerDownloadIpc(ipc, entryUrl, services, getStorageBrowser);
+  registerDownloadIpc(ipc, services);
+  registerTaskIpc(ipc, entryUrl, services);
 
   ipc.handle(channels.getLanguage, noArguments, () => language.get());
   ipc.handle(channels.setLanguage, z.tuple([languagePreferenceSchema]), (_window, preference) =>
@@ -115,14 +117,6 @@ export function registerIpcHandlers(
     channels.listDirectory,
     z.tuple([directory, z.string().min(1).max(65_536).optional()]),
     (browser, _window, parent, cursor?: string) => browser.listDirectory(parent, cursor),
-  );
-  handleStorage(
-    channels.renameEntry,
-    z.tuple([directory, entryNameSchema]),
-    (browser, _window, ref, name) => browser.renameEntry(ref, name),
-  );
-  handleStorage(channels.deleteEntry, z.tuple([directory]), (browser, _window, ref) =>
-    browser.deleteEntry(ref),
   );
   handleStorage(
     channels.measureDirectorySize,

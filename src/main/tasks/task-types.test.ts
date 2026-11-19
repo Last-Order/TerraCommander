@@ -1,6 +1,5 @@
 import { expectTypeOf, it } from 'vitest';
-import type { TaskControls, TaskState } from './task-types';
-import type { TaskGroupState } from './task-group-types';
+import type { TaskControls, TaskGroupState, TaskState } from './types';
 
 it('restricts control requests to valid lifecycle states', () => {
   expectTypeOf<{

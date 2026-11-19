@@ -1,13 +1,14 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { Entry, Space } from '../../../../shared/storage';
+import type { Entry, EntryRef, Space } from '../../../../shared/storage';
 import {
   emptyLocalConnection,
   localConnectionId,
   type BrowserResult,
   type StorageBrowserApi,
 } from '../../../../shared/storage-browser';
+import { createFakeTasksApi } from '../../testing/fake-tasks-api';
 import { renderWorkspace } from '../../testing/render-app';
 import { pausePage, success } from '../../testing/storage-browser-fixtures';
 
@@ -35,12 +36,13 @@ async function setup(kind: Entry['kind'] = 'file') {
   const listDirectory = vi.fn<StorageBrowserApi['listDirectory']>(async () =>
     success({ entries: [...entries] }),
   );
-  const deleteEntry = vi.fn<StorageBrowserApi['deleteEntry']>(async (ref) => {
+  const deleteEntry = vi.fn<(ref: EntryRef) => Promise<BrowserResult<void>>>(async (ref) => {
     const index = entries.findIndex((entry) => entry.ref.locator === ref.locator);
     if (index < 0) return { ok: false, code: 'NotFound' };
     entries.splice(index, 1);
     return success(undefined);
   });
+  const fakeTasks = createFakeTasksApi({ deleteEntry });
   vi.stubGlobal('desktop', {
     storage: {
       listConnections: async () =>
@@ -51,8 +53,8 @@ async function setup(kind: Entry['kind'] = 'file') {
           },
         ]),
       listDirectory,
-      deleteEntry,
     },
+    tasks: fakeTasks.api,
   });
   await renderWorkspace();
   await user.click(await screen.findByRole('button', { name: space.name }));
