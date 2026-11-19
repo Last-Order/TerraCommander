@@ -36,7 +36,7 @@ async function fixture(media: (init?: RequestInit) => Response | Promise<Respons
     configuration: { subject: 'subject', oauthClientId: 'client' },
     credentialRef: 'credential',
   });
-  const storage = new StorageAccess(registry, { async load() {}, async save() {} });
+  const storage = new StorageAccess(registry);
   const ref = { connectionId: 'account', spaceId: 'my-drive', locator: 'file' };
   return { registry, storage, ref, request, event };
 }

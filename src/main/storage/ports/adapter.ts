@@ -14,24 +14,40 @@ import type {
 import type { ByteSource, OperationContext, ReadHandle, UploadDriver } from '../core/contracts';
 import type { CredentialResolver, StorageLogger } from './services';
 
-/** Native storage semantics stay inside the adapter; unsupported operations remain optional. */
-export interface StorageAdapter {
+/** Core lifecycle and metadata port required by every storage adapter. */
+export interface CoreStorageAdapter {
   readonly connectionId: string;
-  readonly uploads?: UploadDriver;
   listSpaces(ctx: OperationContext): Promise<Space[]>;
   stat(ref: EntryRef, ctx: OperationContext): Promise<Entry>;
   /** A snapshot of effective support, not a substitute for authorization during execution. */
   capabilities(scope: CapabilityScope, ctx: OperationContext): Promise<Capabilities>;
+  dispose(): Promise<void>;
+}
+
+export interface ListableAdapter {
   list?(parent: EntryRef, request: ListRequest, ctx: OperationContext): Promise<EntryPage>;
+}
+
+export interface ReadableAdapter {
   read?(ref: EntryRef, options: ReadOptions, ctx: OperationContext): Promise<ReadHandle>;
+}
+
+export interface WritableAdapter {
+  readonly uploads?: UploadDriver;
   write?(target: WriteTarget, source: ByteSource, ctx: OperationContext): Promise<Entry>;
   createDirectory?(target: CreateTarget, ctx: OperationContext): Promise<Entry>;
+}
+
+export interface MutableAdapter {
   remove?(ref: EntryRef, ctx: OperationContext): Promise<void>;
   copyWithin?(ref: EntryRef, target: CreateTarget, ctx: OperationContext): Promise<Entry>;
   moveWithin?(ref: EntryRef, target: CreateTarget, ctx: OperationContext): Promise<Entry>;
   rename?(ref: EntryRef, name: string, ctx: OperationContext): Promise<Entry>;
-  dispose(): Promise<void>;
 }
+
+/** Native storage semantics stay inside the adapter; unsupported operations remain optional. */
+export interface StorageAdapter
+  extends CoreStorageAdapter, ListableAdapter, ReadableAdapter, WritableAdapter, MutableAdapter {}
 
 export interface AdapterServices {
   credentials: CredentialResolver;

@@ -55,14 +55,7 @@ export class StorageBrowser {
     });
     this.registry.register(localAdapterFactory(() => preferences.folders()));
     this.registry.register(googleDriveAdapterFactory());
-    this.storage = new StorageAccess(this.registry, {
-      async load() {
-        throw new StorageError('Unsupported');
-      },
-      async save() {
-        throw new StorageError('Unsupported');
-      },
-    });
+    this.storage = new StorageAccess(this.registry);
     this.downloads = new DownloadService({
       stat: (ref, context) => this.withBrowsableSpace(ref, () => this.storage.stat(ref, context)),
       read: (ref, options, context) =>

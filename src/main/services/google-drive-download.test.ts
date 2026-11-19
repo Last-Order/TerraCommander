@@ -66,7 +66,7 @@ it('resumes a paused Drive download over HTTP with a fresh signal and the saved 
     logger: { event },
   });
   registry.register(googleDriveAdapterFactory(request));
-  const storage = new StorageAccess(registry, { async load() {}, async save() {} });
+  const storage = new StorageAccess(registry);
   const service = new DownloadService({
     stat: (ref, context) => storage.stat(ref, context),
     read: (ref, options, context) => storage.read(ref, options, context),

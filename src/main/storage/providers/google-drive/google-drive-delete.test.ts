@@ -44,7 +44,7 @@ it.each([
     logger: { event() {} },
   });
   registry.register(googleDriveAdapterFactory(request));
-  const storage = new StorageAccess(registry, { async load() {}, async save() {} });
+  const storage = new StorageAccess(registry);
   const ref = { connectionId: 'account', spaceId: space.spaceId, locator: file.id };
   const patched = () => request.mock.calls.some(([, init]) => init?.method === 'PATCH');
   try {

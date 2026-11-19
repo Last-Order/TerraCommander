@@ -1,13 +1,7 @@
 import { Readable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import type { ByteSource } from './contracts';
-import {
-  byteSource,
-  connectFixture,
-  fixtureRef,
-  readHandle,
-  TestCheckpointStore,
-} from '../testing/fixtures';
+import { byteSource, connectFixture, fixtureRef, readHandle } from '../testing/fixtures';
 import { deferred } from '../../testing/deferred';
 import { StorageAccess } from '../access/storage-access';
 import { managedRead, scopeSource } from './streams';
@@ -86,7 +80,7 @@ describe('stream lifecycle', () => {
 
   it('cancels an idle read after the facade returns and drains its connection lease', async () => {
     const { adapter, registry } = await connectFixture();
-    const access = new StorageAccess(registry, new TestCheckpointStore());
+    const access = new StorageAccess(registry);
     const handle = await access.read(fixtureRef());
     await registry.disconnect('connection');
     expect(handle.stream.destroyed).toBe(true);

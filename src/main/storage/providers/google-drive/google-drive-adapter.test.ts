@@ -43,7 +43,7 @@ it.each([
       logger: { event() {} },
     });
     registry.register(googleDriveAdapterFactory(request));
-    const storage = new StorageAccess(registry, { async load() {}, async save() {} });
+    const storage = new StorageAccess(registry);
     const ref = { connectionId: 'account', spaceId, locator: file.id };
     try {
       await registry.connect({
@@ -136,7 +136,7 @@ it('discovers all shared drives and lists a selected drive through its own corpu
     logger: { event() {} },
   });
   registry.register(googleDriveAdapterFactory(request));
-  const storage = new StorageAccess(registry, { async load() {}, async save() {} });
+  const storage = new StorageAccess(registry);
   try {
     await registry.connect({
       id: 'account',

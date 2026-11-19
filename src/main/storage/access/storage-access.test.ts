@@ -8,13 +8,12 @@ import {
   fixtureEntry,
   FixtureAdapter,
   fixtureRef,
-  TestCheckpointStore,
 } from '../testing/fixtures';
 import { StorageAccess } from './storage-access';
 
 async function setup() {
   const fixture = await connectFixture();
-  return { ...fixture, access: new StorageAccess(fixture.registry, new TestCheckpointStore()) };
+  return { ...fixture, access: new StorageAccess(fixture.registry) };
 }
 
 describe('storage access dispatch and native references', () => {

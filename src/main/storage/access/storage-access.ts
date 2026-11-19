@@ -35,23 +35,15 @@ import {
   writeTargetSchema,
 } from '../core/validation';
 import type { AdapterLease, AdapterRegistry } from '../registry/adapter-registry';
-import { UploadCoordinator } from '../uploads/upload-coordinator';
-import type { CheckpointStore } from '../ports/services';
 import { CursorCodec } from './cursors';
 
 const DEFAULT_PAGE_SIZE = 100;
 
 /** Validates and routes requests without translating native provider identities or protocols. */
 export class StorageAccess {
-  readonly uploads: UploadCoordinator;
   private readonly cursors = new CursorCodec();
 
-  constructor(
-    private readonly registry: AdapterRegistry,
-    checkpoints: CheckpointStore,
-  ) {
-    this.uploads = new UploadCoordinator(registry, checkpoints);
-  }
+  constructor(private readonly registry: AdapterRegistry) {}
 
   async listSpaces(connectionId: string, context: OperationContext = {}): Promise<Space[]> {
     return this.withConnection(connectionId, context, async ({ adapter, context }) => {

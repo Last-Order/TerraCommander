@@ -19,7 +19,7 @@ async function setup(path: string) {
   await registry.connect({ id: 'local', provider: 'local', configuration: {} });
   return {
     registry,
-    storage: new StorageAccess(registry, { async load() {}, async save() {} }),
+    storage: new StorageAccess(registry),
     root: localSpace('local', path).root,
   };
 }
