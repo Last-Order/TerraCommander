@@ -1,26 +1,24 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActionIcon, Button, Menu, Transition, VisuallyHidden } from '@mantine/core';
 import { useReducedMotion } from '@mantine/hooks';
-import { CircleAlert, Download, Info, RefreshCw, SquarePen, Trash2 } from 'lucide-react';
+import { CircleAlert, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
 import type { Entry, EntryRef } from '../../../../shared/storage';
 import { useKeyboardShortcuts } from '../../shortcuts/useKeyboardShortcuts';
+import { selectPendingEntryEffects } from '../tasks/pending-entry-effects';
+import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
+import type { DirectoryCache } from './directory-cache';
+import type { DirectoryRow, DirectorySort } from './directory-types';
+import { DirectoryEntryMenu } from './DirectoryEntryMenu';
+import { DirectoryEntryModals } from './DirectoryEntryModals';
 import classes from './DirectoryListing.module.css';
 import { DirectorySearch } from './DirectorySearch';
 import { DirectoryTable } from './DirectoryTable';
-import type { DirectoryRow, DirectorySort } from './directory-types';
-import { EntryInformationModal, type EntrySelection } from './EntryInformationModal';
-import { EntryRenameModal } from './EntryRenameModal';
-import { EntryDeleteModal } from './EntryDeleteModal';
-import { EntryDownloadModal } from './EntryDownloadModal';
-import { canDeleteEntry } from './entry-deletion';
-import { directoryKey, type DirectoryCache } from './directory-cache';
+import { useDirectoryEntryActions } from './useDirectoryEntryActions';
 import { useDirectoryListing } from './useDirectoryListing';
 import { useDirectorySearch } from './useDirectorySearch';
 import { useDirectorySelection } from './useDirectorySelection';
-import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
-import { selectPendingEntryEffects } from '../tasks/pending-entry-effects';
 
 function sortRows(rows: DirectoryRow[], { field, direction }: DirectorySort, locale?: string) {
   const { compare } = new Intl.Collator(locale, { numeric: true, sensitivity: 'base' });
@@ -60,11 +58,6 @@ export function DirectoryListing({
   const { t, i18n } = useTranslation(['storage', 'common', 'errors']);
   const reduceMotion = useReducedMotion();
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
-  const [menuLocator, setMenuLocator] = useState<string | null>(null);
-  const [informationEntries, setInformationEntries] = useState<EntrySelection | null>(null);
-  const [renameEntry, setRenameEntry] = useState<Entry | null>(null);
-  const [deleteEntry, setDeleteEntry] = useState<Entry | null>(null);
-  const [downloadEntries, setDownloadEntries] = useState<Entry[] | null>(null);
   const [sort, setSort] = useState<DirectorySort | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const refreshButton = useRef<HTMLButtonElement>(null);
@@ -78,20 +71,12 @@ export function DirectoryListing({
   const queue = useStorageTaskQueue();
   const tasks = useStore(queue.store, (state) => state.tasks);
   const groups = useStore(queue.store, (state) => state.groups);
-  const pendingEntries = useMemo(() => {
-    const effects = new Map(selectPendingEntryEffects(tasks, parent));
-    const resources = new Set(
-      groups
-        .filter((group) => group.state.phase !== 'settled')
-        .flatMap((group) => group.request.resources ?? []),
-    );
-    for (const entry of entries.values())
-      if (resources.has(directoryKey(entry.ref))) effects.set(entry.ref.locator, { busy: true });
-    return effects;
-  }, [tasks, groups, parent, entries]);
+  const pendingEntries = useMemo(
+    () => selectPendingEntryEffects(tasks, groups, entries, parent),
+    [tasks, groups, entries, parent],
+  );
   const loading = phase === 'loading' || phase === 'refreshing';
   const loadingWithoutEntries = phase === 'loading' && entries.size === 0;
-  const menuEntry = menuLocator === null ? undefined : entries.get(menuLocator);
 
   const locale = i18n.resolvedLanguage;
   const rows = useMemo(() => {
@@ -116,77 +101,29 @@ export function DirectoryListing({
       cache,
       parent,
     });
-  const [selectedLocator] = selectedLocators;
-  const selectedEntry =
-    selectedLocators.size === 1 && selectedLocator !== undefined
-      ? entries.get(selectedLocator)
-      : undefined;
-  const renamableEntry =
-    selectedEntry?.capabilities.rename?.support !== 'unsupported' ? selectedEntry : undefined;
-  const renamePending =
-    renamableEntry !== undefined && pendingEntries.get(renamableEntry.ref.locator)?.busy === true;
-  const deletableEntry = canDeleteEntry(selectedEntry) ? selectedEntry : undefined;
-  const selectedEntries = [...selectedLocators].flatMap((locator) => {
-    const entry = entries.get(locator);
-    return entry ? [entry] : [];
+  const actions = useDirectoryEntryActions({
+    entries,
+    selectedLocators,
+    pendingEntries,
+    phase,
+    selectForContextMenu,
   });
-  const canDownload =
-    selectedEntries.length > 0 &&
-    selectedEntries.every(
-      (entry) =>
-        entry.ref.connectionId !== 'local' &&
-        (entry.kind === 'file'
-          ? entry.capabilities.read?.support !== 'unsupported'
-          : entry.kind === 'directory' && entry.capabilities.list?.support !== 'unsupported'),
-    );
-  const downloadPending = selectedEntries.some(
-    (entry) => pendingEntries.get(entry.ref.locator)?.busy === true,
-  );
-  const deletePending =
-    deletableEntry !== undefined && pendingEntries.get(deletableEntry.ref.locator)?.busy === true;
+  const { closeMenu } = actions;
   const selectSearchMatch = useCallback(
     (locator: string | null) => {
       selectOnly(locator);
-      setMenuLocator(null);
+      closeMenu();
     },
-    [selectOnly],
+    [selectOnly, closeMenu],
   );
   const search = useDirectorySearch(rows, selectSearchMatch);
 
-  if (phase === 'ready' && menuLocator !== null && !menuEntry) setMenuLocator(null);
-
-  const showEntryMenu = useCallback(
-    ({ ref: { locator } }: Entry) => {
-      selectForContextMenu(locator);
-      setMenuLocator(locator);
-    },
-    [selectForContextMenu],
-  );
-  const showInformation = () => {
-    if (!menuEntry) return;
-    const selection: EntrySelection = [menuEntry];
-    for (const locator of selectedLocators) {
-      const entry = entries.get(locator);
-      if (entry && entry !== menuEntry) selection.push(entry);
-    }
-    setInformationEntries(selection);
-  };
-  const showRename = () => {
-    if (!renamableEntry || renamePending) return;
-    setMenuLocator(null);
-    setRenameEntry(renamableEntry);
-  };
   const reload = () => {
-    setMenuLocator(null);
+    actions.closeMenu();
     refresh();
   };
-  const showDelete = () => {
-    if (!deletableEntry || deletePending) return;
-    setMenuLocator(null);
-    setDeleteEntry(deletableEntry);
-  };
   const openSearch = () => {
-    setMenuLocator(null);
+    actions.closeMenu();
     search.open();
     searchInput.current?.focus();
     searchInput.current?.select();
@@ -196,7 +133,11 @@ export function DirectoryListing({
     refreshButton.current?.focus();
   };
   useKeyboardShortcuts([
-    { key: 'F2', onTrigger: showRename, enabled: !!renamableEntry && !renamePending },
+    {
+      key: 'F2',
+      onTrigger: actions.showRename,
+      enabled: actions.canRename && !actions.renamePending,
+    },
     { key: 'F5', onTrigger: reload, enabled: !loading, allowInEditable: true },
     { key: 'f', ctrlKey: true, onTrigger: openSearch, allowInEditable: true },
     ...(search.opened ? [{ key: 'Escape', onTrigger: closeSearch, allowInEditable: true }] : []),
@@ -300,9 +241,9 @@ export function DirectoryListing({
           )}
           {(loadingWithoutEntries || entries.size > 0) && (
             <Menu
-              opened={menuEntry !== undefined}
+              opened={actions.menuOpened}
               onChange={(opened) => {
-                if (!opened) setMenuLocator(null);
+                if (!opened) actions.closeMenu();
               }}
               position="bottom-start"
               floatingStrategy="fixed"
@@ -322,91 +263,40 @@ export function DirectoryListing({
                 onSort={changeSort}
                 onSelect={selectEntry}
                 onSelectAll={selectAll}
-                onContextMenu={showEntryMenu}
+                onContextMenu={actions.showEntryMenu}
                 onOpen={onOpen}
               />
-              <Menu.Dropdown>
-                {canDownload && (
-                  <Menu.Item
-                    disabled={downloadPending}
-                    leftSection={<Download size={16} strokeWidth={1.5} aria-hidden="true" />}
-                    onClick={() => {
-                      setMenuLocator(null);
-                      setDownloadEntries(selectedEntries);
-                    }}
-                  >
-                    {t('downloadEntry')}
-                  </Menu.Item>
-                )}
-                {renamableEntry && (
-                  <Menu.Item
-                    disabled={renamePending}
-                    aria-keyshortcuts="F2"
-                    leftSection={<SquarePen size={16} strokeWidth={1.5} aria-hidden="true" />}
-                    onClick={showRename}
-                  >
-                    {t('renameEntry')}
-                  </Menu.Item>
-                )}
-                <Menu.Item
-                  leftSection={<Info size={16} strokeWidth={1.5} aria-hidden="true" />}
-                  onClick={showInformation}
-                >
-                  {t('entryInformation')}
-                </Menu.Item>
-                {deletableEntry && (
-                  <>
-                    <Menu.Divider />
-                    <Menu.Item
-                      color="red"
-                      disabled={deletePending}
-                      leftSection={<Trash2 size={16} strokeWidth={1.5} aria-hidden="true" />}
-                      onClick={showDelete}
-                    >
-                      {t('deleteEntry')}
-                    </Menu.Item>
-                  </>
-                )}
-              </Menu.Dropdown>
+              <DirectoryEntryMenu
+                canDownload={actions.canDownload}
+                downloadPending={actions.downloadPending}
+                canRename={actions.canRename}
+                renamePending={actions.renamePending}
+                canDelete={actions.canDelete}
+                deletePending={actions.deletePending}
+                onDownload={actions.showDownload}
+                onRename={actions.showRename}
+                onInformation={actions.showInformation}
+                onDelete={actions.showDelete}
+              />
             </Menu>
           )}
         </div>
       </div>
-      {renameEntry && (
-        <EntryRenameModal
-          entry={renameEntry}
-          parent={parent}
-          directoryPath={directoryPath}
-          onClose={() => setRenameEntry(null)}
-        />
-      )}
-      {downloadEntries && (
-        <EntryDownloadModal
-          entries={downloadEntries}
-          parent={parent}
-          directoryPath={directoryPath}
-          onClose={() => setDownloadEntries(null)}
-          onAuthRequired={onAuthRequired}
-        />
-      )}
-      {deleteEntry && (
-        <EntryDeleteModal
-          entry={deleteEntry}
-          parent={parent}
-          directoryPath={directoryPath}
-          onClose={() => setDeleteEntry(null)}
-        />
-      )}
-      {informationEntries && (
-        <EntryInformationModal
-          entries={informationEntries}
-          directoryPath={directoryPath}
-          dateFormatter={dateFormatter}
-          sizeFormatter={sizeFormatter}
-          onAuthRequired={onAuthRequired}
-          onClose={() => setInformationEntries(null)}
-        />
-      )}
+      <DirectoryEntryModals
+        parent={parent}
+        directoryPath={directoryPath}
+        dateFormatter={dateFormatter}
+        sizeFormatter={sizeFormatter}
+        onAuthRequired={onAuthRequired}
+        renameEntry={actions.renameEntry}
+        onCloseRename={actions.closeRename}
+        downloadEntries={actions.downloadEntries}
+        onCloseDownload={actions.closeDownload}
+        deleteEntry={actions.deleteEntry}
+        onCloseDelete={actions.closeDelete}
+        informationEntries={actions.informationEntries}
+        onCloseInformation={actions.closeInformation}
+      />
     </>
   );
 }
