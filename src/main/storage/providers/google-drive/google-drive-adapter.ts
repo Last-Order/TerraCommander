@@ -7,16 +7,14 @@ import type {
   ReadOptions,
   Space,
 } from '../../../../shared/storage';
-import {
-  matchesGoogleDriveAuthorization,
-  type GoogleDriveAuthorization,
-} from '../../../accounts/providers/google-drive/credential-resolver';
+import { matchesGoogleDriveAuthorization, type GoogleDriveAuthorization } from './authorization';
 import type { OperationContext } from '../../core/contracts';
 import { StorageError, throwIfAborted } from '../../core/errors';
 import { parse } from '../../core/validation';
 import type { AdapterFactory, StorageAdapter } from '../../ports/adapter';
 import type { StorageLogger } from '../../ports/services';
 import { logGoogleDriveFailure } from './google-drive-diagnostics';
+import { driveFailure } from './google-drive-errors';
 import { readGoogleDriveContent } from './google-drive-read';
 
 const myDriveId = 'my-drive';
@@ -58,9 +56,6 @@ const filesSchema = z.object({
 const drivesSchema = z.object({
   drives: z.array(z.object({ id: identifier, name: z.string() })).default([]),
   nextPageToken: token.optional(),
-});
-const failureSchema = z.object({
-  error: z.object({ errors: z.array(z.object({ reason: z.string() })).optional() }),
 });
 
 export function myDriveSpace(connectionId: string): Space {
@@ -326,17 +321,4 @@ function fileEntry(ref: EntryRef, file: z.infer<typeof fileSchema>): Entry {
       },
     },
   };
-}
-
-export function driveFailure(status: number, payload: unknown): StorageError {
-  if (status === 401) return new StorageError('AuthRequired');
-  if (status === 404) return new StorageError('NotFound');
-  const failure = failureSchema.safeParse(payload);
-  const limited = failure.data?.error.errors?.some(({ reason }) =>
-    /ratelimit|quota|dailylimit/i.test(reason),
-  );
-  if (status === 429 || limited) return new StorageError('RateLimited');
-  if (status === 403) return new StorageError('PermissionDenied');
-  if (status === 400) return new StorageError('InvalidArgument');
-  return new StorageError(status >= 500 ? 'NetworkError' : 'OutcomeUnknown');
 }

@@ -4,11 +4,33 @@ import type {
   AccountSetupRequest,
   AccountState,
 } from '../../../shared/accounts';
-import type { OperationContext } from '../../storage/core/contracts';
-import type { StorageLogger } from '../../storage/ports/services';
-import type { AccountRepository } from '../persistence/account-repository';
-import type { CredentialStore } from '../persistence/credential-store';
-import type { AccountSnapshot } from './models';
+import type { JsonValue } from '../../../shared/json';
+import type { StructuredLogger } from '../../common/logger';
+import type { OperationContext } from '../../common/operation-context';
+import type { AccountRecord, AccountSnapshot, CredentialBinding } from './models';
+
+export interface AccountRepositoryPort {
+  list(provider?: string): AccountRecord[];
+  get(id: string): AccountRecord;
+  findIdentity(provider: string, identityKey: string): AccountRecord | undefined;
+  findCredential(reference: string): AccountRecord;
+  save(
+    record: AccountRecord,
+    expectedRevision: number | undefined,
+    ctx: OperationContext,
+  ): Promise<void>;
+  remove(id: string, expectedRevision: number, ctx: OperationContext): Promise<void>;
+  flush(): Promise<void>;
+}
+
+export interface CredentialStorePort {
+  encrypt(binding: CredentialBinding, payload: JsonValue, ctx: OperationContext): Promise<string>;
+  decrypt(
+    binding: CredentialBinding,
+    ciphertext: string,
+    ctx: OperationContext,
+  ): Promise<{ payload: JsonValue; needsReEncryption: boolean }>;
+}
 
 /** Provider operations commit through the shared repository; authentication stays provider-owned. */
 export interface AccountProvider {
@@ -30,10 +52,10 @@ export interface AccountProvider {
 }
 
 export interface AccountProviderServices {
-  repository: AccountRepository;
-  credentials: CredentialStore;
+  repository: AccountRepositoryPort;
+  credentials: CredentialStorePort;
   now: () => number;
-  logger?: StorageLogger;
+  logger?: StructuredLogger;
 }
 
 export interface AccountProviderRegistration {

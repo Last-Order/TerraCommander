@@ -1,5 +1,5 @@
-import type { OperationContext } from '../../../storage/core/contracts';
-import type { CredentialStore } from '../../persistence/credential-store';
+import type { OperationContext } from '../../../common/operation-context';
+import type { CredentialStorePort } from '../../core/ports';
 import { AccountError } from '../../core/errors';
 import {
   googleCredentialBinding,
@@ -16,7 +16,7 @@ type GoogleCredentialBinding = Pick<
 
 /** The common store protects account binding; this codec validates Google's private payload. */
 export class GoogleDriveCredentials {
-  constructor(private readonly store: CredentialStore) {}
+  constructor(private readonly store: CredentialStorePort) {}
 
   async encrypt(
     record: GoogleCredentialBinding,

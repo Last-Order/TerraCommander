@@ -1,13 +1,8 @@
-import type { OperationContext } from '../core/contracts';
+import type { CredentialResolver } from '../../common/credentials';
+import type { StructuredLogger } from '../../common/logger';
 
-export interface CredentialResolver {
-  /** Returns adapter-specific authorization that stays in the backend. */
-  resolve(reference: string, ctx: OperationContext): Promise<unknown>;
-}
-
-export interface StorageLogger {
-  event(name: string, fields: Readonly<Record<string, string | number | boolean>>): void;
-}
+export type { CredentialResolver };
+export type StorageLogger = StructuredLogger;
 
 /** Backend-only persistence boundary; the host supplies durable, confidential storage. */
 export interface CheckpointStore {

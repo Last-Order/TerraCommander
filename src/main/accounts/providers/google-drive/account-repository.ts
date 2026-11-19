@@ -1,5 +1,5 @@
-import type { OperationContext } from '../../../storage/core/contracts';
-import type { AccountRepository } from '../../persistence/account-repository';
+import type { OperationContext } from '../../../common/operation-context';
+import type { AccountRepositoryPort } from '../../core/ports';
 import {
   decodeGoogleAccount,
   encodeGoogleAccount,
@@ -9,7 +9,7 @@ import {
 
 /** A typed Google view over the shared repository, with provider ownership checked on every read. */
 export class GoogleAccountRepository {
-  constructor(private readonly repository: AccountRepository) {}
+  constructor(private readonly repository: AccountRepositoryPort) {}
 
   get(id: string): GoogleAccountRecord {
     return decodeGoogleAccount(this.repository.get(id));

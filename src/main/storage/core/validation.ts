@@ -1,7 +1,9 @@
-import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { operations, storageLabelKeys, type JsonValue } from '../../../shared/storage/models';
+import { operations, storageLabelKeys } from '../../../shared/storage/models';
+import { canonicalJson, jsonFingerprint } from '../../common/canonical-json';
 import { StorageError } from './errors';
+
+export { canonicalJson };
 
 const identifier = z.string().min(1);
 
@@ -123,28 +125,9 @@ export function parse<T>(
   throw new StorageError(code);
 }
 
-export function canonicalJson(value: JsonValue): string {
-  if (value === null || typeof value !== 'object') {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(',')}]`;
-  }
-
-  const properties = Object.keys(value)
-    .sort()
-    .map((key) => {
-      const encodedKey = JSON.stringify(key);
-      const encodedValue = canonicalJson(value[key] ?? null);
-      return `${encodedKey}:${encodedValue}`;
-    });
-
-  return `{${properties.join(',')}}`;
-}
-
 export function fingerprint(value: unknown): string {
   const json = parse(z.json(), value);
 
   // Equivalent configuration objects must bind identically regardless of property insertion order.
-  return createHash('sha256').update(canonicalJson(json)).digest('hex');
+  return jsonFingerprint(json);
 }

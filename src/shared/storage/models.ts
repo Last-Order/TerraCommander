@@ -1,11 +1,6 @@
-export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
-export type JsonObject = { [key: string]: JsonValue };
+import type { JsonObject, JsonValue } from '../json';
+
+export type { JsonObject, JsonValue };
 
 /** Provider configuration is separate from credentials, which stay behind credentialRef. */
 export interface ConnectionDefinition {

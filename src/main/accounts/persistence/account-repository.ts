@@ -1,4 +1,6 @@
-import type { OperationContext } from '../../storage/core/contracts';
+import { z } from 'zod';
+import { jsonFingerprint } from '../../common/canonical-json';
+import type { OperationContext } from '../../common/operation-context';
 import { assertNotCancelled, AccountError } from '../core/errors';
 import {
   accountRecordSchema,
@@ -7,11 +9,10 @@ import {
   type AccountRecord,
   type AccountSnapshot,
 } from '../core/models';
-import type { AccountSnapshotStore } from '../core/ports';
-import { fingerprint } from '../../storage/core/validation';
+import type { AccountRepositoryPort, AccountSnapshotStore } from '../core/ports';
 
 /** The sole writer of the account snapshot. Readers never receive mutable stored objects. */
-export class AccountRepository {
+export class AccountRepository implements AccountRepositoryPort {
   private snapshot: AccountSnapshot;
   private pendingWrite: Promise<void> = Promise.resolve();
 
@@ -67,7 +68,10 @@ export class AccountRepository {
         current &&
         (current.provider !== candidate.provider ||
           current.identityKey !== candidate.identityKey ||
-          fingerprint(current.configuration) !== fingerprint(candidate.configuration) ||
+          jsonFingerprint(parseAccountData(z.json(), current.configuration, 'InvalidArgument')) !==
+            jsonFingerprint(
+              parseAccountData(z.json(), candidate.configuration, 'InvalidArgument'),
+            ) ||
           current.credentialRef !== candidate.credentialRef ||
           current.createdAt !== candidate.createdAt)
       )

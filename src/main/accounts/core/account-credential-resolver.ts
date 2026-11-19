@@ -1,14 +1,14 @@
-import type { OperationContext } from '../../storage/core/contracts';
-import type { CredentialResolver } from '../../storage/ports/services';
-import type { AccountRepository } from '../persistence/account-repository';
+import type { CredentialResolver } from '../../common/credentials';
+import type { OperationContext } from '../../common/operation-context';
 import type { AccountProviderRegistry } from './account-provider-registry';
 import { storageAuthorizationError } from './credential-errors';
 import { assertNotCancelled } from './errors';
+import type { AccountRepositoryPort } from './ports';
 
 /** Resolve by the stored provider ID, while returning only that provider's backend handle. */
 export class AccountCredentialResolver implements CredentialResolver {
   constructor(
-    private readonly repository: AccountRepository,
+    private readonly repository: AccountRepositoryPort,
     private readonly providers: AccountProviderRegistry,
     private readonly assertAvailable: (id: string) => void,
   ) {}

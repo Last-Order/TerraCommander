@@ -1,35 +1,20 @@
+import type { CredentialResolver } from '../../../common/credentials';
+import type { OperationContext } from '../../../common/operation-context';
+import {
+  isGoogleDriveAuthorization,
+  matchesGoogleDriveAuthorization,
+  type GoogleDriveAuthorization,
+} from '../../../storage/providers/google-drive/authorization';
 import { storageAuthorizationError } from '../../core/credential-errors';
-import type { ConnectionDefinition } from '../../../../shared/storage';
-import type { OperationContext } from '../../../storage/core/contracts';
-import type { CredentialResolver } from '../../../storage/ports/services';
-import type { GoogleAccountRepository } from './account-repository';
 import { assertNotCancelled, AccountError } from '../../core/errors';
+import type { GoogleAccountRepository } from './account-repository';
 import type { GoogleTokenProvider } from './token-provider';
 
-export interface GoogleDriveAuthorization {
-  readonly provider: 'google-drive';
-  readonly connectionId: string;
-  readonly subject: string;
-  readonly oauthClientId: string;
-  getAccessToken(ctx?: OperationContext): Promise<string>;
-}
-
-export function isGoogleDriveAuthorization(value: unknown): value is GoogleDriveAuthorization {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'provider' in value &&
-    value.provider === 'google-drive' &&
-    'connectionId' in value &&
-    typeof value.connectionId === 'string' &&
-    'subject' in value &&
-    typeof value.subject === 'string' &&
-    'oauthClientId' in value &&
-    typeof value.oauthClientId === 'string' &&
-    'getAccessToken' in value &&
-    typeof value.getAccessToken === 'function'
-  );
-}
+export {
+  isGoogleDriveAuthorization,
+  matchesGoogleDriveAuthorization,
+  type GoogleDriveAuthorization,
+};
 
 export class GoogleDriveCredentialResolver implements CredentialResolver {
   constructor(
@@ -62,18 +47,4 @@ export class GoogleDriveCredentialResolver implements CredentialResolver {
       throw storageAuthorizationError(error);
     }
   }
-}
-
-/** Future adapter factories can check the handle without importing any Google SDK types. */
-export function matchesGoogleDriveAuthorization(
-  authorization: unknown,
-  connection: ConnectionDefinition,
-): authorization is GoogleDriveAuthorization {
-  return (
-    isGoogleDriveAuthorization(authorization) &&
-    authorization.provider === connection.provider &&
-    authorization.connectionId === connection.id &&
-    authorization.subject === connection.configuration.subject &&
-    authorization.oauthClientId === connection.configuration.oauthClientId
-  );
 }

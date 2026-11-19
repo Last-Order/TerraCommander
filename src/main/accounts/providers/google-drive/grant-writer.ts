@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { OperationContext } from '../../../storage/core/contracts';
+import type { OperationContext } from '../../../common/operation-context';
 import type { GoogleDriveCredentials } from './credentials';
 import type { GoogleAccountRepository } from './account-repository';
 import { AccountError } from '../../core/errors';

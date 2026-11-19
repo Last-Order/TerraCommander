@@ -1,4 +1,4 @@
-import type { OperationContext } from '../../../storage/core/contracts';
+import type { OperationContext } from '../../../common/operation-context';
 
 export interface GoogleClientConfiguration {
   clientId: string;

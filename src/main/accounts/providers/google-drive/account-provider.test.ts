@@ -1,5 +1,6 @@
+import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
-import { fingerprint } from '../../../storage/core/validation';
+import { jsonFingerprint } from '../../../common/canonical-json';
 import { matchesGoogleDriveAuthorization } from './credential-resolver';
 import { AccountError } from '../../core/errors';
 import type { GoogleAuthorizationGrant } from './ports';
@@ -21,9 +22,9 @@ describe('Google Drive account lifecycle', () => {
     expect(duplicate.id).toBe(first.id);
     expect(duplicate.displayName).toBe('Renamed account');
     expect(await fixture.accounts.list()).toHaveLength(1);
-    expect(fingerprint(fixture.accounts.getConnectionDefinition(first.id))).toBe(
-      fingerprint(definition),
-    );
+    expect(
+      jsonFingerprint(z.json().parse(fixture.accounts.getConnectionDefinition(first.id))),
+    ).toBe(jsonFingerprint(z.json().parse(definition)));
     expect(fixture.store.records[0]?.revision).toBe(2);
     await fixture.accounts.dispose();
   });

@@ -1,5 +1,5 @@
 import type { AccountSummary } from '../../../../shared/accounts';
-import type { OperationContext } from '../../../storage/core/contracts';
+import type { OperationContext } from '../../../common/operation-context';
 import type { GoogleDriveCredentials } from './credentials';
 import type { GoogleAccountRepository } from './account-repository';
 import { accountError, assertNotCancelled, AccountError } from '../../core/errors';

@@ -1,11 +1,11 @@
 import { z } from 'zod';
-import type { JsonValue } from '../../../shared/storage';
-import type { OperationContext } from '../../storage/core/contracts';
-import { fingerprint } from '../../storage/core/validation';
+import type { JsonValue } from '../../../shared/json';
+import { jsonFingerprint } from '../../common/canonical-json';
+import type { OperationContext } from '../../common/operation-context';
 import { AccountError, assertNotCancelled } from '../core/errors';
 import { connectionDefinition, parseAccountData, type CredentialBinding } from '../core/models';
 import { waitForAccountOperation } from '../core/operations';
-import type { AccountCipher } from '../core/ports';
+import type { AccountCipher, CredentialStorePort } from '../core/ports';
 
 const envelopeSchema = z.strictObject({
   version: z.literal(1),
@@ -18,7 +18,7 @@ const envelopeSchema = z.strictObject({
 });
 
 /** The shared envelope binds encrypted payloads to one account and one immutable connection. */
-export class CredentialStore {
+export class CredentialStore implements CredentialStorePort {
   constructor(private readonly cipher: AccountCipher) {}
 
   async encrypt(
@@ -74,7 +74,9 @@ export class CredentialStore {
       accountId: binding.id,
       credentialRef: binding.credentialRef,
       identityKey: binding.identityKey,
-      connectionFingerprint: fingerprint(connectionDefinition(binding)),
+      connectionFingerprint: jsonFingerprint(
+        parseAccountData(z.json(), connectionDefinition(binding), 'CredentialStoreUnavailable'),
+      ),
     };
   }
 }

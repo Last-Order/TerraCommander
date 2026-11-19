@@ -1,6 +1,6 @@
 import type { AccountCheck, AccountState, AccountSetupRequest } from '../../../../shared/accounts';
-import type { OperationContext } from '../../../storage/core/contracts';
-import type { StorageLogger } from '../../../storage/ports/services';
+import type { StructuredLogger } from '../../../common/logger';
+import type { OperationContext } from '../../../common/operation-context';
 import type { AccountGrantWriter } from './grant-writer';
 import type { GoogleAccountRepository } from './account-repository';
 import type { GoogleAuthorizationFlow } from './oauth/authorization-flow';
@@ -27,7 +27,7 @@ interface GoogleAccountProviderOptions {
   tokens: GoogleTokenProvider;
   now: () => number;
   authorizationTimeoutMs?: number;
-  logger?: StorageLogger;
+  logger?: StructuredLogger;
 }
 
 interface AuthorizationAttempt {

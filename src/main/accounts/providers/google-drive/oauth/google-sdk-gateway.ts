@@ -5,7 +5,7 @@ import {
   OAuth2Client,
 } from 'google-auth-library';
 import { z } from 'zod';
-import type { OperationContext } from '../../../../storage/core/contracts';
+import type { OperationContext } from '../../../../common/operation-context';
 import { assertNotCancelled, AccountError } from '../../../core/errors';
 import { googleRequestError } from './google-errors';
 import { GOOGLE_DRIVE_SCOPES } from '../models';

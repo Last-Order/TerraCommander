@@ -1,11 +1,11 @@
-import type { OperationContext } from '../../../../storage/core/contracts';
+import type { StructuredLogger } from '../../../../common/logger';
+import type { OperationContext } from '../../../../common/operation-context';
 import { createGoogleDriveProvider } from '../create-provider';
 import { googleDriveDescriptor } from '../descriptor';
 import { isGoogleDriveAuthorization } from '../credential-resolver';
 import { FakeAccountCipher, MemoryAccountStore, TEST_TIME } from '../../../testing/fixtures';
 export { TEST_TIME } from '../../../testing/fixtures';
 import { vi } from 'vitest';
-import type { StorageLogger } from '../../../../storage/ports/services';
 import { createAccountServices } from '../../../runtime/account-services';
 import { GOOGLE_DRIVE_SCOPES } from '../models';
 import type {
@@ -54,7 +54,7 @@ export function accountFixture(options: { authorizationTimeoutMs?: number } = {}
       close,
     })),
   };
-  const logger = { event: vi.fn<StorageLogger['event']>() };
+  const logger = { event: vi.fn<StructuredLogger['event']>() };
   const createServices = () => {
     const runtime = createAccountServices({
       store,

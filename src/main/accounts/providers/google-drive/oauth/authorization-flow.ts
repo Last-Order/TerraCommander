@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import type { OperationContext } from '../../../../storage/core/contracts';
+import type { OperationContext } from '../../../../common/operation-context';
 import { accountError, assertNotCancelled, AccountError } from '../../../core/errors';
 import { waitForAccountOperation } from '../../../core/operations';
 import type {

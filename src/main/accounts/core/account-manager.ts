@@ -4,8 +4,7 @@ import type {
   AccountSetupRequest,
   AccountSummary,
 } from '../../../shared/accounts';
-import type { OperationContext } from '../../storage/core/contracts';
-import type { AccountRepository } from '../persistence/account-repository';
+import type { OperationContext } from '../../common/operation-context';
 import type { AccountProviderRegistry } from './account-provider-registry';
 import { AccountError, accountError, assertNotCancelled } from './errors';
 import {
@@ -15,7 +14,7 @@ import {
   type AccountRecord,
 } from './models';
 import { accountOperationScope } from './operations';
-import type { AccountProvider } from './ports';
+import type { AccountProvider, AccountRepositoryPort } from './ports';
 
 /** Platform-neutral entry point. Reading metadata never instantiates a provider. */
 export class AccountManager {
@@ -26,7 +25,7 @@ export class AccountManager {
   private disposal: Promise<void> | undefined;
 
   constructor(
-    private readonly repository: AccountRepository,
+    private readonly repository: AccountRepositoryPort,
     private readonly providers: AccountProviderRegistry,
   ) {}
 

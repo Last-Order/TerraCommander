@@ -1,4 +1,4 @@
-import type { JsonObject } from '../storage';
+import type { JsonObject } from '../json';
 import type { AccountErrorCode } from './errors';
 
 export interface AccountCheck {

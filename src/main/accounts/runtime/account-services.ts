@@ -1,4 +1,4 @@
-import type { StorageLogger } from '../../storage/ports/services';
+import type { StructuredLogger } from '../../common/logger';
 import { AccountManager } from '../core/account-manager';
 import { AccountCredentialResolver } from '../core/account-credential-resolver';
 import { AccountProviderRegistry } from '../core/account-provider-registry';
@@ -15,7 +15,7 @@ interface AccountServicesOptions {
   cipher: AccountCipher;
   providers?: AccountProviderRegistration[];
   now?: () => number;
-  logger?: StorageLogger;
+  logger?: StructuredLogger;
 }
 
 /** Shared account infrastructure. Provider registration performs no authentication or SDK loading. */
