@@ -11,7 +11,7 @@ import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
 import type { DirectoryCache } from './directory-cache';
 import type { DirectoryRow, DirectorySort } from './directory-types';
 import { DirectoryEntryMenu } from './DirectoryEntryMenu';
-import { DirectoryEntryModals } from './DirectoryEntryModals';
+import { DirectoryEntryModals } from './modals/DirectoryEntryModals';
 import classes from './DirectoryListing.module.css';
 import { DirectorySearch } from './DirectorySearch';
 import { DirectoryTable } from './DirectoryTable';

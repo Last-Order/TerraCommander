@@ -24,7 +24,7 @@ Client configuration is validated when the Google provider is needed. Missing or
 
 ## Backend Integration
 
-Use the application-owned runtime and follow the [lazy service lifecycle](lazy-service-initialization.md). The [desktop account composition](../src/main/accounts/runtime/desktop-accounts.ts) binds persistence, encryption, and deferred providers. The [storage browser service](../src/main/services/storage-browser.ts) integrates accounts with desktop browsing; its renderer-facing operations are defined in the [shared browser API](../src/shared/storage-browser.ts).
+Use the application-owned runtime and follow the [lazy service lifecycle](lazy-service-initialization.md). The [desktop account composition](../src/main/accounts/runtime/desktop-accounts.ts) binds persistence, encryption, and deferred providers. The [storage browser service](../src/main/services/storage/storage-browser.ts) integrates accounts with desktop browsing; its renderer-facing operations are defined in the [shared browser API](../src/shared/storage-browser.ts).
 
 ## Smoke Checks
 

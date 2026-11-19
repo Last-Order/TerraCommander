@@ -17,8 +17,11 @@ Use [package.json](package.json) and [package-lock.json](package-lock.json) as t
 
 ## Module Boundaries
 
-- `src/main/`: Electron lifecycle, logging, IPC, and sender validation.
-- `src/main/services/`: Application-service ownership, composition, on-demand initialization, and disposal.
+- `src/main/`: Electron lifecycle, window security, menus, and entry wiring.
+- `src/main/common/`: Provider-neutral backend primitives shared across main-process domains.
+- `src/main/ipc/`: Sender validation, error wrapping, and IPC channel registrations.
+- `src/main/services/`: Application-service ownership, lazy initialization, disposal, and domain services (`downloads/`, `preferences/`, `storage/`, `tasks/`).
+- `src/main/tasks/`: Domain-neutral main-process task queue, conflict locking, and group coordination.
 - `src/main/accounts/`: Provider-neutral account management and provider-owned authentication.
 - `src/main/storage/`: Provider-neutral storage access and provider adapters.
 - `src/preload/`: Restricted desktop APIs exposed through `contextBridge`.

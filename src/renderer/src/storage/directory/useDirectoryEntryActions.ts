@@ -3,7 +3,7 @@ import type { Entry } from '../../../../shared/storage';
 import { localConnectionId } from '../../../../shared/storage-browser';
 import type { PendingEntryEffect } from '../tasks/pending-entry-effects';
 import { canDeleteEntry } from './entry-deletion';
-import type { EntrySelection } from './EntryInformationModal';
+import type { EntrySelection } from './modals/EntryInformationModal';
 
 interface UseDirectoryEntryActionsOptions {
   entries: ReadonlyMap<string, Entry>;

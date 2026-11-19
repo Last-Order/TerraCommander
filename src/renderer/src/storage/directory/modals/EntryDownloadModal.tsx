@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button, Group, Modal, Stack, Text } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
-import type { Entry, EntryRef } from '../../../../shared/storage';
-import { DownloadDirectoryInput } from '../../downloads/DownloadDirectoryInput';
-import { errorKey, resultOf, type StorageErrorKey } from '../storage-client';
-import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
+import type { Entry, EntryRef } from '../../../../../shared/storage';
+import { DownloadDirectoryInput } from '../../../downloads/DownloadDirectoryInput';
+import { errorKey, resultOf, type StorageErrorKey } from '../../storage-client';
+import { useStorageTaskQueue } from '../../tasks/storage-task-queue-context';
 import { DownloadOverwriteModal } from './DownloadOverwriteModal';
 
 interface PendingOverwriteConfirmation {
