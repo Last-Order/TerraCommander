@@ -6,6 +6,10 @@ import { localConnectionId } from '../../shared/storage-browser';
 import { accountFixture } from '../accounts/providers/google-drive/testing/fixtures';
 import { createAccountServices } from '../accounts/runtime/account-services';
 import { FakeAccountCipher, MemoryAccountStore } from '../accounts/testing/fixtures';
+import {
+  createDefaultStorageProviders,
+  validateDefaultStoredSpace,
+} from './providers/default-providers';
 import { StorageBrowser } from './storage-browser';
 import { StoragePreferences } from './storage-preferences';
 
@@ -19,6 +23,21 @@ function memorySnapshotStore() {
   };
 }
 
+function createBrowser(
+  snapshotStore: { read(): unknown; write(snapshot: unknown): void },
+  getAccounts: ConstructorParameters<typeof StorageBrowser>[0]['getAccounts'],
+) {
+  const preferences = new StoragePreferences(snapshotStore, {
+    validateSpace: validateDefaultStoredSpace,
+  });
+  return new StorageBrowser({
+    preferences,
+    getAccounts,
+    logger: { event() {} },
+    providers: createDefaultStorageProviders(preferences),
+  });
+}
+
 it('deletes local files without initializing accounts', async () => {
   await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-delete-mode-'));
   const path = join(temporary.path, 'notes.txt');
@@ -26,9 +45,7 @@ it('deletes local files without initializing accounts', async () => {
   const getAccounts = vi.fn(async () => {
     throw new Error('Local deletion must not initialize accounts.');
   });
-  const browser = new StorageBrowser(new StoragePreferences(memorySnapshotStore()), getAccounts, {
-    event() {},
-  });
+  const browser = createBrowser(memorySnapshotStore(), getAccounts);
   try {
     const space = await browser.addLocalFolder(temporary.path);
     const ref = { ...space.root, locator: 'notes.txt' };
@@ -72,9 +89,7 @@ it('routes a shared Drive deletion through the saved account connection', async 
         },
       ],
     });
-    browser = new StorageBrowser(new StoragePreferences(snapshotStore), async () => runtime, {
-      event() {},
-    });
+    browser = createBrowser(snapshotStore, async () => runtime);
     const ref = { connectionId: account.id, spaceId: 'shared:team', locator: file.id };
     await browser.deleteEntry(ref);
     expect(request.mock.calls.map(([, init]) => init?.method ?? 'GET')).toEqual(['GET', 'PATCH']);
@@ -110,9 +125,7 @@ it('restores a chosen folder and confines browsing to its saved root', async () 
     cipher: new FakeAccountCipher(),
   });
   function openBrowser() {
-    return new StorageBrowser(new StoragePreferences(snapshotStore), async () => accounts, {
-      event() {},
-    });
+    return createBrowser(snapshotStore, async () => accounts);
   }
   const browser = openBrowser();
   let space;
@@ -168,11 +181,7 @@ it('lists a local directory beyond the default page size in one response', async
   await Promise.all(names.map((name) => writeFile(join(temporary.path, name), '')));
 
   const { runtime } = accountFixture();
-  const browser = new StorageBrowser(
-    new StoragePreferences(memorySnapshotStore()),
-    async () => runtime,
-    { event() {} },
-  );
+  const browser = createBrowser(memorySnapshotStore(), async () => runtime);
   try {
     const space = await browser.addLocalFolder(temporary.path);
     const page = await browser.listDirectory(space.root);
@@ -198,9 +207,7 @@ it('persists discovered spaces separately from legacy selections and refreshes t
   vi.stubGlobal('fetch', request);
 
   function openBrowser() {
-    return new StorageBrowser(new StoragePreferences(snapshotStore), async () => runtime, {
-      event() {},
-    });
+    return createBrowser(snapshotStore, async () => runtime);
   }
 
   let browser: StorageBrowser | undefined;
@@ -271,4 +278,22 @@ it('persists discovered spaces separately from legacy selections and refreshes t
     await browser?.dispose();
     await runtime.dispose();
   }
+});
+
+it('keeps StoragePreferences provider-neutral and allows custom space validation injection', () => {
+  const store = memorySnapshotStore();
+  store.write({
+    version: 2,
+    folders: [],
+    connections: [
+      {
+        id: localConnectionId,
+        spaces: [{ id: 'custom', cached: { name: 'Custom', locator: 'not-dot' } }],
+      },
+    ],
+  });
+  expect(() => new StoragePreferences(store)).not.toThrow();
+  expect(
+    () => new StoragePreferences(store, { validateSpace: validateDefaultStoredSpace }),
+  ).toThrow(expect.objectContaining({ code: 'OutcomeUnknown' }));
 });

@@ -8,7 +8,7 @@ import { isTrustedRenderer } from './security';
 import type { ApplicationServices } from './services/application-services';
 import {
   languagePreferenceSchema,
-  type LanguagePreferences,
+  type LanguagePreferencesPort,
 } from './services/language-preferences';
 import type { StorageBrowser } from './services/storage-browser';
 import { normalizeStorageError } from './storage/core/errors';
@@ -29,7 +29,7 @@ export function registerIpcHandlers(
   getWindow: () => BrowserWindow | null,
   entryUrl: string,
   services: ApplicationServices,
-  language: LanguagePreferences,
+  language: LanguagePreferencesPort,
 ): void {
   function assertTrusted(event: IpcMainInvokeEvent): BrowserWindow {
     const window = getWindow();
@@ -114,7 +114,11 @@ export function registerIpcHandlers(
     const folder = result.filePaths[0];
     return result.canceled || !folder ? null : browser.addLocalFolder(folder);
   });
-  handleStorage(channels.addGoogleDrive, noArguments, (browser) => browser.addGoogleDrive());
+  handleStorage(
+    channels.addConnection,
+    z.tuple([z.enum(['google-drive'])]),
+    (browser, _window, provider) => browser.addConnection(provider),
+  );
   handleStorage(channels.reauthorize, z.tuple([z.uuid()]), (browser, _window, id) =>
     browser.reauthorize(id),
   );

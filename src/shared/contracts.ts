@@ -10,7 +10,7 @@ export const channels = {
   listSpaces: 'storage:list-spaces',
   saveSpaces: 'storage:save-spaces',
   chooseFolder: 'storage:choose-folder',
-  addGoogleDrive: 'storage:add-google-drive',
+  addConnection: 'storage:add-connection',
   reauthorize: 'storage:reauthorize',
   cancelAuthorization: 'storage:cancel-authorization',
   listDirectory: 'storage:list-directory',

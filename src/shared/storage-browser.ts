@@ -35,7 +35,9 @@ export interface StorageBrowserApi {
   listSpaces(connectionId: string, refresh?: boolean): Promise<BrowserResult<SpaceChoice[]>>;
   saveSpaces(connectionId: string, spaceIds: string[]): Promise<BrowserResult<void>>;
   chooseFolder(): Promise<BrowserResult<Space | null>>;
-  addGoogleDrive(): Promise<BrowserResult<StorageConnectionSummary>>;
+  addConnection(
+    provider: Exclude<StorageProvider, 'local'>,
+  ): Promise<BrowserResult<StorageConnectionSummary>>;
   reauthorize(connectionId: string): Promise<BrowserResult<void>>;
   cancelAuthorization(): Promise<BrowserResult<void>>;
   listDirectory(parent: EntryRef, cursor?: string): Promise<BrowserResult<EntryPage>>;

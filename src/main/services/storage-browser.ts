@@ -1,161 +1,92 @@
-import { realpath, stat } from 'node:fs/promises';
-import type { AccountSummary } from '../../shared/accounts';
-import type { ConnectionDefinition, EntryRef, Space } from '../../shared/storage';
-import {
-  emptyLocalConnection,
-  localConnectionId,
-  type SpaceChoice,
-  type StorageConnectionSummary,
+import type { EntryRef, Space } from '../../shared/storage';
+import type {
+  SpaceChoice,
+  StorageConnectionSummary,
+  StorageProvider,
 } from '../../shared/storage-browser';
-import { AccountError } from '../accounts/core/errors';
-import { AdapterRegistry, StorageAccess, StorageError, type StorageLogger } from '../storage';
-import {
-  googleDriveAdapterFactory,
-  myDriveSpace,
-} from '../storage/providers/google-drive/google-drive-adapter';
-import {
-  localAdapterFactory,
-  localFailure,
-  localSpace,
-} from '../storage/providers/local/local-adapter';
+import { StorageAccess, StorageError, type StorageLogger } from '../storage';
 import type { AccountRuntime } from './application-services';
-import { measureDirectorySize } from './measure-directory-size';
-import type { StoragePreferences } from './storage-preferences';
 import { DownloadService } from './download-service';
+import { measureDirectorySize } from './measure-directory-size';
+import { StorageConnectionManager } from './storage-connections';
+import type { StoragePreferences } from './storage-preferences';
+import type { StorageProviderIntegration } from './storage-provider';
+import { StorageSpaceCatalog } from './storage-spaces';
 
-const localConnection: ConnectionDefinition = {
-  id: localConnectionId,
-  provider: 'local',
-  configuration: {},
-};
-const browserAuthentication = { method: 'browser' };
+export interface StorageBrowserOptions {
+  preferences: StoragePreferences;
+  getAccounts: (signal?: AbortSignal) => Promise<AccountRuntime>;
+  logger: StorageLogger;
+  providers: readonly StorageProviderIntegration[];
+}
 
 export class StorageBrowser {
   readonly downloads: DownloadService;
-  private readonly registry: AdapterRegistry;
+  private readonly connections: StorageConnectionManager;
   private readonly storage: StorageAccess;
-  private readonly connections = new Map<string, Promise<void>>();
-  private readonly discovered = new Map<string, Map<string, Space>>();
-  private readonly spaceDiscovery = new Map<string, Promise<void>>();
-  private readonly authorizationRequired = new Set<string>();
-  private authorization: AbortController | undefined;
+  private readonly spaces: StorageSpaceCatalog;
   private directoryMeasurement: { id: string; controller: AbortController } | undefined;
 
-  constructor(
-    private readonly preferences: StoragePreferences,
-    private readonly getAccounts: (signal?: AbortSignal) => Promise<AccountRuntime>,
-    logger: StorageLogger,
-  ) {
-    this.registry = new AdapterRegistry({
-      logger,
-      credentials: {
-        resolve: async (reference, ctx) =>
-          (await getAccounts(ctx.signal)).credentials.resolve(reference, ctx),
-      },
-    });
-    this.registry.register(localAdapterFactory(() => preferences.folders()));
-    this.registry.register(googleDriveAdapterFactory());
-    this.storage = new StorageAccess(this.registry);
+  constructor({ preferences, getAccounts, logger, providers }: StorageBrowserOptions) {
+    this.connections = new StorageConnectionManager(getAccounts, logger, providers);
+    this.storage = new StorageAccess(this.connections.registry);
+    this.spaces = new StorageSpaceCatalog(preferences, this.storage, this.connections);
     this.downloads = new DownloadService({
-      stat: (ref, context) => this.withBrowsableSpace(ref, () => this.storage.stat(ref, context)),
+      stat: (ref, context) =>
+        this.spaces.withBrowsableSpace(ref, () => this.storage.stat(ref, context)),
       read: (ref, options, context) =>
-        this.withBrowsableSpace(ref, () => this.storage.read(ref, options, context)),
+        this.spaces.withBrowsableSpace(ref, () => this.storage.read(ref, options, context)),
       list: (ref, request, context) =>
-        this.withBrowsableSpace(ref, () => this.storage.list(ref, request, context)),
+        this.spaces.withBrowsableSpace(ref, () => this.storage.list(ref, request, context)),
     });
   }
 
-  async listConnections(): Promise<StorageConnectionSummary[]> {
-    const { accounts } = await this.getAccounts();
-    const result = (await accounts.list('google-drive')).map((account) =>
-      this.summarizeAccount(account),
+  listConnections(): Promise<StorageConnectionSummary[]> {
+    return this.spaces.listConnections();
+  }
+
+  listSpaces(id: string, refresh = false): Promise<SpaceChoice[]> {
+    return this.spaces.listSpaces(id, refresh);
+  }
+
+  saveSpaces(id: string, spaceIds: string[]): Promise<void> {
+    return this.spaces.saveSpaces(id, spaceIds);
+  }
+
+  addLocalFolder(path: string): Promise<Space> {
+    return this.spaces.addLocalFolder(path);
+  }
+
+  addConnection(provider: StorageProvider): Promise<StorageConnectionSummary> {
+    return this.connections.addConnection(provider, (account, integration) =>
+      integration.summarizeAccount(
+        account,
+        this.spaces.displayedSpaces(account.id, integration),
+        false,
+      ),
     );
-    if (this.preferences.selectedSpaces(localConnectionId)) {
-      result.push({
-        ...emptyLocalConnection,
-        detail: { messageKey: 'localFileSystem' },
-        spaces: this.displayedSpaces(localConnectionId),
-      });
-    }
-    return result;
   }
 
-  async listSpaces(id: string, refresh = false): Promise<SpaceChoice[]> {
-    if (refresh || this.preferences.discoveredSpaces(id) === undefined) {
-      await this.discoverSpaces(id);
-    } else {
-      await this.definition(id);
-    }
-    const known = this.knownSpaces(id);
-    const choices = Array.from(known.values(), (space) => ({ space, available: true }));
-    for (const space of this.displayedSpaces(id)) {
-      if (!known.has(space.id)) choices.push({ space, available: false });
-    }
-    return choices;
-  }
-
-  async saveSpaces(id: string, spaceIds: string[]): Promise<void> {
-    await this.definition(id);
-    const builtIn = this.builtInSpace(id);
-    const spaces = new Map(this.displayedSpaces(id).map((space) => [space.id, space]));
-    for (const [spaceId, space] of this.knownSpaces(id)) spaces.set(spaceId, space);
-    const selected = spaceIds.map((spaceId) => {
-      const space = spaces.get(spaceId);
-      if (!space) throw new StorageError('InvalidArgument');
-      if (builtIn?.id === spaceId) return { id: spaceId };
-      if (typeof space.name !== 'string') throw new StorageError('OutcomeUnknown');
-      return { id: spaceId, cached: { name: space.name, locator: space.root.locator } };
-    });
-    this.preferences.saveSpaces(id, selected);
-  }
-
-  async addLocalFolder(path: string): Promise<Space> {
-    try {
-      const folder = await realpath(path);
-      if (!(await stat(folder)).isDirectory()) throw new StorageError('InvalidArgument');
-      this.preferences.addFolder(folder);
-      const space = localSpace(localConnectionId, folder);
-      this.discovered.get(localConnectionId)?.set(space.id, space);
-      return space;
-    } catch (error) {
-      localFailure(error);
-    }
-  }
-
-  async addGoogleDrive(): Promise<StorageConnectionSummary> {
-    return this.runAuthorization(async (signal) => {
-      const { accounts } = await this.getAccounts(signal);
-      const account = await accounts.add('google-drive', browserAuthentication, { signal });
-      this.authorizationRequired.delete(account.id);
-      return this.summarizeAccount(account);
-    });
-  }
-
-  async reauthorize(id: string): Promise<void> {
-    if (id === localConnectionId) throw new AccountError('Unsupported');
-    await this.runAuthorization(async (signal) => {
-      const { accounts } = await this.getAccounts(signal);
-      await accounts.updateAuthentication(id, browserAuthentication, { signal });
-      this.authorizationRequired.delete(id);
-    });
+  reauthorize(id: string): Promise<void> {
+    return this.connections.reauthorize(id);
   }
 
   cancelAuthorization(): void {
-    this.authorization?.abort();
+    this.connections.cancelAuthorization();
   }
 
-  async listDirectory(parent: EntryRef, cursor?: string) {
-    return this.withBrowsableSpace(parent, () => this.storage.list(parent, { cursor }));
+  listDirectory(parent: EntryRef, cursor?: string) {
+    return this.spaces.withBrowsableSpace(parent, () => this.storage.list(parent, { cursor }));
   }
 
-  async renameEntry(ref: EntryRef, name: string) {
+  renameEntry(ref: EntryRef, name: string) {
     this.downloads.assertSourceAvailable(ref);
-    return this.withBrowsableSpace(ref, () => this.storage.rename(ref, name));
+    return this.spaces.withBrowsableSpace(ref, () => this.storage.rename(ref, name));
   }
 
-  async deleteEntry(ref: EntryRef): Promise<void> {
+  deleteEntry(ref: EntryRef): Promise<void> {
     this.downloads.assertSourceAvailable(ref);
-    return this.withBrowsableSpace(ref, () => this.storage.remove(ref));
+    return this.spaces.withBrowsableSpace(ref, () => this.storage.remove(ref));
   }
 
   async measureDirectorySize(id: string, folders: EntryRef[]): Promise<number | null> {
@@ -174,7 +105,7 @@ export class StorageBrowser {
     const measurement = { id, controller: new AbortController() };
     this.directoryMeasurement = measurement;
     try {
-      return await this.withBrowsableSpace(first, () =>
+      return await this.spaces.withBrowsableSpace(first, () =>
         measureDirectorySize(this.storage, folders, measurement.controller.signal),
       );
     } finally {
@@ -187,125 +118,12 @@ export class StorageBrowser {
   }
 
   async dispose(): Promise<void> {
-    this.cancelAuthorization();
+    this.connections.cancelAuthorization();
     this.directoryMeasurement?.controller.abort();
-    await this.downloads.dispose();
-    await this.registry.dispose();
-  }
-
-  private async withBrowsableSpace<T>({ connectionId, spaceId }: EntryRef, run: () => Promise<T>) {
-    return this.withConnection(connectionId, () => {
-      if (
-        !this.knownSpaces(connectionId).has(spaceId) &&
-        !this.displayedSpaces(connectionId).some((space) => space.id === spaceId)
-      ) {
-        throw new StorageError('NotFound');
-      }
-      return run();
-    });
-  }
-
-  private discoverSpaces(id: string): Promise<void> {
-    let pending = this.spaceDiscovery.get(id);
-    if (!pending) {
-      pending = this.withConnection(id, async () => {
-        const spaces = await this.storage.listSpaces(id);
-        this.preferences.saveDiscoveredSpaces(id, spaces);
-        this.discovered.delete(id);
-      }).finally(() => this.spaceDiscovery.delete(id));
-      this.spaceDiscovery.set(id, pending);
-    }
-    return pending;
-  }
-
-  private knownSpaces(id: string): Map<string, Space> {
-    let known = this.discovered.get(id);
-    if (!known) {
-      known = new Map(this.preferences.discoveredSpaces(id)?.map((space) => [space.id, space]));
-      if (id === localConnectionId) {
-        for (const folder of this.preferences.folders()) {
-          const space = localSpace(id, folder);
-          known.set(space.id, space);
-        }
-      }
-      this.discovered.set(id, known);
-    }
-    return known;
-  }
-
-  private displayedSpaces(id: string): Space[] {
-    const saved = this.preferences.selectedSpaces(id);
-    const builtIn = this.builtInSpace(id);
-    if (!saved) return builtIn ? [builtIn] : [];
-
-    const known = this.knownSpaces(id);
-    return saved.map(({ id: spaceId, cached }) => {
-      const latest = known.get(spaceId);
-      if (latest) return latest;
-      if (builtIn?.id === spaceId) return builtIn;
-      if (!cached) throw new StorageError('OutcomeUnknown');
-      return {
-        id: spaceId,
-        connectionId: id,
-        name: cached.name,
-        root: { connectionId: id, spaceId, locator: cached.locator },
-      };
-    });
-  }
-
-  private builtInSpace(id: string): Space | undefined {
-    return id === localConnectionId ? undefined : myDriveSpace(id);
-  }
-
-  private summarizeAccount(account: AccountSummary): StorageConnectionSummary {
-    return {
-      id: account.id,
-      provider: 'google-drive',
-      name: account.displayName || account.email || 'Google Drive',
-      detail:
-        account.email && account.displayName ? 'Google Drive · ' + account.email : 'Google Drive',
-      needsAuthorization:
-        account.authorization === 'reauthorization-required' ||
-        this.authorizationRequired.has(account.id),
-      spaces: this.displayedSpaces(account.id),
-    };
-  }
-
-  private async definition(id: string): Promise<ConnectionDefinition> {
-    if (id === localConnectionId) return localConnection;
-    const { accounts } = await this.getAccounts();
-    return accounts.getConnectionDefinition(id);
-  }
-
-  private async withConnection<T>(id: string, run: () => Promise<T>): Promise<T> {
-    const definition = await this.definition(id);
     try {
-      let connection = this.connections.get(id);
-      if (!connection) {
-        connection = this.registry.connect(definition).catch((error: unknown) => {
-          this.connections.delete(id);
-          throw error;
-        });
-        this.connections.set(id, connection);
-      }
-      await connection;
-      return await run();
-    } catch (error) {
-      if (error instanceof StorageError && error.code === 'AuthRequired') {
-        this.authorizationRequired.add(id);
-      }
-      throw error;
-    }
-  }
-
-  private async runAuthorization<T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> {
-    if (this.authorization) throw new AccountError('Busy');
-    const controller = new AbortController();
-    this.authorization = controller;
-    try {
-      return await run(controller.signal);
+      await this.downloads.dispose();
     } finally {
-      this.authorization = undefined;
+      await this.connections.dispose();
     }
   }
 }

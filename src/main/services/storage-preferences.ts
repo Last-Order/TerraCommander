@@ -1,7 +1,6 @@
 import { isAbsolute } from 'node:path';
 import { z } from 'zod';
 import type { Space } from '../../shared/storage';
-import { localConnectionId } from '../../shared/storage-browser';
 import { StorageError } from '../storage/core/errors';
 import { spaceSchema } from '../storage/core/validation';
 
@@ -11,24 +10,36 @@ const savedSpaceSchema = z.strictObject({
   cached: z.strictObject({ name: z.string(), locator: z.string() }).optional(),
 });
 
-const snapshotSchema = z
-  .strictObject({
-    version: z.literal(snapshotVersion),
-    folders: z.array(z.string().refine((path) => isAbsolute(path) && !path.includes('\0'))),
-    connections: z.array(
-      z.strictObject({
-        id: z.string().min(1),
-        spaces: z.array(savedSpaceSchema).optional(),
-        discovered: z.array(spaceSchema).optional(),
-      }),
-    ),
-  })
-  .refine(({ connections }) => {
+const baseSnapshotSchema = z.strictObject({
+  version: z.literal(snapshotVersion),
+  folders: z.array(z.string().refine((path) => isAbsolute(path) && !path.includes('\0'))),
+  connections: z.array(
+    z.strictObject({
+      id: z.string().min(1),
+      spaces: z.array(savedSpaceSchema).optional(),
+      discovered: z.array(spaceSchema).optional(),
+    }),
+  ),
+});
+
+type SpaceValidator = (connectionId: string, space: { id: string; locator?: string }) => boolean;
+
+function createSnapshotSchema(validateSpace?: SpaceValidator) {
+  return baseSnapshotSchema.refine(({ connections }) => {
     const ids = new Set<string>();
     for (const { id, spaces = [], discovered = [] } of connections) {
       if (ids.has(id) || new Set(spaces.map((space) => space.id)).size !== spaces.length)
         return false;
-      if (id === localConnectionId && spaces.some(({ cached }) => cached?.locator !== '.'))
+      if (
+        validateSpace &&
+        spaces.some(
+          (space) =>
+            !validateSpace(id, {
+              id: space.id,
+              ...(space.cached ? { locator: space.cached.locator } : {}),
+            }),
+        )
+      )
         return false;
       if (
         new Set(discovered.map((space) => space.id)).size !== discovered.length ||
@@ -37,7 +48,8 @@ const snapshotSchema = z
             space.connectionId !== id ||
             space.root.connectionId !== id ||
             space.root.spaceId !== space.id ||
-            (id === localConnectionId && space.root.locator !== '.'),
+            (validateSpace !== undefined &&
+              !validateSpace(id, { id: space.id, locator: space.root.locator })),
         )
       )
         return false;
@@ -45,8 +57,9 @@ const snapshotSchema = z
     }
     return true;
   });
+}
 
-type Snapshot = z.infer<typeof snapshotSchema>;
+type Snapshot = z.infer<typeof baseSnapshotSchema>;
 type SavedSpace = z.infer<typeof savedSpaceSchema>;
 
 interface SnapshotStore {
@@ -54,12 +67,19 @@ interface SnapshotStore {
   write(snapshot: Snapshot): void;
 }
 
+export interface StoragePreferencesOptions {
+  validateSpace?: SpaceValidator;
+}
+
 export class StoragePreferences {
   private snapshot: Snapshot;
 
-  constructor(private readonly store: SnapshotStore) {
+  constructor(
+    private readonly store: SnapshotStore,
+    options: StoragePreferencesOptions = {},
+  ) {
     const saved = store.read();
-    const result = snapshotSchema.safeParse(
+    const result = createSnapshotSchema(options.validateSpace).safeParse(
       saved ?? { version: snapshotVersion, folders: [], connections: [] },
     );
     if (!result.success) throw new StorageError('OutcomeUnknown');

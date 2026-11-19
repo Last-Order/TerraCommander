@@ -65,7 +65,7 @@ it('adds a local folder to the same sidebar as Drive and browses both connection
     async chooseFolder() {
       return success(local);
     },
-    async addGoogleDrive() {
+    async addConnection() {
       return success(google);
     },
     async reauthorize() {

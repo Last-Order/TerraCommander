@@ -55,8 +55,8 @@ vi.mock('electron', () => ({
 vi.mock('electron-log/main', () => ({ default: { info: vi.fn(), error: vi.fn() } }));
 vi.mock('./application-menu', () => ({ setApplicationMenu: vi.fn() }));
 vi.mock('./ipc', () => ({ registerIpcHandlers: vi.fn() }));
-vi.mock('./services/language-preferences', () => ({
-  createLanguagePreferences: () => ({ get: () => defaultLanguageSettings, set: vi.fn() }),
+vi.mock('./services/desktop-language-preferences', () => ({
+  createDesktopLanguagePreferences: () => ({ get: () => defaultLanguageSettings, set: vi.fn() }),
 }));
 vi.mock('./accounts/runtime/desktop-accounts', () => {
   throw new Error('Ordinary application startup must not load Google Drive or its account store.');

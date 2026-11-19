@@ -4,6 +4,7 @@ import { channels } from '../shared/contracts';
 import { defaultLanguageSettings } from '../shared/language';
 import { registerIpcHandlers } from './ipc';
 import { ApplicationServices } from './services/application-services';
+import { createDefaultStorageProviders } from './services/providers/default-providers';
 import { StorageBrowser } from './services/storage-browser';
 import { StoragePreferences } from './services/storage-preferences';
 import { StorageError } from './storage';
@@ -25,13 +26,15 @@ function setup() {
   const webContents = { mainFrame: { url: entryUrl } };
   const window = { webContents } as unknown as BrowserWindow;
   const event = { sender: webContents, senderFrame: webContents.mainFrame };
-  const browser = new StorageBrowser(
-    new StoragePreferences({ read: () => undefined, write() {} }),
-    async () => {
+  const preferences = new StoragePreferences({ read: () => undefined, write() {} });
+  const browser = new StorageBrowser({
+    preferences,
+    getAccounts: async () => {
       throw new Error('Accounts must not be initialized.');
     },
-    { event() {} },
-  );
+    logger: { event() {} },
+    providers: createDefaultStorageProviders(preferences),
+  });
   const services = new ApplicationServices({ whenReady: async () => {} });
   const getBrowser = vi.spyOn(services.storageBrowser, 'get').mockResolvedValue(browser);
   const deleteEntry = vi.spyOn(browser, 'deleteEntry').mockResolvedValue(undefined);
@@ -182,6 +185,15 @@ it('validates batch inputs and every batch lifecycle request before loading serv
     await expect(handler({ ...event, sender: {} }, { planId: id, itemId: 0 })).rejects.toThrow(
       'Untrusted IPC sender',
     );
+  }
+  expect(getBrowser).not.toHaveBeenCalled();
+});
+
+it('validates addConnection providers before initializing storage browser', async () => {
+  const { event, getBrowser } = setup();
+  const addConnection = handlers.get(channels.addConnection)!;
+  for (const args of [[], ['local'], ['s3'], ['google-drive', 'extra']]) {
+    expect(await addConnection(event, ...args)).toEqual({ ok: false, code: 'InvalidArgument' });
   }
   expect(getBrowser).not.toHaveBeenCalled();
 });

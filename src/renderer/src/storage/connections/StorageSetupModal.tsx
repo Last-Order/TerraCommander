@@ -61,7 +61,7 @@ export function StorageSetupModal({
         onAuthorized(existing.id);
         onClose();
       } else {
-        const added = await resultOf(window.desktop.storage.addGoogleDrive());
+        const added = await resultOf(window.desktop.storage.addConnection('google-drive'));
         onAuthorized(added.id);
         if (cancelRequested.current) onClose();
         else setConnection(added);

@@ -9,13 +9,11 @@ import { registerIpcHandlers } from './ipc';
 import { nativeMessages } from './native-messages';
 import { isTrustedRenderer } from './security';
 import { ApplicationServices } from './services/application-services';
-import {
-  createLanguagePreferences,
-  type LanguagePreferences,
-} from './services/language-preferences';
+import { createDesktopLanguagePreferences } from './services/desktop-language-preferences';
+import type { LanguagePreferencesPort } from './services/language-preferences';
 
 let mainWindow: BrowserWindow | null = null;
-let languagePreferences: LanguagePreferences | undefined;
+let languagePreferences: LanguagePreferencesPort | undefined;
 const services = new ApplicationServices({ whenReady: () => app.whenReady(), getLanguage });
 let shutdownStarted = false;
 let shutdownComplete = false;
@@ -100,7 +98,7 @@ void app
     });
     session.defaultSession.setPermissionCheckHandler(() => false);
 
-    const preferences = createLanguagePreferences(profilePath, () =>
+    const preferences = createDesktopLanguagePreferences(profilePath, () =>
       app.getPreferredSystemLanguages(),
     );
     languagePreferences = preferences;

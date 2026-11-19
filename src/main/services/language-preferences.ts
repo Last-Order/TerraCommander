@@ -1,5 +1,3 @@
-import log from 'electron-log/main';
-import Store from 'electron-store';
 import { z } from 'zod';
 import {
   fallbackLanguage,
@@ -28,48 +26,54 @@ export function resolveAppLanguage(
   return fallbackLanguage;
 }
 
-export function createLanguagePreferences(profilePath: string, systemLanguages: () => string[]) {
-  let store: Store<{ language: unknown }> | undefined;
+export interface LanguageSnapshotStore {
+  read(): unknown;
+  write(preference: LanguagePreference): void;
+}
 
-  function openStore() {
-    return (store ??= new Store({ cwd: profilePath, name: 'interface', clearInvalidConfig: true }));
+export class LanguagePreferences {
+  private settings: LanguageSettings;
+
+  constructor(
+    private readonly store: LanguageSnapshotStore,
+    private readonly systemLanguages: () => readonly string[],
+    private readonly onWarn: (message: string) => void = () => {},
+  ) {
+    let preference: LanguagePreference = 'system';
+    try {
+      const saved = languagePreferenceSchema.safeParse(this.store.read());
+      if (saved.success) preference = saved.data;
+    } catch {
+      this.onWarn('Could not read the interface language preference');
+    }
+    this.settings = this.resolve(preference);
   }
 
-  function resolve(preference: LanguagePreference): LanguageSettings {
-    let languages: string[] = [];
+  get = (): LanguageSettings => this.settings;
+
+  set = (next: LanguagePreference): LanguageSettings | null => {
+    const updated = this.resolve(next);
+    try {
+      this.store.write(next);
+    } catch {
+      this.onWarn('Could not save the interface language preference');
+      return null;
+    }
+    this.settings = updated;
+    return this.settings;
+  };
+
+  private resolve(preference: LanguagePreference): LanguageSettings {
+    let languages: readonly string[] = [];
     if (preference === 'system') {
       try {
-        languages = systemLanguages();
+        languages = this.systemLanguages();
       } catch {
-        log.warn('Could not determine the preferred system languages');
+        this.onWarn('Could not determine the preferred system languages');
       }
     }
     return { preference, language: resolveAppLanguage(preference, languages) };
   }
-
-  let preference: LanguagePreference = 'system';
-  try {
-    const saved = languagePreferenceSchema.safeParse(openStore().get('language'));
-    if (saved.success) preference = saved.data;
-  } catch {
-    log.warn('Could not read the interface language preference');
-  }
-  let settings = resolve(preference);
-
-  return {
-    get: () => settings,
-    set(next: LanguagePreference): LanguageSettings | null {
-      const updated = resolve(next);
-      try {
-        openStore().set('language', next);
-      } catch {
-        log.warn('Could not save the interface language preference');
-        return null;
-      }
-      settings = updated;
-      return settings;
-    },
-  };
 }
 
-export type LanguagePreferences = ReturnType<typeof createLanguagePreferences>;
+export type LanguagePreferencesPort = Pick<LanguagePreferences, 'get' | 'set'>;
