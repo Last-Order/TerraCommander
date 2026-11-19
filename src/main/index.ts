@@ -9,8 +9,8 @@ import { registerIpcHandlers } from './ipc';
 import { nativeMessages } from './native-messages';
 import { isTrustedRenderer } from './security';
 import { ApplicationServices } from './services/application-services';
-import { createDesktopLanguagePreferences } from './services/desktop-language-preferences';
-import type { LanguagePreferencesPort } from './services/language-preferences';
+import { createDesktopLanguagePreferences } from './services/preferences/desktop-language-preferences';
+import type { LanguagePreferencesPort } from './services/preferences/language-preferences';
 
 let mainWindow: BrowserWindow | null = null;
 let languagePreferences: LanguagePreferencesPort | undefined;

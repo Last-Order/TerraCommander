@@ -1,8 +1,8 @@
 import type { AppLanguage } from '../../shared/language';
 import { LazyService } from './lazy-service';
-import type { StorageBrowser } from './storage-browser';
-import type { DownloadPreferences } from './download-preferences';
-import type { StorageTaskService } from './storage-task-service';
+import type { StorageBrowser } from './storage/storage-browser';
+import type { DownloadPreferences } from './downloads/download-preferences';
+import type { StorageTaskService } from './tasks/storage-task-service';
 
 type AccountModule = typeof import('../accounts/runtime/desktop-accounts');
 export type AccountRuntime = ReturnType<AccountModule['createDesktopAccountServices']>;
@@ -26,7 +26,8 @@ export class ApplicationServices {
       create: async (signal) => {
         await options.whenReady();
         signal.throwIfAborted();
-        const { createDesktopDownloadPreferences } = await import('./desktop-download-preferences');
+        const { createDesktopDownloadPreferences } =
+          await import('./downloads/desktop-download-preferences');
         signal.throwIfAborted();
         return createDesktopDownloadPreferences();
       },
@@ -48,7 +49,7 @@ export class ApplicationServices {
       create: async (signal) => {
         await options.whenReady();
         signal.throwIfAborted();
-        const { createDesktopStorageBrowser } = await import('./desktop-storage-browser');
+        const { createDesktopStorageBrowser } = await import('./storage/desktop-storage-browser');
         signal.throwIfAborted();
         return createDesktopStorageBrowser((operation) => this.accounts.get(operation));
       },
@@ -58,7 +59,7 @@ export class ApplicationServices {
       create: async (signal) => {
         const browser = await this.storageBrowser.get(signal);
         signal.throwIfAborted();
-        const { StorageTaskService } = await import('./storage-task-service');
+        const { StorageTaskService } = await import('./tasks/storage-task-service');
         signal.throwIfAborted();
         return new StorageTaskService(browser);
       },

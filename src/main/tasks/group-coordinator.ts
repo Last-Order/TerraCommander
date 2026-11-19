@@ -1,7 +1,7 @@
 import { isFinishedGroup, isFinishedTask } from '../../shared/task-selectors';
 import type { TaskConflictLedger } from './conflict-ledger';
-import { TaskGroupPreparations } from './task-group-preparations';
-import { summarizeGroup } from './task-group-summary';
+import { TaskGroupPreparations } from './group-preparations';
+import { summarizeGroup } from './group-summary';
 import type {
   QueueTask,
   TaskDefinitions,

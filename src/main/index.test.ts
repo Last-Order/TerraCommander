@@ -55,7 +55,7 @@ vi.mock('electron', () => ({
 vi.mock('electron-log/main', () => ({ default: { info: vi.fn(), error: vi.fn() } }));
 vi.mock('./application-menu', () => ({ setApplicationMenu: vi.fn() }));
 vi.mock('./ipc', () => ({ registerIpcHandlers: vi.fn() }));
-vi.mock('./services/desktop-language-preferences', () => ({
+vi.mock('./services/preferences/desktop-language-preferences', () => ({
   createDesktopLanguagePreferences: () => ({ get: () => defaultLanguageSettings, set: vi.fn() }),
 }));
 vi.mock('./accounts/runtime/desktop-accounts', () => {
