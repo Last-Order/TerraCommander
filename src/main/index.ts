@@ -108,7 +108,7 @@ void app
       set(preference) {
         const previous = getLanguage();
         const settings = preferences.set(preference);
-        if (settings && settings.language !== previous) setApplicationMenu(settings.language);
+        if (settings.language !== previous) setApplicationMenu(settings.language);
         return settings;
       },
     });

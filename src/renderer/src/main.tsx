@@ -6,11 +6,14 @@ import { I18nextProvider } from 'react-i18next';
 import { defaultLanguageSettings } from '../../shared/language';
 import { App } from './app/App';
 import { createRendererI18n } from './i18n/create-renderer-i18n';
+import { resultOf } from './storage/storage-client';
 
 async function start() {
   const root = document.getElementById('root');
   if (!root) throw new Error('Application root is missing');
-  const settings = await window.desktop.language.get().catch(() => defaultLanguageSettings);
+  const settings = await resultOf(window.desktop.language.get()).catch(
+    () => defaultLanguageSettings,
+  );
   const i18n = await createRendererI18n(settings.language);
   document.documentElement.lang = settings.language;
   createRoot(root).render(

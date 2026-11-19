@@ -1,5 +1,5 @@
 import type { LanguagePreference, LanguageSettings } from './language';
-import type { StorageBrowserApi } from './storage-browser';
+import type { BrowserResult, StorageBrowserApi } from './storage-browser';
 import type { DownloadsApi } from './downloads';
 
 export const channels = {
@@ -45,10 +45,10 @@ export interface AppInfo {
 }
 
 export interface DesktopApi {
-  getAppInfo: () => Promise<AppInfo>;
+  getAppInfo: () => Promise<BrowserResult<AppInfo>>;
   language: {
-    get(): Promise<LanguageSettings>;
-    set(preference: LanguagePreference): Promise<LanguageSettings | null>;
+    get(): Promise<BrowserResult<LanguageSettings>>;
+    set(preference: LanguagePreference): Promise<BrowserResult<LanguageSettings>>;
   };
   storage: StorageBrowserApi;
   downloads: DownloadsApi;

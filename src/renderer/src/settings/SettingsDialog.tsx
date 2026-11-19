@@ -3,6 +3,7 @@ import { Modal, NativeSelect, Tabs } from '@mantine/core';
 import { ArrowDownUp, SlidersHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { languagePreferences, type LanguagePreference } from '../../../shared/language';
+import { resultOf } from '../storage/storage-client';
 import classes from './SettingsDialog.module.css';
 import { DownloadSettingsSection } from './DownloadSettingsSection';
 
@@ -24,14 +25,10 @@ export function SettingsDialog({ opened, onClose, initialPreference }: SettingsD
     setSaving(true);
     setFailed(false);
     try {
-      const settings = await window.desktop.language.set(next);
-      if (settings) {
-        await i18n.changeLanguage(settings.language);
-        document.documentElement.lang = settings.language;
-        setPreference(settings.preference);
-      } else {
-        setFailed(true);
-      }
+      const settings = await resultOf(window.desktop.language.set(next));
+      await i18n.changeLanguage(settings.language);
+      document.documentElement.lang = settings.language;
+      setPreference(settings.preference);
     } catch {
       setFailed(true);
     } finally {

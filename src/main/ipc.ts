@@ -1,8 +1,9 @@
-import { app, dialog, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
+import { app, dialog, type BrowserWindow } from 'electron';
 import { z } from 'zod';
 import { channels, type AppInfo } from '../shared/contracts';
-import { localConnectionId, type BrowserResult } from '../shared/storage-browser';
-import { AccountError } from './accounts/core/errors';
+import { localConnectionId } from '../shared/storage-browser';
+import { registerDownloadIpc } from './download-ipc';
+import { createTrustedIpc } from './ipc-helpers';
 import { nativeMessages } from './native-messages';
 import { isTrustedRenderer } from './security';
 import type { ApplicationServices } from './services/application-services';
@@ -11,10 +12,7 @@ import {
   type LanguagePreferencesPort,
 } from './services/language-preferences';
 import type { StorageBrowser } from './services/storage-browser';
-import { normalizeStorageError } from './storage/core/errors';
 import { entryNameSchema, entryRefSchema } from './storage/core/validation';
-import { registerDownloadIpc } from './download-ipc';
-import { DownloadError } from './services/download-paths';
 
 const connectionId = z.union([z.literal(localConnectionId), z.uuid()]);
 const spaceId = z.string().min(1).max(1024);
@@ -31,68 +29,56 @@ export function registerIpcHandlers(
   services: ApplicationServices,
   language: LanguagePreferencesPort,
 ): void {
-  function assertTrusted(event: IpcMainInvokeEvent): BrowserWindow {
-    const window = getWindow();
+  const ipc = createTrustedIpc(getWindow, entryUrl);
+  const observedBrowsers = new WeakMap<StorageBrowser, Set<number>>();
+
+  async function getStorageBrowser(window: BrowserWindow): Promise<StorageBrowser> {
+    const browser = await services.storageBrowser.get();
     if (
-      !window ||
-      event.sender !== window.webContents ||
-      event.senderFrame !== window.webContents.mainFrame ||
-      !isTrustedRenderer(event.senderFrame.url, entryUrl)
+      window.webContents.isDestroyed() ||
+      !isTrustedRenderer(window.webContents.mainFrame.url, entryUrl)
     ) {
-      throw new Error('Untrusted IPC sender');
+      throw new Error('Renderer session closed');
     }
-    return window;
+    let owners = observedBrowsers.get(browser);
+    if (!owners) {
+      owners = new Set();
+      observedBrowsers.set(browser, owners);
+    }
+    const owner = window.webContents.id;
+    if (!owners.has(owner)) {
+      owners.add(owner);
+      ipc.observeRendererSession(window, (id) => browser.cancelOwnerOperations(id));
+    }
+    return browser;
   }
 
-  ipcMain.handle(channels.getAppInfo, (event): AppInfo => {
-    assertTrusted(event);
-    return {
-      name: app.getName(),
-      version: app.getVersion(),
-      platform: process.platform,
-      versions: {
-        electron: process.versions.electron ?? 'unknown',
-        chromium: process.versions.chrome ?? 'unknown',
-        node: process.versions.node,
-      },
-    };
-  });
+  ipc.handle(channels.getAppInfo, noArguments, (): AppInfo => ({
+    name: app.getName(),
+    version: app.getVersion(),
+    platform: process.platform,
+    versions: {
+      electron: process.versions.electron ?? 'unknown',
+      chromium: process.versions.chrome ?? 'unknown',
+      node: process.versions.node,
+    },
+  }));
 
-  registerDownloadIpc(assertTrusted, entryUrl, services);
+  registerDownloadIpc(ipc, entryUrl, services, getStorageBrowser);
 
-  ipcMain.handle(channels.getLanguage, (event, ...args: unknown[]) => {
-    assertTrusted(event);
-    if (!noArguments.safeParse(args).success)
-      throw new Error('Unexpected language settings arguments');
-    return language.get();
-  });
-  const setLanguageArguments = z.tuple([languagePreferenceSchema]);
-  ipcMain.handle(channels.setLanguage, (event, ...args: unknown[]) => {
-    assertTrusted(event);
-    const parsed = setLanguageArguments.safeParse(args);
-    return parsed.success ? language.set(parsed.data[0]) : null;
-  });
+  ipc.handle(channels.getLanguage, noArguments, () => language.get());
+  ipc.handle(channels.setLanguage, z.tuple([languagePreferenceSchema]), (_window, preference) =>
+    language.set(preference),
+  );
 
   function handleStorage<A extends unknown[], T>(
     channel: string,
     schema: z.ZodType<A>,
     run: (browser: StorageBrowser, window: BrowserWindow, ...args: A) => T | Promise<T>,
   ): void {
-    ipcMain.handle(channel, async (event, ...args: unknown[]): Promise<BrowserResult<T>> => {
-      const window = assertTrusted(event);
-      const parsed = schema.safeParse(args);
-      if (!parsed.success) return { ok: false, code: 'InvalidArgument' };
-      try {
-        const browser = await services.storageBrowser.get();
-        return { ok: true, value: await run(browser, window, ...parsed.data) };
-      } catch (error) {
-        const code =
-          error instanceof AccountError || error instanceof DownloadError
-            ? error.code
-            : normalizeStorageError(error).code;
-        return { ok: false, code };
-      }
-    });
+    ipc.handle(channel, schema, async (window, ...args) =>
+      run(await getStorageBrowser(window), window, ...args),
+    );
   }
 
   handleStorage(channels.listConnections, noArguments, (browser) => browser.listConnections());
@@ -117,13 +103,13 @@ export function registerIpcHandlers(
   handleStorage(
     channels.addConnection,
     z.tuple([z.enum(['google-drive'])]),
-    (browser, _window, provider) => browser.addConnection(provider),
+    (browser, window, provider) => browser.addConnection(provider, window.webContents.id),
   );
-  handleStorage(channels.reauthorize, z.tuple([z.uuid()]), (browser, _window, id) =>
-    browser.reauthorize(id),
+  handleStorage(channels.reauthorize, z.tuple([z.uuid()]), (browser, window, id) =>
+    browser.reauthorize(id, window.webContents.id),
   );
-  handleStorage(channels.cancelAuthorization, noArguments, (browser) =>
-    browser.cancelAuthorization(),
+  handleStorage(channels.cancelAuthorization, noArguments, (browser, window) =>
+    browser.cancelAuthorization(window.webContents.id),
   );
   handleStorage(
     channels.listDirectory,
@@ -141,7 +127,8 @@ export function registerIpcHandlers(
   handleStorage(
     channels.measureDirectorySize,
     z.tuple([z.uuid(), z.array(directory).min(1)]),
-    (browser, _window, id, folders) => browser.measureDirectorySize(id, folders),
+    (browser, window, id, folders) =>
+      browser.measureDirectorySize(id, folders, window.webContents.id),
   );
   handleStorage(channels.cancelDirectoryMeasurement, z.tuple([z.uuid()]), (browser, _window, id) =>
     browser.cancelDirectoryMeasurement(id),

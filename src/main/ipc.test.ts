@@ -1,7 +1,8 @@
 import type { BrowserWindow } from 'electron';
 import { expect, it, vi } from 'vitest';
 import { channels } from '../shared/contracts';
-import { defaultLanguageSettings } from '../shared/language';
+import { defaultLanguageSettings, type LanguagePreference } from '../shared/language';
+import { AccountError } from './accounts/core/errors';
 import { registerIpcHandlers } from './ipc';
 import { ApplicationServices } from './services/application-services';
 import { createDefaultStorageProviders } from './services/providers/default-providers';
@@ -12,7 +13,7 @@ import { DownloadPreferences } from './services/download-preferences';
 
 const handlers = vi.hoisted(() => new Map<string, (...args: unknown[]) => Promise<unknown>>());
 vi.mock('electron', () => ({
-  app: {},
+  app: { getName: () => 'TerraCommander', getVersion: () => '0.1.0' },
   dialog: {},
   ipcMain: {
     handle: (channel: string, handler: (...args: unknown[]) => Promise<unknown>) => {
@@ -23,7 +24,22 @@ vi.mock('electron', () => ({
 
 function setup() {
   const entryUrl = 'file:///D:/app/index.html';
-  const webContents = { mainFrame: { url: entryUrl } };
+  const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
+  const webContents = {
+    id: 1,
+    mainFrame: { url: entryUrl },
+    isDestroyed: () => false,
+    on: vi.fn((eventName: string, callback: (...args: unknown[]) => void) => {
+      const list = listeners.get(eventName) ?? [];
+      list.push(callback);
+      listeners.set(eventName, list);
+    }),
+    once: vi.fn((eventName: string, callback: (...args: unknown[]) => void) => {
+      const list = listeners.get(eventName) ?? [];
+      list.push(callback);
+      listeners.set(eventName, list);
+    }),
+  };
   const window = { webContents } as unknown as BrowserWindow;
   const event = { sender: webContents, senderFrame: webContents.mainFrame };
   const preferences = new StoragePreferences({ read: () => undefined, write() {} });
@@ -38,14 +54,31 @@ function setup() {
   const services = new ApplicationServices({ whenReady: async () => {} });
   const getBrowser = vi.spyOn(services.storageBrowser, 'get').mockResolvedValue(browser);
   const deleteEntry = vi.spyOn(browser, 'deleteEntry').mockResolvedValue(undefined);
+  const setLanguage = vi.fn((preference: LanguagePreference) => ({
+    preference,
+    language: preference === 'en' ? ('en' as const) : ('zh-CN' as const),
+  }));
   registerIpcHandlers(() => window, entryUrl, services, {
     get: () => defaultLanguageSettings,
-    set: () => null,
+    set: setLanguage,
   });
   const handler = handlers.get(channels.deleteEntry);
   if (!handler) throw new Error('Missing deletion handler');
   const ref = { connectionId: 'local', spaceId: 'disk', locator: 'notes.txt' };
-  return { handler, event, ref, getBrowser, deleteEntry, services };
+  const emitWebContents = (eventName: string, ...args: unknown[]) => {
+    for (const callback of listeners.get(eventName) ?? []) callback(...args);
+  };
+  return {
+    handler,
+    event,
+    ref,
+    browser,
+    getBrowser,
+    deleteEntry,
+    services,
+    setLanguage,
+    emitWebContents,
+  };
 }
 
 it('only forwards a validated single entry and rejects renderer-supplied deletion modes', async () => {
@@ -196,4 +229,53 @@ it('validates addConnection providers before initializing storage browser', asyn
     expect(await addConnection(event, ...args)).toEqual({ ok: false, code: 'InvalidArgument' });
   }
   expect(getBrowser).not.toHaveBeenCalled();
+});
+
+it('uses BrowserResult contracts for app info and language handlers', async () => {
+  const { event, setLanguage, getBrowser } = setup();
+  const getAppInfo = handlers.get(channels.getAppInfo)!;
+  const getLanguage = handlers.get(channels.getLanguage)!;
+  const setLang = handlers.get(channels.setLanguage)!;
+
+  expect(await getAppInfo(event)).toMatchObject({
+    ok: true,
+    value: { name: 'TerraCommander', version: '0.1.0' },
+  });
+  expect(await getAppInfo(event, 'extra')).toEqual({ ok: false, code: 'InvalidArgument' });
+  expect(await getLanguage(event)).toEqual({ ok: true, value: defaultLanguageSettings });
+  expect(await getLanguage(event, 'extra')).toEqual({ ok: false, code: 'InvalidArgument' });
+  expect(await setLang(event, 'invalid')).toEqual({ ok: false, code: 'InvalidArgument' });
+  expect(await setLang(event, 'en')).toEqual({
+    ok: true,
+    value: { preference: 'en', language: 'en' },
+  });
+
+  setLanguage.mockImplementationOnce(() => {
+    throw new AccountError('PersistenceFailed');
+  });
+  expect(await setLang(event, 'zh-CN')).toEqual({ ok: false, code: 'PersistenceFailed' });
+  await expect(getAppInfo({ ...event, sender: {} })).rejects.toThrow('Untrusted IPC sender');
+  await expect(getLanguage({ ...event, sender: {} })).rejects.toThrow('Untrusted IPC sender');
+  expect(getBrowser).not.toHaveBeenCalled();
+});
+
+it('cancels all owner-scoped backend operations when the renderer crashes or navigates', async () => {
+  const { event, browser, handler, ref, emitWebContents } = setup();
+  const cancelOwner = vi.spyOn(browser, 'cancelOwnerOperations');
+  const cancelDownloads = vi.spyOn(browser.downloads, 'cancelOwner');
+  const cancelAuth = vi.spyOn(browser, 'cancelAuthorization');
+
+  await handler(event, ref);
+
+  emitWebContents('render-process-gone');
+  expect(cancelOwner).toHaveBeenCalledTimes(1);
+  expect(cancelOwner).toHaveBeenLastCalledWith(1);
+  expect(cancelDownloads).toHaveBeenCalledTimes(1);
+  expect(cancelAuth).toHaveBeenCalledTimes(1);
+
+  emitWebContents('did-start-navigation', undefined, 'about:blank', false, false);
+  expect(cancelOwner).toHaveBeenCalledTimes(1);
+
+  emitWebContents('did-start-navigation', undefined, 'https://example.com', false, true);
+  expect(cancelOwner).toHaveBeenCalledTimes(2);
 });

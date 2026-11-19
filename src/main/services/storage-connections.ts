@@ -17,7 +17,7 @@ export class StorageConnectionManager {
   private readonly accountProviders = new Map<string, AccountStorageProviderIntegration>();
   private readonly connections = new Map<string, Promise<void>>();
   private readonly authorizationRequired = new Set<string>();
-  private authorization: AbortController | undefined;
+  private authorization: { owner: number | undefined; controller: AbortController } | undefined;
 
   constructor(
     private readonly getAccounts: (signal?: AbortSignal) => Promise<AccountRuntime>,
@@ -81,10 +81,11 @@ export class StorageConnectionManager {
       account: AccountSummary,
       integration: AccountStorageProviderIntegration,
     ) => StorageConnectionSummary,
+    owner?: number,
   ): Promise<StorageConnectionSummary> {
     const integration = this.providers.get(provider);
     if (!integration || integration.kind !== 'account') throw new AccountError('Unsupported');
-    return this.runAuthorization(async (signal) => {
+    return this.runAuthorization(owner, async (signal) => {
       const { accounts } = await this.getAccounts(signal);
       const account = await accounts.add(integration.provider, integration.defaultAuthentication, {
         signal,
@@ -95,9 +96,9 @@ export class StorageConnectionManager {
     });
   }
 
-  async reauthorize(id: string): Promise<void> {
+  async reauthorize(id: string, owner?: number): Promise<void> {
     if (this.locals.has(id)) throw new AccountError('Unsupported');
-    await this.runAuthorization(async (signal) => {
+    await this.runAuthorization(owner, async (signal) => {
       const { accounts } = await this.getAccounts(signal);
       const definition = accounts.getConnectionDefinition(id);
       const integration = this.integrationForDefinition(definition);
@@ -107,8 +108,10 @@ export class StorageConnectionManager {
     });
   }
 
-  cancelAuthorization(): void {
-    this.authorization?.abort();
+  cancelAuthorization(owner?: number): void {
+    if (owner === undefined || this.authorization?.owner === owner) {
+      this.authorization?.controller.abort();
+    }
   }
 
   async withConnection<T>(
@@ -159,14 +162,18 @@ export class StorageConnectionManager {
     return integration;
   }
 
-  private async runAuthorization<T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  private async runAuthorization<T>(
+    owner: number | undefined,
+    run: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
     if (this.authorization) throw new AccountError('Busy');
     const controller = new AbortController();
-    this.authorization = controller;
+    const attempt = { owner, controller };
+    this.authorization = attempt;
     try {
       return await run(controller.signal);
     } finally {
-      this.authorization = undefined;
+      if (this.authorization === attempt) this.authorization = undefined;
     }
   }
 }

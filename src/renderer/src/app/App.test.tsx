@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, it, vi } from 'vitest';
+import type { LanguageSettings } from '../../../shared/language';
 import type { Space } from '../../../shared/storage';
 import type { StorageBrowserApi, StorageConnectionSummary } from '../../../shared/storage-browser';
 import { renderWorkspace } from '../testing/render-app';
@@ -36,7 +37,9 @@ it('changes language in General settings and keeps the current folder open', asy
       spaces: [drive, sharedDrive],
     },
   ];
-  const setLanguage = vi.fn(async () => ({ preference: 'en', language: 'en' }));
+  const setLanguage = vi.fn(async () =>
+    success<LanguageSettings>({ preference: 'en', language: 'en' }),
+  );
   vi.stubGlobal('desktop', {
     language: { set: setLanguage },
     storage: { listConnections: async () => success(connections), listDirectory },

@@ -25,7 +25,9 @@ export class StorageBrowser {
   private readonly connections: StorageConnectionManager;
   private readonly storage: StorageAccess;
   private readonly spaces: StorageSpaceCatalog;
-  private directoryMeasurement: { id: string; controller: AbortController } | undefined;
+  private directoryMeasurement:
+    | { id: string; owner: number | undefined; controller: AbortController }
+    | undefined;
 
   constructor({ preferences, getAccounts, logger, providers }: StorageBrowserOptions) {
     this.connections = new StorageConnectionManager(getAccounts, logger, providers);
@@ -57,22 +59,25 @@ export class StorageBrowser {
     return this.spaces.addLocalFolder(path);
   }
 
-  addConnection(provider: StorageProvider): Promise<StorageConnectionSummary> {
-    return this.connections.addConnection(provider, (account, integration) =>
-      integration.summarizeAccount(
-        account,
-        this.spaces.displayedSpaces(account.id, integration),
-        false,
-      ),
+  addConnection(provider: StorageProvider, owner?: number): Promise<StorageConnectionSummary> {
+    return this.connections.addConnection(
+      provider,
+      (account, integration) =>
+        integration.summarizeAccount(
+          account,
+          this.spaces.displayedSpaces(account.id, integration),
+          false,
+        ),
+      owner,
     );
   }
 
-  reauthorize(id: string): Promise<void> {
-    return this.connections.reauthorize(id);
+  reauthorize(id: string, owner?: number): Promise<void> {
+    return this.connections.reauthorize(id, owner);
   }
 
-  cancelAuthorization(): void {
-    this.connections.cancelAuthorization();
+  cancelAuthorization(owner?: number): void {
+    this.connections.cancelAuthorization(owner);
   }
 
   listDirectory(parent: EntryRef, cursor?: string) {
@@ -89,7 +94,11 @@ export class StorageBrowser {
     return this.spaces.withBrowsableSpace(ref, () => this.storage.remove(ref));
   }
 
-  async measureDirectorySize(id: string, folders: EntryRef[]): Promise<number | null> {
+  async measureDirectorySize(
+    id: string,
+    folders: EntryRef[],
+    owner?: number,
+  ): Promise<number | null> {
     const first = folders[0];
     if (
       !first ||
@@ -102,7 +111,7 @@ export class StorageBrowser {
     }
 
     this.directoryMeasurement?.controller.abort();
-    const measurement = { id, controller: new AbortController() };
+    const measurement = { id, owner, controller: new AbortController() };
     this.directoryMeasurement = measurement;
     try {
       return await this.spaces.withBrowsableSpace(first, () =>
@@ -115,6 +124,12 @@ export class StorageBrowser {
 
   cancelDirectoryMeasurement(id: string): void {
     if (this.directoryMeasurement?.id === id) this.directoryMeasurement.controller.abort();
+  }
+
+  cancelOwnerOperations(owner: number): void {
+    this.downloads.cancelOwner(owner);
+    if (this.directoryMeasurement?.owner === owner) this.directoryMeasurement.controller.abort();
+    this.cancelAuthorization(owner);
   }
 
   async dispose(): Promise<void> {

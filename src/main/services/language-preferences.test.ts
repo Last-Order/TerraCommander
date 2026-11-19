@@ -29,7 +29,9 @@ it('isolates LanguagePreferences behind an injected store and preserves state on
   );
   expect(preferences.get()).toEqual({ preference: 'en', language: 'en' });
   failWrites = true;
-  expect(preferences.set('zh-CN')).toBeNull();
+  expect(() => preferences.set('zh-CN')).toThrow(
+    expect.objectContaining({ code: 'PersistenceFailed' }),
+  );
   expect(preferences.get()).toEqual({ preference: 'en', language: 'en' });
   expect(onWarn).toHaveBeenCalledTimes(1);
 });

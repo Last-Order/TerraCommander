@@ -6,6 +6,7 @@ import {
   type LanguagePreference,
   type LanguageSettings,
 } from '../../shared/language';
+import { AccountError } from '../accounts/core/errors';
 
 export const languagePreferenceSchema = z.enum(languagePreferences);
 
@@ -51,13 +52,13 @@ export class LanguagePreferences {
 
   get = (): LanguageSettings => this.settings;
 
-  set = (next: LanguagePreference): LanguageSettings | null => {
+  set = (next: LanguagePreference): LanguageSettings => {
     const updated = this.resolve(next);
     try {
       this.store.write(next);
-    } catch {
+    } catch (error) {
       this.onWarn('Could not save the interface language preference');
-      return null;
+      throw new AccountError('PersistenceFailed', error);
     }
     this.settings = updated;
     return this.settings;
