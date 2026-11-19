@@ -2,15 +2,36 @@ import { createHash } from 'node:crypto';
 import type { Dirent, Stats } from 'node:fs';
 import { lstat, readdir, rename, unlink } from 'node:fs/promises';
 import { basename, dirname, join, normalize, parse, sep } from 'node:path';
-import type { Entry, EntryPage, EntryRef, ListRequest, Space } from '../../../../shared/storage';
+import type {
+  Capabilities,
+  CapabilityScope,
+  Entry,
+  EntryPage,
+  EntryRef,
+  ListRequest,
+  Space,
+} from '../../../../shared/storage';
 import type { OperationContext } from '../../core/contracts';
 import { StorageError, throwIfAborted } from '../../core/errors';
 import type { AdapterFactory, StorageAdapter } from '../../ports/adapter';
 import { listLocalVolumes } from './local-volumes';
 
-const listSupported = { list: { support: 'supported' } } as const;
-const renameSupported = { rename: { support: 'supported' } } as const;
-const removeSupported = { remove: { support: 'supported' } } as const;
+const supported = { support: 'supported' } as const;
+const unsupported = { support: 'unsupported' } as const;
+const localBaseCapabilities: Capabilities = {
+  list: supported,
+  read: unsupported,
+  write: unsupported,
+  createDirectory: unsupported,
+  remove: supported,
+  copyWithin: unsupported,
+  moveWithin: unsupported,
+  rename: supported,
+  rangeRead: unsupported,
+  conditionalRead: unsupported,
+  conditionalWrite: unsupported,
+  resumeWrite: unsupported,
+};
 const metadataBatchSize = 32;
 
 export function localSpace(connectionId: string, directory: string): Space {
@@ -72,8 +93,12 @@ class LocalAdapter implements StorageAdapter {
     return [...spaces.values()];
   }
 
-  async capabilities() {
-    return { ...listSupported, ...renameSupported, ...removeSupported };
+  async capabilities(scope: CapabilityScope, ctx: OperationContext): Promise<Capabilities> {
+    throwIfAborted(ctx.signal);
+    if (scope.kind === 'entry') {
+      return (await this.stat(scope.ref, ctx)).capabilities;
+    }
+    return { ...localBaseCapabilities };
   }
 
   async stat(ref: EntryRef, { signal }: OperationContext): Promise<Entry> {
@@ -217,16 +242,12 @@ function localEntry(ref: EntryRef, name: string, displayPath: string, info: Dire
     name,
     kind,
     displayPath,
-    capabilities:
-      ref.locator === '.'
-        ? kind === 'directory'
-          ? listSupported
-          : {}
-        : {
-            ...renameSupported,
-            ...(kind === 'directory' ? listSupported : {}),
-            ...(kind === 'file' || kind === 'link' ? removeSupported : {}),
-          },
+    capabilities: {
+      ...localBaseCapabilities,
+      list: kind === 'directory' ? supported : unsupported,
+      rename: ref.locator === '.' ? unsupported : supported,
+      remove: ref.locator !== '.' && (kind === 'file' || kind === 'link') ? supported : unsupported,
+    },
   };
   if ('mtime' in info) {
     const year = info.mtime.getUTCFullYear();

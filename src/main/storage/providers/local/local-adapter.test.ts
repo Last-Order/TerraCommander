@@ -127,3 +127,61 @@ it('rejects conflicting names, invalid names, root renames and traversal through
     await registry.dispose();
   }
 });
+
+it('reports scope-accurate capabilities and honors pre-aborted signals', async () => {
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-local-caps-'));
+  const file = join(temporary.path, 'item.txt');
+  const folder = join(temporary.path, 'dir');
+  await writeFile(file, 'hello');
+  await mkdir(folder);
+  const { registry, storage, root } = await setup(temporary.path);
+  try {
+    const spaceCaps = await storage.capabilities({
+      kind: 'space',
+      connectionId: 'local',
+      spaceId: root.spaceId,
+    });
+    expect(spaceCaps).toMatchObject({
+      list: { support: 'supported' },
+      rename: { support: 'supported' },
+      remove: { support: 'supported' },
+      read: { support: 'unsupported' },
+      write: { support: 'unsupported' },
+    });
+
+    const rootCaps = await storage.capabilities({ kind: 'entry', ref: root });
+    expect(rootCaps).toEqual((await storage.stat(root)).capabilities);
+    expect(rootCaps).toMatchObject({
+      list: { support: 'supported' },
+      rename: { support: 'unsupported' },
+      remove: { support: 'unsupported' },
+    });
+
+    const fileRef = { ...root, locator: 'item.txt' };
+    const fileCaps = await storage.capabilities({ kind: 'entry', ref: fileRef });
+    expect(fileCaps).toEqual((await storage.stat(fileRef)).capabilities);
+    expect(fileCaps).toMatchObject({
+      list: { support: 'unsupported' },
+      rename: { support: 'supported' },
+      remove: { support: 'supported' },
+    });
+
+    const dirRef = { ...root, locator: 'dir' };
+    expect(await storage.capabilities({ kind: 'entry', ref: dirRef })).toMatchObject({
+      list: { support: 'supported' },
+      rename: { support: 'supported' },
+      remove: { support: 'unsupported' },
+    });
+
+    await expect(
+      storage.capabilities(
+        { kind: 'connection', connectionId: 'local' },
+        {
+          signal: AbortSignal.abort(),
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'Cancelled' });
+  } finally {
+    await registry.dispose();
+  }
+});

@@ -78,7 +78,11 @@ export async function requireCapabilities(
   requests: CapabilityRequirement[],
   ctx: OperationContext,
 ): Promise<Capabilities> {
-  const capabilities = await getCapabilities(adapter, { kind: 'entry', ref }, ctx);
+  const capabilities = await getCapabilities(
+    adapter,
+    { kind: 'space', connectionId: ref.connectionId, spaceId: ref.spaceId },
+    ctx,
+  );
 
   for (const { operation, strict } of requests) {
     const support = capabilities[operation]?.support ?? 'unknown';

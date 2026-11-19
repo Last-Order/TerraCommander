@@ -163,3 +163,100 @@ it('discovers all shared drives and lists a selected drive through its own corpu
     await registry.dispose();
   }
 });
+
+it('reports scope-accurate capabilities, omits absent metadata, and respects cancellation', async () => {
+  const request = vi.fn<typeof fetch>(async (input) => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (url.pathname.endsWith('/files/root')) {
+      return Response.json({
+        id: 'root',
+        name: 'My Drive',
+        mimeType: 'application/vnd.google-apps.folder',
+        capabilities: { canRename: true, canTrash: true },
+      });
+    }
+    if (url.pathname.endsWith('/files/doc')) {
+      return Response.json({
+        id: 'doc',
+        name: 'Notes',
+        mimeType: 'application/vnd.google-apps.document',
+        capabilities: { canRename: true, canTrash: true, canDownload: true },
+      });
+    }
+    return Response.json({
+      id: 'folder',
+      name: 'Folder',
+      mimeType: 'application/vnd.google-apps.folder',
+      capabilities: { canRename: true, canTrash: true },
+    });
+  });
+  const registry = new AdapterRegistry({
+    credentials: {
+      async resolve() {
+        return {
+          provider: 'google-drive',
+          connectionId: 'account',
+          subject: 'subject',
+          oauthClientId: 'client',
+          getAccessToken: async () => 'test-access-token',
+        };
+      },
+    },
+    logger: { event() {} },
+  });
+  registry.register(googleDriveAdapterFactory(request));
+  const storage = new StorageAccess(registry);
+  try {
+    await registry.connect({
+      id: 'account',
+      provider: 'google-drive',
+      configuration: { subject: 'subject', oauthClientId: 'client' },
+      credentialRef: 'ref',
+    });
+    expect(
+      await storage.capabilities({ kind: 'space', connectionId: 'account', spaceId: 'my-drive' }),
+    ).toMatchObject({
+      list: { support: 'supported' },
+      read: { support: 'supported' },
+      write: { support: 'unsupported' },
+    });
+
+    const rootRef = { connectionId: 'account', spaceId: 'my-drive', locator: 'root' };
+    const rootEntry = await storage.stat(rootRef);
+    expect(rootEntry).not.toHaveProperty('checksums');
+    expect(rootEntry).not.toHaveProperty('size');
+    expect(rootEntry).not.toHaveProperty('modifiedAt');
+    expect(await storage.capabilities({ kind: 'entry', ref: rootRef })).toEqual(
+      rootEntry.capabilities,
+    );
+    expect(rootEntry.capabilities).toMatchObject({
+      list: { support: 'supported' },
+      rename: { support: 'unsupported' },
+      remove: { support: 'unsupported' },
+    });
+
+    const docRef = { connectionId: 'account', spaceId: 'my-drive', locator: 'doc' };
+    const docEntry = await storage.stat(docRef);
+    expect(await storage.capabilities({ kind: 'entry', ref: docRef })).toEqual(
+      docEntry.capabilities,
+    );
+    expect(docEntry.capabilities).toMatchObject({
+      read: { support: 'unsupported' },
+      rangeRead: { support: 'unsupported' },
+      list: { support: 'unsupported' },
+      rename: { support: 'supported' },
+      remove: { support: 'supported' },
+    });
+
+    await expect(
+      storage.capabilities(
+        { kind: 'connection', connectionId: 'account' },
+        {
+          signal: AbortSignal.abort(),
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'Cancelled' });
+  } finally {
+    await registry.dispose();
+  }
+});

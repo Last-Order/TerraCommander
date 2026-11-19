@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import type {
+  Capabilities,
+  CapabilityScope,
   Entry,
   EntryPage,
   EntryRef,
@@ -19,7 +21,23 @@ import { readGoogleDriveContent } from './google-drive-read';
 
 const myDriveId = 'my-drive';
 const sharedPrefix = 'shared:';
-const listSupported = { list: { support: 'supported' } } as const;
+const supported = { support: 'supported' } as const;
+const unsupported = { support: 'unsupported' } as const;
+const unknown = { support: 'unknown' } as const;
+const driveBaseCapabilities: Capabilities = {
+  list: supported,
+  read: supported,
+  rangeRead: supported,
+  rename: supported,
+  remove: supported,
+  write: unsupported,
+  createDirectory: unsupported,
+  copyWithin: unsupported,
+  moveWithin: unsupported,
+  conditionalRead: unsupported,
+  conditionalWrite: unsupported,
+  resumeWrite: unsupported,
+};
 const identifier = z.string().regex(/^[A-Za-z0-9_-]+$/);
 const token = z.string().min(1);
 const fileFields =
@@ -108,14 +126,16 @@ class GoogleDriveAdapter implements StorageAdapter {
     return spaces;
   }
 
-  async capabilities() {
-    return {
-      ...listSupported,
-      read: { support: 'supported' },
-      rangeRead: { support: 'supported' },
-      rename: { support: 'supported' },
-      remove: { support: 'supported' },
-    } as const;
+  async capabilities(scope: CapabilityScope, ctx: OperationContext): Promise<Capabilities> {
+    throwIfAborted(ctx.signal);
+    if (scope.kind === 'space') {
+      this.sharedDriveId(scope.spaceId);
+      return { ...driveBaseCapabilities };
+    }
+    if (scope.kind === 'entry') {
+      return (await this.stat(scope.ref, ctx)).capabilities;
+    }
+    return { ...driveBaseCapabilities };
   }
 
   async stat(ref: EntryRef, context: OperationContext): Promise<Entry> {
@@ -126,7 +146,8 @@ class GoogleDriveAdapter implements StorageAdapter {
     if (file.trashed || (file.driveId !== driveId && file.id !== driveId)) {
       throw new StorageError('NotFound');
     }
-    return fileEntry(ref, file);
+    const isRoot = id === 'root' || id === driveId;
+    return fileEntry(ref, file, isRoot);
   }
 
   async list(
@@ -153,7 +174,9 @@ class GoogleDriveAdapter implements StorageAdapter {
     if (cursor) params.set('pageToken', cursor);
     const page = await this.requestJson('files', params, filesSchema, context);
     if (page.incompleteSearch) throw new StorageError('OutcomeUnknown');
-    const entries = page.files.map((file) => fileEntry({ ...parent, locator: file.id }, file));
+    const entries = page.files.map((file) =>
+      fileEntry({ ...parent, locator: file.id }, file, false),
+    );
     return page.nextPageToken ? { entries, nextCursor: page.nextPageToken } : { entries };
   }
 
@@ -172,7 +195,7 @@ class GoogleDriveAdapter implements StorageAdapter {
     });
     if (file.id !== id || file.trashed || file.driveId !== driveId)
       throw new StorageError('OutcomeUnknown');
-    return fileEntry(ref, file);
+    return fileEntry(ref, file, false);
   }
 
   async read(ref: EntryRef, options: ReadOptions, context: OperationContext) {
@@ -267,58 +290,52 @@ function driveSpace(connectionId: string, id: string, name: Space['name'], locat
   return { id, connectionId, name, root: { connectionId, spaceId: id, locator } };
 }
 
-function fileEntry(ref: EntryRef, file: z.infer<typeof fileSchema>): Entry {
+function fileEntry(ref: EntryRef, file: z.infer<typeof fileSchema>, isRoot: boolean): Entry {
   let kind: Entry['kind'] = 'file';
   if (file.mimeType === 'application/vnd.google-apps.folder') kind = 'directory';
   else if (file.mimeType === 'application/vnd.google-apps.shortcut') kind = 'link';
-  const size = Number(file.size);
+  const size = kind === 'file' && file.size !== undefined ? Number(file.size) : undefined;
+  const checksums = [
+    ...(file.sha256Checksum
+      ? [{ algorithm: 'sha256', value: file.sha256Checksum.toLowerCase() }]
+      : []),
+    ...(file.md5Checksum ? [{ algorithm: 'md5', value: file.md5Checksum.toLowerCase() }] : []),
+  ];
   return {
     ref,
     name: file.name,
     kind,
     mediaType: file.mimeType,
-    modifiedAt: file.modifiedTime,
-    size: Number.isSafeInteger(size) ? size : undefined,
-    checksums: [
-      ...(file.sha256Checksum
-        ? [{ algorithm: 'sha256', value: file.sha256Checksum.toLowerCase() }]
-        : []),
-      ...(file.md5Checksum ? [{ algorithm: 'md5', value: file.md5Checksum.toLowerCase() }] : []),
-    ],
+    ...(file.modifiedTime !== undefined ? { modifiedAt: file.modifiedTime } : {}),
+    ...(size !== undefined && Number.isSafeInteger(size) ? { size } : {}),
+    ...(checksums.length > 0 ? { checksums } : {}),
     capabilities: {
-      rangeRead: {
-        support:
-          kind === 'file' && !file.mimeType.startsWith('application/vnd.google-apps.')
-            ? 'supported'
-            : 'unsupported',
-      },
-      read: {
-        support:
-          kind !== 'file' ||
-          file.mimeType.startsWith('application/vnd.google-apps.') ||
-          file.capabilities?.canDownload === false
-            ? 'unsupported'
-            : file.capabilities?.canDownload
-              ? 'supported'
-              : 'unknown',
-      },
-      ...(kind === 'directory' ? listSupported : {}),
-      rename: {
-        support:
-          file.capabilities?.canRename === undefined
-            ? 'unknown'
-            : file.capabilities.canRename
-              ? 'supported'
-              : 'unsupported',
-      },
-      remove: {
-        support:
-          kind === 'directory' || file.capabilities?.canTrash === false
-            ? 'unsupported'
-            : file.capabilities?.canTrash
-              ? 'supported'
-              : 'unknown',
-      },
+      ...driveBaseCapabilities,
+      list: kind === 'directory' ? supported : unsupported,
+      rangeRead:
+        kind === 'file' && !file.mimeType.startsWith('application/vnd.google-apps.')
+          ? supported
+          : unsupported,
+      read:
+        kind !== 'file' ||
+        file.mimeType.startsWith('application/vnd.google-apps.') ||
+        file.capabilities?.canDownload === false
+          ? unsupported
+          : file.capabilities?.canDownload
+            ? supported
+            : unknown,
+      rename:
+        isRoot || file.capabilities?.canRename === false
+          ? unsupported
+          : file.capabilities?.canRename
+            ? supported
+            : unknown,
+      remove:
+        isRoot || kind === 'directory' || file.capabilities?.canTrash === false
+          ? unsupported
+          : file.capabilities?.canTrash
+            ? supported
+            : unknown,
     },
   };
 }
