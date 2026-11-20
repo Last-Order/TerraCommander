@@ -34,6 +34,12 @@ const folderEntry: Entry = {
 };
 
 function setup() {
+  const resolveWork = vi.fn(async () => ({
+    id: 'exec-1',
+    path: 'D:\\Downloads\\report.txt',
+  }));
+  const run = vi.fn<DownloadService['run']>(async () => ({ status: 'completed' }));
+  const pause = vi.fn(async () => undefined);
   const downloads = {
     prepare: vi.fn(async () => ({
       ref: { planId: 'single-plan', itemId: 0 },
@@ -56,17 +62,31 @@ function setup() {
     discoverBatchDirectory: vi.fn<DownloadService['discoverBatchDirectory']>(async () => ({
       items: [],
     })),
-    resolveWork: vi.fn(async () => ({
-      id: 'exec-1',
-      path: 'D:\\Downloads\\report.txt',
-    })),
+    resolveWork,
     cancelWork: vi.fn(async () => undefined),
     releaseWork: vi.fn(async () => undefined),
     cancelBatchItem: vi.fn(async () => undefined),
     finishBatch: vi.fn(),
     releaseBatch: vi.fn(async () => undefined),
-    run: vi.fn<DownloadService['run']>(async () => ({ status: 'completed' })),
-    pause: vi.fn(async () => undefined),
+    run,
+    pause,
+    runWork: vi.fn<DownloadService['runWork']>(async (owner, _ref, options) => {
+      const execution = await resolveWork();
+      const attempt = 'test-attempt';
+      return run(
+        owner,
+        execution.id,
+        (progress) => {
+          if (progress.id !== execution.id) return;
+          const { id: _id, attempt: _attempt, ...rest } = progress;
+          options.onProgress(rest);
+        },
+        attempt,
+      );
+    }),
+    pauseWork: vi.fn<DownloadService['pauseWork']>(async () => {
+      await pause();
+    }),
   };
   const renameEntry = vi.fn(async () => ({ ...fileEntry, name: 'final.txt' }));
   const deleteEntry = vi.fn(async () => undefined);

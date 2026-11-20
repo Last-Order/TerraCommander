@@ -284,8 +284,61 @@ export class DownloadService {
     );
   }
 
-  pause(owner: number, id: string): Promise<void> {
+  async pause(owner: number, id: string): Promise<void> {
     return this.owned(owner, id).transfer.pause();
+  }
+
+  async runWork(
+    owner: number,
+    ref: DownloadWorkRef,
+    options: {
+      signal: AbortSignal;
+      onProgress: (progress: Omit<DownloadProgress, 'id' | 'attempt'>) => void;
+    },
+  ): Promise<DownloadRunResult | { status: 'cancelled' }> {
+    const existing = this.findWorkRecord(owner, ref);
+    const id = existing ? existing[0] : (await this.resolveWork(owner, ref)).id;
+    if (options.signal.aborted) {
+      await this.cancelWork(owner, ref);
+      return { status: 'cancelled' };
+    }
+    const attempt = randomUUID();
+    const onAbort = () => {
+      void this.cancelWork(owner, ref).catch(() => {});
+    };
+    options.signal.addEventListener('abort', onAbort, { once: true });
+    try {
+      return await this.run(
+        owner,
+        id,
+        (progress) => {
+          if (progress.id !== id || progress.attempt !== attempt) return;
+          const { id: _id, attempt: _attempt, ...rest } = progress;
+          options.onProgress(rest);
+        },
+        attempt,
+      );
+    } finally {
+      options.signal.removeEventListener('abort', onAbort);
+    }
+  }
+
+  async pauseWork(owner: number, ref: DownloadWorkRef): Promise<void> {
+    const existing = this.findWorkRecord(owner, ref);
+    if (existing) await this.pause(owner, existing[0]);
+  }
+
+  private findWorkRecord(
+    owner: number,
+    ref: DownloadWorkRef,
+  ): [string, DownloadRecord] | undefined {
+    for (const entry of this.records) {
+      const [, record] = entry;
+      if (record.owner === owner && record.planId === ref.planId && record.itemId === ref.itemId) {
+        return entry;
+      }
+    }
+    return undefined;
   }
 
   async cancel(owner: number, id: string): Promise<void> {

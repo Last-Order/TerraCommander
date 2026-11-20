@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import type { Entry } from '@shared/storage';
 import { localConnectionId } from '@shared/storage-browser';
 import type {
@@ -8,10 +7,10 @@ import type {
   UploadTaskDisplayInput,
 } from '@shared/tasks';
 import type { TaskHandler } from '@main/tasks/types';
-import type { DownloadExecution, DownloadWorkRef } from '../downloads/download-types';
+import type { DownloadWorkRef } from '../downloads/download-types';
 import type { StorageBrowser } from '../storage/storage-browser';
 import type { UploadWorkRef } from '../uploads/upload-types';
-import { entryKey, queueOwnerId, toBrowserErrorCode, toTaskFailure, workKey } from './task-errors';
+import { entryKey, queueOwnerId, toBrowserErrorCode, toTaskFailure } from './task-errors';
 
 export interface InternalDownloadInput extends DownloadTaskDisplayInput {
   workRef: DownloadWorkRef;
@@ -151,68 +150,37 @@ export function createDownloadTransferConfig(
   downloads: StorageBrowser['downloads'],
   callbacks: Pick<TransferCallbacks, 'emitDirectoryChanged'>,
 ): TransferHandlerConfig<InternalDownloadInput, void> {
-  const executions = new Map<string, DownloadExecution>();
-
   return {
     conflictKeys: ({ entry }) => [entryKey(entry.ref)],
     canExecute: ({ entry }) =>
       entry.kind === 'file' && entry.capabilities.read?.support !== 'unsupported',
-    run: async (input, { signal, onProgress }) => {
-      const executionKey = workKey(input.workRef);
-      let paused = false;
-      try {
-        const execution =
-          executions.get(executionKey) ??
-          (await downloads.resolveWork(queueOwnerId, input.workRef));
-        executions.set(executionKey, execution);
-        if (signal.aborted) {
-          await downloads.cancelWork(queueOwnerId, input.workRef);
-          return { status: 'cancelled' };
-        }
-        const attempt = randomUUID();
-        const result = await downloads.run(
-          queueOwnerId,
-          execution.id,
-          (progress) => {
-            if (progress.id !== execution.id || progress.attempt !== attempt) return;
-            onProgress({
-              controls: progress.controls,
-              stageKey:
-                progress.stage === 'saving'
-                  ? 'storage:downloadSaving'
-                  : 'storage:downloadReceiving',
-              completedBytes: progress.completedBytes,
-              totalBytes: progress.totalBytes,
-              bytesPerSecond: progress.bytesPerSecond,
-            });
-          },
-          attempt,
-        );
-        if (result.status === 'paused') {
-          paused = true;
-          return {
-            status: 'paused',
-            completedBytes: result.completedBytes,
-            totalBytes: result.totalBytes,
-            error: result.error,
-          };
-        }
-        return { status: 'completed', result: undefined };
-      } finally {
-        if (!paused) executions.delete(executionKey);
+    run: async ({ workRef }, { signal, onProgress }) => {
+      const result = await downloads.runWork(queueOwnerId, workRef, {
+        signal,
+        onProgress: (progress) => {
+          onProgress({
+            controls: progress.controls,
+            stageKey:
+              progress.stage === 'saving' ? 'storage:downloadSaving' : 'storage:downloadReceiving',
+            completedBytes: progress.completedBytes,
+            totalBytes: progress.totalBytes,
+            bytesPerSecond: progress.bytesPerSecond,
+          });
+        },
+      });
+      if (result.status === 'cancelled') return { status: 'cancelled' };
+      if (result.status === 'paused') {
+        return {
+          status: 'paused',
+          completedBytes: result.completedBytes,
+          totalBytes: result.totalBytes,
+          error: result.error,
+        };
       }
+      return { status: 'completed', result: undefined };
     },
-    pause: async ({ workRef }) => {
-      const execution = executions.get(workKey(workRef));
-      if (execution) await downloads.pause(queueOwnerId, execution.id);
-    },
-    cancel: async ({ workRef }) => {
-      try {
-        await downloads.cancelWork(queueOwnerId, workRef);
-      } finally {
-        executions.delete(workKey(workRef));
-      }
-    },
+    pause: ({ workRef }) => downloads.pauseWork(queueOwnerId, workRef),
+    cancel: ({ workRef }) => downloads.cancelWork(queueOwnerId, workRef),
     release: ({ workRef }) => downloads.releaseWork(queueOwnerId, workRef),
     onSettled: () => {
       callbacks.emitDirectoryChanged({

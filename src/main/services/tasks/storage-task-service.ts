@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import type { Entry } from '@shared/storage';
 import { localConnectionId, type BrowserErrorCode } from '@shared/storage-browser';
 import type {
@@ -11,6 +10,7 @@ import type {
   StorageTaskGroupItem,
   StorageTaskGroupRequest,
   StorageTaskItem,
+  StorageTaskRequest,
   StorageTaskSnapshot,
   TaskControlAvailability,
   UploadFileRequest,
@@ -34,13 +34,7 @@ import type {
 import type { StorageBrowser } from '../storage/storage-browser';
 import type { PreparedUploadBatch, UploadPlanItem, UploadWork } from '../uploads/upload-types';
 import { prepareBatchGroup } from './batch-discovery';
-import {
-  entryKey,
-  queueOwnerId,
-  releaseQuietly,
-  toBrowserErrorCode,
-  toTaskFailure,
-} from './task-errors';
+import { entryKey, queueOwnerId, toTaskFailure } from './task-errors';
 import {
   createDownloadTransferConfig,
   createTransferHandler,
@@ -48,6 +42,7 @@ import {
   type InternalDownloadInput,
   type InternalUploadInput,
 } from './transfer-handler';
+import { TransferSessionCoordinator } from './transfer-session-coordinator';
 
 type InternalTaskDefinitions = {
   rename: { input: RenameTaskRequest; result: Entry };
@@ -63,15 +58,6 @@ type InternalGroupDefinitions = {
 
 type TaskCategory = 'operation' | 'transfer';
 
-type PendingConfirmation =
-  | { kind: 'single'; owner: number; request: PrepareDownloadRequest; entry: Entry }
-  | {
-      kind: 'batch';
-      owner: number;
-      request: PrepareDownloadRequest;
-      prepared: PreparedDownloadBatch;
-    };
-
 const fatalDirectoryErrorCodes: ReadonlySet<BrowserErrorCode> = new Set<BrowserErrorCode>([
   'AuthRequired',
   'InsufficientSpace',
@@ -83,19 +69,50 @@ const fatalUploadDirectoryErrorCodes: ReadonlySet<BrowserErrorCode> = new Set<Br
   'InsufficientSpace',
 ]);
 
-/** Owns session task scheduling, directory discovery, and download confirmation state. */
+const taskRequestProjectors: {
+  [K in keyof InternalTaskDefinitions]: (
+    input: InternalTaskDefinitions[K]['input'],
+  ) => Extract<StorageTaskRequest, { type: K }>;
+} = {
+  rename: (input) => ({ type: 'rename', input }),
+  delete: (input) => ({ type: 'delete', input }),
+  download: ({ workRef: _workRef, ...input }) => ({ type: 'download', input }),
+  upload: ({ display }) => ({ type: 'upload', input: display }),
+};
+
+const groupRequestProjectors: {
+  [K in keyof InternalGroupDefinitions]: (
+    input: InternalGroupDefinitions[K]['input'],
+  ) => Extract<StorageTaskGroupRequest, { kind: K }>;
+} = {
+  download: (input) => ({ kind: 'download', input }),
+  upload: (input) => ({ kind: 'upload', input }),
+};
+
+function projectTaskRequest<K extends keyof InternalTaskDefinitions>(request: {
+  type: K;
+  input: InternalTaskDefinitions[K]['input'];
+}): StorageTaskRequest {
+  return taskRequestProjectors[request.type](request.input);
+}
+
+function projectGroupRequest<K extends keyof InternalGroupDefinitions>(request: {
+  kind: K;
+  input: InternalGroupDefinitions[K]['input'];
+}): StorageTaskGroupRequest {
+  return groupRequestProjectors[request.kind](request.input);
+}
+
+/** Owns session task scheduling, directory discovery, and snapshot projection. */
 export class StorageTaskService {
   private readonly queue: TaskQueue<
     InternalTaskDefinitions,
     InternalGroupDefinitions,
     TaskCategory
   >;
-  private readonly confirmations = new Map<string, PendingConfirmation>();
-  private readonly ownerEpochs = new Map<number, number>();
-  private readonly uploadPickers = new Set<number>();
+  private readonly session: TransferSessionCoordinator;
   private readonly listeners = new Set<(event: StorageTaskEvent) => void>();
   private readonly unsubscribeQueue: () => void;
-  private disposed = false;
   private disposal: Promise<void> | undefined;
 
   constructor(private readonly browser: StorageBrowser) {
@@ -124,6 +141,16 @@ export class StorageTaskService {
       },
       { concurrencyLimits: { operation: 16, transfer: 8 } },
     );
+    this.session = new TransferSessionCoordinator({
+      downloads: this.browser.downloads,
+      uploads: this.browser.uploads,
+      enqueueDownload: (request, entry, work) =>
+        this.enqueueStandaloneDownload(request, entry, work),
+      enqueueDownloadGroup: (request, prepared) => this.enqueueDownloadGroup(request, prepared),
+      enqueueUpload: (request, work) => this.enqueueStandaloneUpload(request, work),
+      enqueueUploadGroup: (request, prepared) => this.enqueueUploadGroup(request, prepared),
+      emitDirectoryChanged: (change) => this.emitDirectoryChanged(change),
+    });
     this.unsubscribeQueue = this.queue.store.subscribe(() => {
       this.emit({ type: 'snapshot', snapshot: this.getSnapshot() });
     });
@@ -152,230 +179,40 @@ export class StorageTaskService {
     return this.queue.enqueue({ type: 'delete', input: request });
   }
 
-  async uploadFile(
+  uploadFile(
     owner: number,
     request: UploadFileRequest,
     pickFile: () => Promise<string | undefined>,
   ): Promise<void> {
-    await this.uploadPaths(owner, request, async () => {
-      const path = await pickFile();
-      return path ? [path] : [];
-    });
+    return this.session.uploadFile(owner, request, pickFile);
   }
 
-  async uploadPaths(
+  uploadPaths(
     owner: number,
     request: UploadFileRequest,
     pickPaths: () => Promise<readonly string[]>,
     options?: { requireCreateDirectory?: boolean },
   ): Promise<void> {
-    if (this.disposed || this.uploadPickers.has(owner)) return;
-    const epoch = this.ownerEpochs.get(owner) ?? 0;
-    const active = () => !this.disposed && (this.ownerEpochs.get(owner) ?? 0) === epoch;
-    this.uploadPickers.add(owner);
-    try {
-      await this.browser.uploads.validateDestination(
-        request.parent,
-        options?.requireCreateDirectory,
-      );
-      if (!active()) return;
-      const paths = await pickPaths();
-      if (paths.length === 0 || !active()) return;
-      const selection = await this.browser.uploads.prepareSelection(queueOwnerId, {
-        parent: request.parent,
-        paths,
-        validated: true,
-        onDirectoryCreated: (parent, entry) => {
-          this.emitDirectoryChanged({ kind: 'added', parent, entry });
-        },
-      });
-      if (!active()) {
-        await (selection.kind === 'single'
-          ? releaseQuietly(
-              () => this.browser.uploads.releaseWork(queueOwnerId, selection.work.ref),
-              'Upload work cleanup failed.',
-            )
-          : releaseQuietly(
-              () => this.browser.uploads.releaseBatch(queueOwnerId, selection.prepared.id),
-              'Upload batch cleanup failed.',
-            ));
-        return;
-      }
-      if (selection.kind === 'single') {
-        if (!this.enqueueStandaloneUpload(request, selection.work)) {
-          await releaseQuietly(
-            () => this.browser.uploads.releaseWork(queueOwnerId, selection.work.ref),
-            'Upload work cleanup failed.',
-          );
-        }
-        return;
-      }
-      if (!this.enqueueUploadGroup(request, selection.prepared)) {
-        await releaseQuietly(
-          () => this.browser.uploads.releaseBatch(queueOwnerId, selection.prepared.id),
-          'Upload batch cleanup failed.',
-        );
-      }
-    } finally {
-      this.uploadPickers.delete(owner);
-    }
+    return this.session.uploadPaths(owner, request, pickPaths, options);
   }
 
-  async prepareDownload(
+  prepareDownload(
     owner: number,
     request: PrepareDownloadRequest,
   ): Promise<PrepareDownloadResponse> {
-    if (this.disposed) throw new StorageError('Cancelled');
-    if (request.entries.length === 0) throw new StorageError('InvalidArgument');
-    const epoch = this.ownerEpochs.get(owner) ?? 0;
-    const single =
-      request.entries.length === 1 && request.entries[0]?.kind === 'file'
-        ? request.entries[0]
-        : undefined;
-    if (single) {
-      let work: DownloadWork;
-      try {
-        work = await this.browser.downloads.prepare(queueOwnerId, {
-          ref: single.ref,
-          directory: request.directory,
-          expectedName: single.name,
-          replace: false,
-        });
-      } catch (error) {
-        if (
-          !this.disposed &&
-          (this.ownerEpochs.get(owner) ?? 0) === epoch &&
-          toBrowserErrorCode(error) === 'AlreadyExists'
-        ) {
-          const confirmationId = randomUUID();
-          this.confirmations.set(confirmationId, {
-            kind: 'single',
-            owner,
-            request,
-            entry: single,
-          });
-          return { status: 'conflict', confirmationId };
-        }
-        throw error;
-      }
-      if (this.disposed || (this.ownerEpochs.get(owner) ?? 0) !== epoch) {
-        await releaseQuietly(
-          () => this.browser.downloads.releaseWork(queueOwnerId, work.ref),
-          'Download work cleanup failed.',
-        );
-        throw new StorageError('Cancelled');
-      }
-      if (!this.enqueueStandaloneDownload(request, single, work)) {
-        await releaseQuietly(
-          () => this.browser.downloads.releaseWork(queueOwnerId, work.ref),
-          'Download work cleanup failed.',
-        );
-        throw new DownloadError('DownloadTargetBusy');
-      }
-      return { status: 'started' };
-    }
-
-    const prepared = await this.browser.downloads.prepareBatch(queueOwnerId, {
-      entries: request.entries.map((entry) => ({ ref: entry.ref, expectedName: entry.name })),
-      directory: request.directory,
-    });
-    if (this.disposed || (this.ownerEpochs.get(owner) ?? 0) !== epoch) {
-      await releaseQuietly(
-        () => this.browser.downloads.releaseBatch(queueOwnerId, prepared.id),
-        'Download batch cleanup failed.',
-      );
-      throw new StorageError('Cancelled');
-    }
-    if (prepared.conflicts.length > 0) {
-      const confirmationId = randomUUID();
-      this.confirmations.set(confirmationId, {
-        kind: 'batch',
-        owner,
-        request,
-        prepared,
-      });
-      return { status: 'conflict', confirmationId, conflicts: prepared.conflicts };
-    }
-    if (!this.enqueueDownloadGroup(request, prepared)) {
-      await releaseQuietly(
-        () => this.browser.downloads.releaseBatch(queueOwnerId, prepared.id),
-        'Download batch cleanup failed.',
-      );
-      throw new DownloadError('DownloadTargetBusy');
-    }
-    return { status: 'started' };
+    return this.session.prepareDownload(owner, request);
   }
 
-  async confirmDownload(owner: number, confirmationId: string): Promise<void> {
-    if (this.disposed) throw new StorageError('Cancelled');
-    const confirmation = this.confirmations.get(confirmationId);
-    if (!confirmation || confirmation.owner !== owner) throw new StorageError('InvalidArgument');
-    this.confirmations.delete(confirmationId);
-    const epoch = this.ownerEpochs.get(owner) ?? 0;
-
-    if (confirmation.kind === 'single') {
-      const work = await this.browser.downloads.prepare(queueOwnerId, {
-        ref: confirmation.entry.ref,
-        directory: confirmation.request.directory,
-        expectedName: confirmation.entry.name,
-        replace: true,
-      });
-      if (this.disposed || (this.ownerEpochs.get(owner) ?? 0) !== epoch) {
-        await releaseQuietly(
-          () => this.browser.downloads.releaseWork(queueOwnerId, work.ref),
-          'Download work cleanup failed.',
-        );
-        throw new StorageError('Cancelled');
-      }
-      if (!this.enqueueStandaloneDownload(confirmation.request, confirmation.entry, work)) {
-        await releaseQuietly(
-          () => this.browser.downloads.releaseWork(queueOwnerId, work.ref),
-          'Download work cleanup failed.',
-        );
-        throw new DownloadError('DownloadTargetBusy');
-      }
-      return;
-    }
-
-    try {
-      this.browser.downloads.confirmBatch(queueOwnerId, confirmation.prepared.id);
-    } catch (error) {
-      await releaseQuietly(
-        () => this.browser.downloads.releaseBatch(queueOwnerId, confirmation.prepared.id),
-        'Download batch cleanup failed.',
-      );
-      throw error;
-    }
-    if (!this.enqueueDownloadGroup(confirmation.request, confirmation.prepared)) {
-      await releaseQuietly(
-        () => this.browser.downloads.releaseBatch(queueOwnerId, confirmation.prepared.id),
-        'Download batch cleanup failed.',
-      );
-      throw new DownloadError('DownloadTargetBusy');
-    }
+  confirmDownload(owner: number, confirmationId: string): Promise<void> {
+    return this.session.confirmDownload(owner, confirmationId);
   }
 
-  async cancelDownloadConfirmation(owner: number, confirmationId: string): Promise<void> {
-    const confirmation = this.confirmations.get(confirmationId);
-    if (!confirmation || confirmation.owner !== owner) return;
-    this.confirmations.delete(confirmationId);
-    if (confirmation.kind === 'batch') {
-      await this.browser.downloads.releaseBatch(queueOwnerId, confirmation.prepared.id);
-    }
+  cancelDownloadConfirmation(owner: number, confirmationId: string): Promise<void> {
+    return this.session.cancelDownloadConfirmation(owner, confirmationId);
   }
 
   cancelOwnerConfirmations(owner: number): void {
-    this.ownerEpochs.set(owner, (this.ownerEpochs.get(owner) ?? 0) + 1);
-    for (const [id, confirmation] of this.confirmations) {
-      if (confirmation.owner !== owner) continue;
-      this.confirmations.delete(id);
-      if (confirmation.kind === 'batch') {
-        void releaseQuietly(
-          () => this.browser.downloads.releaseBatch(queueOwnerId, confirmation.prepared.id),
-          'Download batch cleanup failed.',
-        );
-      }
-    }
+    this.session.cancelOwnerConfirmations(owner);
   }
 
   pause(taskId: number): Promise<void> {
@@ -404,19 +241,7 @@ export class StorageTaskService {
   }
 
   private async disposeService(): Promise<void> {
-    this.disposed = true;
-    const pendingBatches: Promise<void>[] = [];
-    for (const [id, confirmation] of this.confirmations) {
-      this.confirmations.delete(id);
-      if (confirmation.kind === 'batch') {
-        pendingBatches.push(
-          releaseQuietly(
-            () => this.browser.downloads.releaseBatch(queueOwnerId, confirmation.prepared.id),
-            'Download batch cleanup failed.',
-          ),
-        );
-      }
-    }
+    const pendingBatches = this.session.dispose();
     await Promise.allSettled([this.queue.dispose(), ...pendingBatches]);
     this.unsubscribeQueue();
     this.listeners.clear();
@@ -675,10 +500,11 @@ export class StorageTaskService {
       canCancel: this.queue.canCancel(task),
       canRetry: this.queue.canRetry(task),
     };
-    const common = {
+    return {
       id: task.id,
       status: task.status,
       controls,
+      request: projectTaskRequest(task.request),
       ...(task.controlRequest !== undefined ? { controlRequest: task.controlRequest } : {}),
       ...(task.progress !== undefined ? { progress: task.progress } : {}),
       ...(task.status === 'failed' || (task.status === 'paused' && task.failure)
@@ -687,24 +513,12 @@ export class StorageTaskService {
       ...(task.status === 'completed' ? { result: task.result } : {}),
       ...(task.groupId !== undefined ? { groupId: task.groupId } : {}),
     };
-    if (task.request.type === 'download') {
-      const { workRef: _workRef, ...displayInput } = task.request.input;
-      return { ...common, request: { type: 'download', input: displayInput } };
-    }
-    if (task.request.type === 'upload') {
-      return { ...common, request: { type: 'upload', input: task.request.input.display } };
-    }
-    return { ...common, request: task.request };
   }
 
   private projectGroup(group: TaskGroup<InternalGroupDefinitions>): StorageTaskGroupItem {
-    const request: StorageTaskGroupRequest =
-      group.request.kind === 'download'
-        ? { kind: 'download', input: group.request.input }
-        : { kind: 'upload', input: group.request.input };
     return {
       id: group.id,
-      request,
+      request: projectGroupRequest(group.request),
       sealed: group.sealed,
       state: group.state,
       summary: group.summary,
