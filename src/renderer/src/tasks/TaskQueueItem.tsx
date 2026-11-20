@@ -1,4 +1,5 @@
 import type { TaskPresenter } from './task-row-model';
+import { isFinishedTask } from './task-selectors';
 import type { TaskGroupViewItem, TaskQueueViewClient, TaskViewItem } from './task-types';
 import { TaskQueueRow } from './TaskQueueRow';
 
@@ -18,8 +19,8 @@ export function TaskQueueItem<TTask extends TaskViewItem, TGroup extends TaskGro
       progress={task.progress}
       failure={task.status === 'failed' || task.status === 'paused' ? task.failure : undefined}
       pausing={task.controlRequest === 'pause'}
-      pauseSupported={task.controls.supportsPause}
-      cancelSupported={task.controls.supportsCancel}
+      pauseSupported={task.controls.supportsPause && !isFinishedTask(task)}
+      cancelSupported={task.controls.supportsCancel && !isFinishedTask(task)}
       onPause={
         task.controls.canPause
           ? () => {

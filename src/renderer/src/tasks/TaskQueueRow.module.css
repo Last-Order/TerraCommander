@@ -118,6 +118,23 @@
   color: var(--storage-muted);
 }
 
+.titleNote {
+  flex: none;
+  color: var(--storage-muted);
+  white-space: nowrap;
+}
+
+.aside {
+  display: flex;
+  flex: none;
+  gap: 0.5rem;
+  margin-inline-start: auto;
+  padding-inline-start: 0.5rem;
+  color: var(--storage-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .summary {
   margin-top: 0.125rem;
   color: var(--storage-muted);

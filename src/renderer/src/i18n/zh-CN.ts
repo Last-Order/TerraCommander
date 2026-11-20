@@ -131,8 +131,11 @@ export const zhCN = {
     preparationIssues: '{{count}} 项准备问题',
     preparationIssuesTitle: '准备问题',
     groupMembers: '任务组成员',
-    groupSummary:
-      '共 {{total}} 项任务 · 已完成 {{completed}} 项 · 失败 {{failed}} 项 · 跳过 {{skipped}} 项 · 取消 {{cancelled}} 项',
+    groupMoreEntries: '等 {{count}} 项',
+    groupCompleted: '已完成 {{completed}}/{{total}}',
+    groupFailed: '失败 {{count}}',
+    groupSkipped: '跳过 {{count}}',
+    groupCancelled: '取消 {{count}}',
     showDetails: '查看明细',
     hideDetails: '收起明细',
     unknownError: '无法完成任务。',

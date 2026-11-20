@@ -31,6 +31,7 @@ interface TaskQueueRowProps {
   pausing?: boolean | undefined;
   onRetry?: (() => void) | undefined;
   summaryNote?: ReactNode;
+  aside?: ReactNode;
   action?: ReactNode;
   details?: ReactNode;
 }
@@ -48,6 +49,7 @@ export function TaskQueueRow({
   pausing,
   onRetry,
   summaryNote,
+  aside,
   action,
   details,
 }: TaskQueueRowProps) {
@@ -86,6 +88,10 @@ export function TaskQueueRow({
                 {part.text}
               </span>
             ))}
+            {model.titleNote && (
+              <span className={classes.titleNote}>{translateMessage(model.titleNote)}</span>
+            )}
+            {aside && <span className={classes.aside}>{aside}</span>}
           </div>
           {model.summary && (
             <div className={classes.summary} title={model.summary}>

@@ -7,6 +7,7 @@ export interface TaskRowModel {
   compact?: boolean;
   typeLabel: TaskMessage;
   title: readonly { text: string; secondary?: boolean }[];
+  titleNote?: TaskMessage;
   summary?: string;
   resultMessage?: TaskMessage;
 }

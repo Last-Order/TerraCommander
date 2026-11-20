@@ -49,24 +49,33 @@ export const presentStorageTask: TaskPresenter<StorageTaskItem> = (task) => {
   }
 };
 
+function presentGroupTitle(names: readonly string[]): Pick<TaskRowModel, 'title' | 'titleNote'> {
+  return {
+    title: names.slice(0, 1).map((name) => ({ text: name })),
+    ...(names.length > 1
+      ? { titleNote: { key: 'tasks:groupMoreEntries', values: { count: names.length - 1 } } }
+      : {}),
+  };
+}
+
 export const presentStorageTaskGroup: TaskGroupPresenter<StorageTaskGroupItem> = (group) => {
   switch (group.request.kind) {
     case 'upload':
       return {
         typeLabel: { key: 'storage:uploadTask' },
-        title: group.request.input.names.slice(0, 3).map((name) => ({ text: name })),
+        ...presentGroupTitle(group.request.input.names),
         summary: `${group.request.input.sourcePath} → ${group.request.input.destinationPath}`,
       };
     case 'download':
       return {
         typeLabel: { key: 'storage:downloadEntry' },
-        title: group.request.input.names.slice(0, 3).map((name) => ({ text: name })),
+        ...presentGroupTitle(group.request.input.names),
         summary: `${group.request.input.sourcePath} → ${group.request.input.destinationPath}`,
       };
     case 'delete':
       return {
         typeLabel: { key: 'storage:deleteEntry' },
-        title: group.request.input.names.slice(0, 3).map((name) => ({ text: name })),
+        ...presentGroupTitle(group.request.input.names),
         summary: group.request.input.directoryPath,
       };
   }

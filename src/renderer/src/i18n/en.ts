@@ -134,8 +134,11 @@ export const en = {
     preparationIssues: '{{count}} preparation issues',
     preparationIssuesTitle: 'Preparation issues',
     groupMembers: 'Group tasks',
-    groupSummary:
-      '{{total}} tasks · {{completed}} completed · {{failed}} failed · {{skipped}} skipped · {{cancelled}} canceled',
+    groupMoreEntries: '+{{count}} more',
+    groupCompleted: '{{completed}}/{{total}} completed',
+    groupFailed: '{{count}} failed',
+    groupSkipped: '{{count}} skipped',
+    groupCancelled: '{{count}} canceled',
     showDetails: 'Show details',
     hideDetails: 'Hide details',
     unknownError: 'Could not complete the task.',
