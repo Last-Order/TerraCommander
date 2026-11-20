@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { JsonObject } from '../../../shared/storage/models';
+import type { JsonObject } from '@shared/storage/models';
 import { StorageError } from '../core/errors';
-import { deferred } from '../../testing/deferred';
+import { deferred } from '@main/testing/deferred';
 import {
   byteSource,
   connectFixture,

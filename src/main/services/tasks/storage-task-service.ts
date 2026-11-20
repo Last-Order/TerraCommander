@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import type { Entry, EntryRef } from '../../../shared/storage';
-import { localConnectionId, type BrowserErrorCode } from '../../../shared/storage-browser';
+import type { Entry, EntryRef } from '@shared/storage';
+import { localConnectionId, type BrowserErrorCode } from '@shared/storage-browser';
 import type {
   DeleteTaskRequest,
   DownloadTaskDisplayInput,
@@ -14,16 +14,16 @@ import type {
   StorageTaskSnapshot,
   TaskControlAvailability,
   TaskFailure,
-} from '../../../shared/tasks';
-import { AccountError } from '../../accounts/core/errors';
-import { StorageError, normalizeStorageError } from '../../storage';
-import { TaskQueue } from '../../tasks/task-queue';
+} from '@shared/tasks';
+import { AccountError } from '@main/accounts/core/errors';
+import { StorageError, normalizeStorageError } from '@main/storage';
+import { TaskQueue } from '@main/tasks/task-queue';
 import type {
   QueueTask,
   TaskGroupHooks,
   TaskGroupPreparationContext,
   TaskHandler,
-} from '../../tasks/types';
+} from '@main/tasks/types';
 import { DownloadError } from '../downloads/download-paths';
 import type {
   DownloadExecution,

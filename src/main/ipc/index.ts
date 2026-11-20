@@ -1,7 +1,7 @@
 import { app, dialog, type BrowserWindow } from 'electron';
 import { z } from 'zod';
-import { channels, type AppInfo } from '../../shared/contracts';
-import { localConnectionId } from '../../shared/storage-browser';
+import { channels, type AppInfo } from '@shared/contracts';
+import { localConnectionId } from '@shared/storage-browser';
 import { registerDownloadIpc } from './downloads';
 import { createTrustedIpc } from './helpers';
 import { nativeMessages } from '../native-messages';

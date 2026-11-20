@@ -1,4 +1,4 @@
-import { isFinishedGroup, isFinishedTask } from '../../shared/task-selectors';
+import { isFinishedGroup, isFinishedTask } from '@shared/task-selectors';
 import type { TaskConflictLedger } from './conflict-ledger';
 import { TaskGroupPreparations } from './group-preparations';
 import { summarizeGroup } from './group-summary';

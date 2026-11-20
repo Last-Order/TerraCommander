@@ -1,5 +1,5 @@
-import type { Entry, EntryRef } from '../../../../shared/storage';
-import { isFinishedTask } from '../../tasks/task-selectors';
+import type { Entry, EntryRef } from '@shared/storage';
+import { isFinishedTask } from '@renderer/tasks/task-selectors';
 import { directoryKey } from '../directory/directory-cache';
 import type { StorageTaskGroupItem, StorageTaskItem } from './storage-task-types';
 

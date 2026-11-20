@@ -10,10 +10,10 @@ import type {
   EntryRef,
   ListRequest,
   Space,
-} from '../../../../shared/storage';
-import type { OperationContext } from '../../core/contracts';
-import { StorageError, throwIfAborted } from '../../core/errors';
-import type { AdapterFactory, StorageAdapter } from '../../ports/adapter';
+} from '@shared/storage';
+import type { OperationContext } from '@main/storage/core/contracts';
+import { StorageError, throwIfAborted } from '@main/storage/core/errors';
+import type { AdapterFactory, StorageAdapter } from '@main/storage/ports/adapter';
 import { listLocalVolumes } from './local-volumes';
 
 const supported = { support: 'supported' } as const;

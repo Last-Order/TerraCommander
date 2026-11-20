@@ -3,7 +3,7 @@ import {
   type RetryHint,
   type StorageErrorCode,
   type StorageFailure,
-} from '../../../shared/storage/errors';
+} from '@shared/storage/errors';
 
 interface StorageErrorOptions {
   cause?: unknown;

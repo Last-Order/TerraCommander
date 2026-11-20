@@ -3,7 +3,7 @@ import { ActionIcon, Alert, Button, Checkbox, Group, Loader, Stack, Text } from 
 import { FolderPlus, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import useSWR from 'swr';
-import type { StorageConnectionSummary } from '../../../../shared/storage-browser';
+import type { StorageConnectionSummary } from '@shared/storage-browser';
 import { errorKey, resultOf, type StorageErrorKey } from '../storage-client';
 import { formatStorageLabel } from '../storage-labels';
 import classes from './SpacePicker.module.css';

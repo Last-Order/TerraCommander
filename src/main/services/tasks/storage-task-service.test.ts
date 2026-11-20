@@ -1,9 +1,9 @@
 import { expect, it, vi } from 'vitest';
-import type { Entry } from '../../../shared/storage';
-import { localConnectionId } from '../../../shared/storage-browser';
-import type { StorageTaskEvent } from '../../../shared/tasks';
-import { StorageError } from '../../storage';
-import { deferred } from '../../testing/deferred';
+import type { Entry } from '@shared/storage';
+import { localConnectionId } from '@shared/storage-browser';
+import type { StorageTaskEvent } from '@shared/tasks';
+import { StorageError } from '@main/storage';
+import { deferred } from '@main/testing/deferred';
 import { DownloadError } from '../downloads/download-paths';
 import type { DownloadProgress, DownloadRunResult } from '../downloads/download-types';
 import type { DownloadService } from '../downloads/download-service';

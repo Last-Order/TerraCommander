@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AccountError } from '../../core/errors';
+import { AccountError } from '@main/accounts/core/errors';
 import type { GoogleAuthorizationGrant, GoogleTokenSet } from './ports';
 import { accountFixture, authorizationGrant, TEST_TIME } from './testing/fixtures';
-import { deferred } from '../../../testing/deferred';
+import { deferred } from '@main/testing/deferred';
 
 async function savedAccount() {
   const fixture = accountFixture();

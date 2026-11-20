@@ -2,10 +2,10 @@ import { mkdir, mkdtempDisposable, realpath, symlink, utimes, writeFile } from '
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
-import { localConnectionId } from '../../../shared/storage-browser';
-import { accountFixture } from '../../accounts/providers/google-drive/testing/fixtures';
-import { createAccountServices } from '../../accounts/runtime/account-services';
-import { FakeAccountCipher, MemoryAccountStore } from '../../accounts/testing/fixtures';
+import { localConnectionId } from '@shared/storage-browser';
+import { accountFixture } from '@main/accounts/providers/google-drive/testing/fixtures';
+import { createAccountServices } from '@main/accounts/runtime/account-services';
+import { FakeAccountCipher, MemoryAccountStore } from '@main/accounts/testing/fixtures';
 import {
   createDefaultStorageProviders,
   validateDefaultStoredSpace,

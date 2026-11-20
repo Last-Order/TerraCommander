@@ -1,4 +1,4 @@
-import { localConnectionId } from '../../../../shared/storage-browser';
+import { localConnectionId } from '@shared/storage-browser';
 import type { StoragePreferences } from '../storage-preferences';
 import type { StorageProviderIntegration } from '../storage-provider';
 import { createGoogleDriveStorageProvider } from './google-drive-storage-provider';

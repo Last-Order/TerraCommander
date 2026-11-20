@@ -1,4 +1,4 @@
-import { presentGroupStatus, type TaskRowStatus } from '../../../shared/task-selectors';
+import { presentGroupStatus, type TaskRowStatus } from '@shared/task-selectors';
 import type { TaskGroupViewItem, TaskMessage, TaskViewItem } from './task-types';
 
 export { presentGroupStatus, type TaskRowStatus };

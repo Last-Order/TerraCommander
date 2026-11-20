@@ -1,4 +1,4 @@
-import type { ByteRange } from '../../../shared/storage/models';
+import type { ByteRange } from '@shared/storage/models';
 import type { ByteSource, OperationContext, ReadHandle, ReopenableByteSource } from './contracts';
 import { normalizeStorageError, StorageError, throwIfAborted } from './errors';
 import { managedRead } from './read-stream';

@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import type { JsonValue } from '../../../shared/json';
-import { jsonFingerprint } from '../../common/canonical-json';
-import type { OperationContext } from '../../common/operation-context';
+import type { JsonValue } from '@shared/json';
+import { jsonFingerprint } from '@main/common/canonical-json';
+import type { OperationContext } from '@main/common/operation-context';
 import { AccountError, assertNotCancelled } from '../core/errors';
 import { connectionDefinition, parseAccountData, type CredentialBinding } from '../core/models';
 import { waitForAccountOperation } from '../core/operations';

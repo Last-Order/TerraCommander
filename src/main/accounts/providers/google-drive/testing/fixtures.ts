@@ -1,12 +1,12 @@
-import type { StructuredLogger } from '../../../../common/logger';
-import type { OperationContext } from '../../../../common/operation-context';
+import type { StructuredLogger } from '@main/common/logger';
+import type { OperationContext } from '@main/common/operation-context';
 import { createGoogleDriveProvider } from '../create-provider';
 import { googleDriveDescriptor } from '../descriptor';
 import { isGoogleDriveAuthorization } from '../credential-resolver';
-import { FakeAccountCipher, MemoryAccountStore, TEST_TIME } from '../../../testing/fixtures';
-export { TEST_TIME } from '../../../testing/fixtures';
+import { FakeAccountCipher, MemoryAccountStore, TEST_TIME } from '@main/accounts/testing/fixtures';
+export { TEST_TIME } from '@main/accounts/testing/fixtures';
 import { vi } from 'vitest';
-import { createAccountServices } from '../../../runtime/account-services';
+import { createAccountServices } from '@main/accounts/runtime/account-services';
 import { GOOGLE_DRIVE_SCOPES } from '../models';
 import type {
   AuthorizationEnvironment,

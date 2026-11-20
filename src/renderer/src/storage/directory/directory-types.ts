@@ -1,4 +1,4 @@
-import type { Entry } from '../../../../shared/storage';
+import type { Entry } from '@shared/storage';
 
 export interface DirectorySort {
   field: 'name' | 'modifiedAt' | 'size';

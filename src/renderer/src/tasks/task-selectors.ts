@@ -1,1 +1,1 @@
-export * from '../../../shared/task-selectors';
+export * from '@shared/task-selectors';

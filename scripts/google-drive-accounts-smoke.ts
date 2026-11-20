@@ -1,8 +1,8 @@
 import { mkdirSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { app } from 'electron';
-import { AccountError } from '../src/main/accounts/core/errors';
-import { ApplicationServices } from '../src/main/services/application-services';
+import { AccountError } from '@main/accounts/core/errors';
+import { ApplicationServices } from '@main/services/application-services';
 
 const [command = 'list', id] = process.argv.slice(2);
 const commands = ['idle', 'infrastructure', 'list', 'add', 'verify', 'reauthorize', 'remove'];

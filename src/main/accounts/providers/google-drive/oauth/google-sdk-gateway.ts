@@ -5,11 +5,11 @@ import {
   OAuth2Client,
 } from 'google-auth-library';
 import { z } from 'zod';
-import type { OperationContext } from '../../../../common/operation-context';
-import { assertNotCancelled, AccountError } from '../../../core/errors';
+import type { OperationContext } from '@main/common/operation-context';
+import { assertNotCancelled, AccountError } from '@main/accounts/core/errors';
 import { googleRequestError } from './google-errors';
 import { GOOGLE_DRIVE_SCOPES } from '../models';
-import { parseAccountData } from '../../../core/models';
+import { parseAccountData } from '@main/accounts/core/models';
 import type {
   GoogleAccountGateway,
   GoogleAccountProfile,

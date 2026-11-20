@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { Menu, Skeleton } from '@mantine/core';
 import { ChevronDown, ChevronsUpDown, ChevronUp, type LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { Entry } from '../../../../shared/storage';
+import type { Entry } from '@shared/storage';
 import classes from './DirectoryTable.module.css';
 import { DirectoryEntryRow } from './DirectoryEntryRow';
 import { useDirectoryVirtualizer } from './useDirectoryVirtualizer';

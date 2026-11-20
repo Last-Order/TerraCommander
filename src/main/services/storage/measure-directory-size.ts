@@ -1,6 +1,6 @@
-import type { EntryRef } from '../../../shared/storage';
-import type { StorageAccess } from '../../storage';
-import { StorageError } from '../../storage/core/errors';
+import type { EntryRef } from '@shared/storage';
+import type { StorageAccess } from '@main/storage';
+import { StorageError } from '@main/storage/core/errors';
 
 export async function measureDirectorySize(
   storage: Pick<StorageAccess, 'list'>,

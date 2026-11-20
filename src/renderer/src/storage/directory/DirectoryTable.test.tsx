@@ -9,10 +9,10 @@ import {
   emptyLocalConnection,
   localConnectionId,
   type StorageBrowserApi,
-} from '../../../../shared/storage-browser';
-import { createRendererI18n } from '../../i18n/create-renderer-i18n';
-import { renderWorkspace } from '../../testing/render-app';
-import { success } from '../../testing/storage-browser-fixtures';
+} from '@shared/storage-browser';
+import { createRendererI18n } from '@renderer/i18n/create-renderer-i18n';
+import { renderWorkspace } from '@renderer/testing/render-app';
+import { success } from '@renderer/testing/storage-browser-fixtures';
 import { DirectoryTable } from './DirectoryTable';
 import type { DirectoryRow } from './directory-types';
 

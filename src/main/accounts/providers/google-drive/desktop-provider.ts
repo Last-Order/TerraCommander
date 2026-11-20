@@ -1,6 +1,6 @@
 import { shell } from 'electron';
-import type { AppLanguage } from '../../../../shared/language';
-import type { AccountProviderServices } from '../../core/ports';
+import type { AppLanguage } from '@shared/language';
+import type { AccountProviderServices } from '@main/accounts/core/ports';
 import { createGoogleDriveProvider } from './create-provider';
 import { readGoogleClientConfiguration } from './oauth/client-configuration';
 import { GoogleSdkGateway } from './oauth/google-sdk-gateway';

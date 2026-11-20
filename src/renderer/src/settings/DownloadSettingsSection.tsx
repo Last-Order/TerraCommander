@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Stack, Text } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
-import type { DownloadSettings } from '../../../shared/downloads';
+import type { DownloadSettings } from '@shared/downloads';
 import { DownloadDirectoryInput } from '../downloads/DownloadDirectoryInput';
 import { errorKey, resultOf, type StorageErrorKey } from '../storage/storage-client';
 

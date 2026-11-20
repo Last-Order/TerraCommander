@@ -3,8 +3,8 @@ import type {
   AccountProviderDescriptor,
   AccountSetupRequest,
   AccountSummary,
-} from '../../../shared/accounts';
-import type { OperationContext } from '../../common/operation-context';
+} from '@shared/accounts';
+import type { OperationContext } from '@main/common/operation-context';
 import type { AccountProviderRegistry } from './account-provider-registry';
 import { AccountError, accountError, assertNotCancelled } from './errors';
 import {

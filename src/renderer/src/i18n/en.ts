@@ -1,4 +1,4 @@
-import type { BrowserErrorCode } from '../../../shared/storage-browser';
+import type { BrowserErrorCode } from '@shared/storage-browser';
 
 export const en = {
   common: {

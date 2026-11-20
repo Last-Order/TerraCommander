@@ -1,4 +1,4 @@
-import type { Entry, EntryRef } from '../../../../../shared/storage';
+import type { Entry, EntryRef } from '@shared/storage';
 import { EntryDeleteModal } from './EntryDeleteModal';
 import { EntryDownloadModal } from './EntryDownloadModal';
 import { EntryInformationModal, type EntrySelection } from './EntryInformationModal';

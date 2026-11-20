@@ -1,4 +1,4 @@
-import type { AppLanguage } from '../../shared/language';
+import type { AppLanguage } from '@shared/language';
 import { LazyService } from './lazy-service';
 import type { StorageBrowser } from './storage/storage-browser';
 import type { DownloadPreferences } from './downloads/download-preferences';

@@ -1,6 +1,6 @@
-import type { EntryRef, Space } from '../../../shared/storage';
-import type { SpaceChoice, StorageConnectionSummary } from '../../../shared/storage-browser';
-import { StorageAccess, StorageError } from '../../storage';
+import type { EntryRef, Space } from '@shared/storage';
+import type { SpaceChoice, StorageConnectionSummary } from '@shared/storage-browser';
+import { StorageAccess, StorageError } from '@main/storage';
 import type { StorageConnectionManager } from './storage-connections';
 import type { StoragePreferences } from './storage-preferences';
 import type { StorageProviderIntegration } from './storage-provider';

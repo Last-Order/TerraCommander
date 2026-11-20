@@ -11,9 +11,9 @@ import { join } from 'node:path';
 import { PassThrough, Readable } from 'node:stream';
 import { expect, it, vi } from 'vitest';
 import type { DownloadRequest } from './download-types';
-import type { Entry } from '../../../shared/storage';
-import type { ReadHandle } from '../../storage/core/contracts';
-import { StorageError } from '../../storage/core/errors';
+import type { Entry } from '@shared/storage';
+import type { ReadHandle } from '@main/storage/core/contracts';
+import { StorageError } from '@main/storage/core/errors';
 import { DownloadService } from './download-service';
 
 const entry: Entry = {

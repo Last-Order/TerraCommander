@@ -10,7 +10,7 @@ import type {
   ReadOptions,
   Space,
   WriteTarget,
-} from '../../../shared/storage/models';
+} from '@shared/storage/models';
 import type { ByteSource, OperationContext, ReadHandle, UploadDriver } from '../core/contracts';
 import type { CredentialResolver, StorageLogger } from './services';
 

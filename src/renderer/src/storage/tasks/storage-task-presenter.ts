@@ -1,4 +1,8 @@
-import type { TaskGroupPresenter, TaskPresenter, TaskRowModel } from '../../tasks/task-row-model';
+import type {
+  TaskGroupPresenter,
+  TaskPresenter,
+  TaskRowModel,
+} from '@renderer/tasks/task-row-model';
 import type {
   RenameTaskRequest,
   StorageTaskGroupItem,

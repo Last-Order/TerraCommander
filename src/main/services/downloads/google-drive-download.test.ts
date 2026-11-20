@@ -4,8 +4,8 @@ import { createServer, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
-import { AdapterRegistry, StorageAccess } from '../../storage';
-import { googleDriveAdapterFactory } from '../../storage/providers/google-drive/google-drive-adapter';
+import { AdapterRegistry, StorageAccess } from '@main/storage';
+import { googleDriveAdapterFactory } from '@main/storage/providers/google-drive/google-drive-adapter';
 import { DownloadService } from './download-service';
 
 it('resumes a paused Drive download over HTTP with a fresh signal and the saved byte offset', async () => {

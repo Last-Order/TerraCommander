@@ -1,4 +1,4 @@
-import type { AppLanguage } from '../shared/language';
+import type { AppLanguage } from '@shared/language';
 
 const en = {
   startupFailed: 'TerraCommander could not start. Check the application log.',

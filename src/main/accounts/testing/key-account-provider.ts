@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import type { AccountSetupRequest, AccountState } from '../../../shared/accounts';
-import type { OperationContext } from '../../common/operation-context';
+import type { AccountSetupRequest, AccountState } from '@shared/accounts';
+import type { OperationContext } from '@main/common/operation-context';
 import { AccountError } from '../core/errors';
 import { parseAccountData } from '../core/models';
 import type { AccountProvider, AccountProviderServices } from '../core/ports';

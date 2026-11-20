@@ -12,7 +12,7 @@ import type {
   ReadOptions,
   SourceDescriptor,
   WriteTarget,
-} from '../../../shared/storage/models';
+} from '@shared/storage/models';
 import { targetRef } from '../core/adapter-operations';
 import type {
   ByteSource,

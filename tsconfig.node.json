@@ -4,7 +4,12 @@
     "composite": true,
     "lib": ["ES2023"],
     "types": ["node", "vite/client"],
-    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.node.tsbuildinfo"
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.node.tsbuildinfo",
+    "paths": {
+      "@main/*": ["./src/main/*"],
+      "@preload/*": ["./src/preload/*"],
+      "@shared/*": ["./src/shared/*"]
+    }
   },
   "include": [
     "electron.vite.config.ts",

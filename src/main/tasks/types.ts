@@ -9,7 +9,7 @@ import type {
   TaskPreparationIssue,
   TaskProgress,
   TaskStatus,
-} from '../../shared/tasks';
+} from '@shared/tasks';
 
 export type {
   TaskControls,

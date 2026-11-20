@@ -6,7 +6,7 @@ import type {
   ReadOptions,
   StorageOperation,
   WriteTarget,
-} from '../../../shared/storage/models';
+} from '@shared/storage/models';
 import type { StorageAdapter } from '../ports/adapter';
 import type { OperationContext } from './contracts';
 import { StorageError, throwIfAborted } from './errors';

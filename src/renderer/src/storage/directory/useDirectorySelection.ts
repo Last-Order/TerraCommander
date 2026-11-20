@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useState } from 'react';
-import type { EntryRef } from '../../../../shared/storage';
+import type { EntryRef } from '@shared/storage';
 import { directoryKey, type DirectoryCache, type DirectoryEntries } from './directory-cache';
 import type { DirectoryRow, DirectorySelectionModifiers } from './directory-types';
 

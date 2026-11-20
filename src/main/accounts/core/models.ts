@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { AccountErrorCode } from '../../../shared/accounts';
-import type { ConnectionDefinition } from '../../../shared/storage';
+import type { AccountErrorCode } from '@shared/accounts';
+import type { ConnectionDefinition } from '@shared/storage';
 import { AccountError } from './errors';
 
 const identifier = z.string().min(1).max(1024);

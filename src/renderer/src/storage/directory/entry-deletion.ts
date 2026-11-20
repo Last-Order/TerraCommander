@@ -1,4 +1,4 @@
-import type { Entry } from '../../../../shared/storage';
+import type { Entry } from '@shared/storage';
 
 export function canDeleteEntry(entry: Entry | undefined): boolean {
   if (entry?.kind !== 'file' && entry?.kind !== 'link') return false;

@@ -1,7 +1,7 @@
 import type { BrowserWindow } from 'electron';
 import { z } from 'zod';
-import { channels } from '../../shared/contracts';
-import { localConnectionId } from '../../shared/storage-browser';
+import { channels } from '@shared/contracts';
+import { localConnectionId } from '@shared/storage-browser';
 import type { TrustedIpc } from './helpers';
 import { isTrustedRenderer } from '../security';
 import type { ApplicationServices } from '../services/application-services';

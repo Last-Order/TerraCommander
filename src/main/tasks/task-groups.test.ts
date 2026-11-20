@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { topLevelEntries } from '../../shared/task-selectors';
+import { topLevelEntries } from '@shared/task-selectors';
 import { TaskQueue } from './task-queue';
 import type { TaskExecutionOutcome, TaskHandler } from './types';
 

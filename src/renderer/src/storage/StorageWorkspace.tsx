@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import useSWR from 'swr';
-import type { Space } from '../../../shared/storage';
-import { localConnectionId } from '../../../shared/storage-browser';
-import type { TaskMessage } from '../../../shared/tasks';
+import type { Space } from '@shared/storage';
+import { localConnectionId } from '@shared/storage-browser';
+import type { TaskMessage } from '@shared/tasks';
 import { TaskQueueDock } from '../tasks/TaskQueueDock';
 import { StorageSetupModal, type SetupIntent } from './connections/StorageSetupModal';
 import { StorageSidebar } from './connections/StorageSidebar';

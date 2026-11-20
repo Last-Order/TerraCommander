@@ -1,4 +1,4 @@
-import type { ConnectionDefinition } from '../../../shared/storage/models';
+import type { ConnectionDefinition } from '@shared/storage/models';
 import type { OperationContext } from '../core/contracts';
 import { normalizeStorageError, StorageError, throwIfAborted } from '../core/errors';
 import { connectionSchema, fingerprint, parse } from '../core/validation';

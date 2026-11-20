@@ -1,8 +1,4 @@
-import {
-  accountErrorMessages,
-  type AccountErrorCode,
-  type AccountFailure,
-} from '../../../shared/accounts';
+import { accountErrorMessages, type AccountErrorCode, type AccountFailure } from '@shared/accounts';
 
 /** Keep provider bodies, request headers, and private credentials out of public failures. */
 export class AccountError extends Error {

@@ -1,4 +1,4 @@
-import type { BrowserResult } from '../../../shared/storage-browser';
+import type { BrowserResult } from '@shared/storage-browser';
 
 export function success<T>(value: T): BrowserResult<T> {
   return { ok: true, value };

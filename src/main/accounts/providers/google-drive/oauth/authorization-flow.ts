@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
-import type { OperationContext } from '../../../../common/operation-context';
-import { accountError, assertNotCancelled, AccountError } from '../../../core/errors';
-import { waitForAccountOperation } from '../../../core/operations';
+import type { OperationContext } from '@main/common/operation-context';
+import { accountError, assertNotCancelled, AccountError } from '@main/accounts/core/errors';
+import { waitForAccountOperation } from '@main/accounts/core/operations';
 import type {
   AuthorizationEnvironment,
   GoogleAccountGateway,

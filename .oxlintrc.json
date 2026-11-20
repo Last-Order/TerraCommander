@@ -18,7 +18,18 @@
     "eslint/no-nested-ternary": "error",
     "eslint/max-depth": ["error", { "max": 4 }],
     "eslint/no-lonely-if": "error",
-    "eslint/no-else-return": ["error", { "allowElseIf": false }]
+    "eslint/no-else-return": ["error", { "allowElseIf": false }],
+    "eslint/no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "regex": "^(\\.\\./){2,}",
+            "message": "Use a path alias (@main, @preload, @renderer, @shared) instead of a deep relative import."
+          }
+        ]
+      }
+    ]
   },
   "ignorePatterns": ["node_modules", "out", "dist", "coverage"]
 }

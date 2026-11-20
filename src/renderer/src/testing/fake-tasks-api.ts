@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
-import type { Entry, EntryRef } from '../../../shared/storage';
-import type { BrowserResult } from '../../../shared/storage-browser';
+import type { Entry, EntryRef } from '@shared/storage';
+import type { BrowserResult } from '@shared/storage-browser';
 import type {
   PrepareDownloadRequest,
   PrepareDownloadResponse,
@@ -10,7 +10,7 @@ import type {
   StorageTaskSnapshot,
   TaskFailure,
   TasksApi,
-} from '../../../shared/tasks';
+} from '@shared/tasks';
 import { success } from './storage-browser-fixtures';
 
 interface FakeTasksOptions {

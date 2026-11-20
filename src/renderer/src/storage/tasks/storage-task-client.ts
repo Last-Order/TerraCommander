@@ -1,6 +1,6 @@
 import { createStore } from 'zustand/vanilla';
-import type { TasksApi } from '../../../../shared/tasks';
-import type { TaskQueueViewClient, TaskQueueViewSnapshot } from '../../tasks/task-types';
+import type { TasksApi } from '@shared/tasks';
+import type { TaskQueueViewClient, TaskQueueViewSnapshot } from '@renderer/tasks/task-types';
 import type { DirectoryCache } from '../directory/directory-cache';
 import { resultOf, StorageBrowserError } from '../storage-client';
 import type {

@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
-import type { EntryRef } from '../../../shared/storage/models';
+import type { EntryRef } from '@shared/storage/models';
 import { StorageError } from '../core/errors';
 import { parse } from '../core/validation';
 

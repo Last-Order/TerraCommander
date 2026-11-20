@@ -1,8 +1,8 @@
 import type { BrowserWindow } from 'electron';
 import { afterEach, expect, it, vi } from 'vitest';
-import { channels } from '../../shared/contracts';
-import { defaultLanguageSettings, type LanguagePreference } from '../../shared/language';
-import type { Entry } from '../../shared/storage';
+import { channels } from '@shared/contracts';
+import { defaultLanguageSettings, type LanguagePreference } from '@shared/language';
+import type { Entry } from '@shared/storage';
 import { AccountError } from '../accounts/core/errors';
 import { registerIpcHandlers } from './';
 import { ApplicationServices } from '../services/application-services';

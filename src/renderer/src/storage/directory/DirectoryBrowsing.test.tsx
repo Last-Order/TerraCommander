@@ -1,15 +1,15 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, it, vi } from 'vitest';
-import type { EntryPage, Space } from '../../../../shared/storage';
+import type { EntryPage, Space } from '@shared/storage';
 import {
   emptyLocalConnection,
   localConnectionId,
   type BrowserResult,
   type StorageBrowserApi,
-} from '../../../../shared/storage-browser';
-import { renderWorkspace } from '../../testing/render-app';
-import { pausePage, success } from '../../testing/storage-browser-fixtures';
+} from '@shared/storage-browser';
+import { renderWorkspace } from '@renderer/testing/render-app';
+import { pausePage, success } from '@renderer/testing/storage-browser-fixtures';
 
 it('shows file details and supports selection and opening from the whole row', async () => {
   const user = userEvent.setup();

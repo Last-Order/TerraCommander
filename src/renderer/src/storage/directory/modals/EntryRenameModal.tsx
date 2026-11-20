@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button, Group, Modal, Stack, TextInput } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
-import type { Entry, EntryRef } from '../../../../../shared/storage';
-import { useStorageTaskQueue } from '../../tasks/storage-task-queue-context';
+import type { Entry, EntryRef } from '@shared/storage';
+import { useStorageTaskQueue } from '@renderer/storage/tasks/storage-task-queue-context';
 
 interface EntryRenameProps {
   entry: Entry;

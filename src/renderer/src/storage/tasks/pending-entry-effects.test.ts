@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import type { Entry, EntryRef } from '../../../../shared/storage';
+import type { Entry, EntryRef } from '@shared/storage';
 import { directoryKey } from '../directory/directory-cache';
 import { selectPendingEntryEffects } from './pending-entry-effects';
 import type { StorageTaskGroupItem, StorageTaskItem } from './storage-task-types';

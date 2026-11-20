@@ -1,6 +1,10 @@
 import { z } from 'zod';
-import { AccountError } from '../../core/errors';
-import { parseAccountData, type AccountRecord, type CredentialBinding } from '../../core/models';
+import { AccountError } from '@main/accounts/core/errors';
+import {
+  parseAccountData,
+  type AccountRecord,
+  type CredentialBinding,
+} from '@main/accounts/core/models';
 
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
 export const GOOGLE_DRIVE_SCOPES = ['openid', 'email', DRIVE_SCOPE] as const;

@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { app, BrowserWindow, dialog, session } from 'electron';
 import log from 'electron-log/main';
-import { fallbackLanguage, type AppLanguage } from '../shared/language';
+import { fallbackLanguage, type AppLanguage } from '@shared/language';
 import { setApplicationMenu } from './application-menu';
 import { registerIpcHandlers } from './ipc';
 import { nativeMessages } from './native-messages';

@@ -1,7 +1,7 @@
 import type { BigIntStats } from 'node:fs';
 import { lstat, mkdir, rmdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { StorageError } from '../../storage/core/errors';
+import { StorageError } from '@main/storage/core/errors';
 import { DownloadError } from './download-paths';
 
 export async function downloadTargetInfo(path: string): Promise<BigIntStats | undefined> {

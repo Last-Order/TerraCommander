@@ -1,4 +1,4 @@
-import type { AccountProviderDescriptor } from '../../../../shared/accounts';
+import type { AccountProviderDescriptor } from '@shared/accounts';
 
 /** Safe to enumerate without importing OAuth code, SDKs, or client configuration. */
 export const googleDriveDescriptor: AccountProviderDescriptor = {

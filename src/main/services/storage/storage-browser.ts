@@ -1,10 +1,10 @@
-import type { EntryRef, Space } from '../../../shared/storage';
+import type { EntryRef, Space } from '@shared/storage';
 import type {
   SpaceChoice,
   StorageConnectionSummary,
   StorageProvider,
-} from '../../../shared/storage-browser';
-import { StorageAccess, StorageError, type StorageLogger } from '../../storage';
+} from '@shared/storage-browser';
+import { StorageAccess, StorageError, type StorageLogger } from '@main/storage';
 import type { AccountRuntime } from '../application-services';
 import { DownloadService } from '../downloads/download-service';
 import { measureDirectorySize } from './measure-directory-size';

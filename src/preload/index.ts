@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { channels, type DesktopApi } from '../shared/contracts';
+import { channels, type DesktopApi } from '@shared/contracts';
 
 const api: DesktopApi = {
   downloads: {

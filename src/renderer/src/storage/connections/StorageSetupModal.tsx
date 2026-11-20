@@ -2,10 +2,7 @@ import { useRef, useState, type ReactNode } from 'react';
 import { Alert, Button, Group, Modal, Stack, Text } from '@mantine/core';
 import { Cloud, Monitor } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import {
-  emptyLocalConnection,
-  type StorageConnectionSummary,
-} from '../../../../shared/storage-browser';
+import { emptyLocalConnection, type StorageConnectionSummary } from '@shared/storage-browser';
 import { errorKey, resultOf, type StorageErrorKey } from '../storage-client';
 import { formatStorageLabel } from '../storage-labels';
 import { SpacePicker } from './SpacePicker';

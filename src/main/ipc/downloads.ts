@@ -1,6 +1,6 @@
 import { dialog } from 'electron';
 import { z } from 'zod';
-import { channels } from '../../shared/contracts';
+import { channels } from '@shared/contracts';
 import type { TrustedIpc } from './helpers';
 import type { ApplicationServices } from '../services/application-services';
 

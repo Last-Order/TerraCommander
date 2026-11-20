@@ -7,8 +7,8 @@ import type {
   UploadProgress,
   WriteTarget,
   DiscardResult,
-} from '../../../shared/storage/models';
-import type { OperationContext, OperationProgress } from '../../common/operation-context';
+} from '@shared/storage/models';
+import type { OperationContext, OperationProgress } from '@main/common/operation-context';
 
 export type { OperationContext, OperationProgress };
 

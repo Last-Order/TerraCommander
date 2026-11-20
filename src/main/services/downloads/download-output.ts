@@ -2,7 +2,7 @@ import { createHash, type Hash } from 'node:crypto';
 import type { BigIntStats } from 'node:fs';
 import { lstat, mkdtemp, open, rename, rm, unlink, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
-import { StorageError, throwIfAborted } from '../../storage/core/errors';
+import { StorageError, throwIfAborted } from '@main/storage/core/errors';
 import { DownloadError, downloadFailure } from './download-paths';
 
 export async function checkDownloadTarget(path: string, replace: boolean): Promise<void> {

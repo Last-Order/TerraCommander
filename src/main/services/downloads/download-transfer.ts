@@ -6,9 +6,9 @@ import type {
   EntryRef,
   ListRequest,
   ReadOptions,
-} from '../../../shared/storage';
-import type { OperationContext, ReadHandle } from '../../storage/core/contracts';
-import { normalizeStorageError, StorageError, throwIfAborted } from '../../storage/core/errors';
+} from '@shared/storage';
+import type { OperationContext, ReadHandle } from '@main/storage/core/contracts';
+import { normalizeStorageError, StorageError, throwIfAborted } from '@main/storage/core/errors';
 import { DownloadOutput } from './download-output';
 import { downloadDirectory, DownloadError, downloadFailure } from './download-paths';
 import { DownloadProgressReporter } from './download-progress-reporter';

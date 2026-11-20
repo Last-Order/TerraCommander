@@ -1,4 +1,4 @@
-import type { Entry, UploadProgress, UploadState } from '../../../shared/storage/models';
+import type { Entry, UploadProgress, UploadState } from '@shared/storage/models';
 import { checkedEntry, targetRef } from '../core/adapter-operations';
 import type {
   DriverCheckpoint,

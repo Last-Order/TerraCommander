@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
-import type { Entry, EntryRef } from '../../../shared/storage';
-import type { StorageAccess } from '../../storage';
+import type { Entry, EntryRef } from '@shared/storage';
+import type { StorageAccess } from '@main/storage';
 import { measureDirectorySize } from './measure-directory-size';
 
 function ref(locator: string): EntryRef {

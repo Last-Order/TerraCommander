@@ -8,13 +8,13 @@ import type {
   ListRequest,
   ReadOptions,
   Space,
-} from '../../../../shared/storage';
+} from '@shared/storage';
 import { matchesGoogleDriveAuthorization, type GoogleDriveAuthorization } from './authorization';
-import type { OperationContext } from '../../core/contracts';
-import { StorageError, throwIfAborted } from '../../core/errors';
-import { parse } from '../../core/validation';
-import type { AdapterFactory, StorageAdapter } from '../../ports/adapter';
-import type { StorageLogger } from '../../ports/services';
+import type { OperationContext } from '@main/storage/core/contracts';
+import { StorageError, throwIfAborted } from '@main/storage/core/errors';
+import { parse } from '@main/storage/core/validation';
+import type { AdapterFactory, StorageAdapter } from '@main/storage/ports/adapter';
+import type { StorageLogger } from '@main/storage/ports/services';
 import { logGoogleDriveFailure } from './google-drive-diagnostics';
 import { driveFailure } from './google-drive-errors';
 import { readGoogleDriveContent } from './google-drive-read';

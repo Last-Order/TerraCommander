@@ -1,5 +1,5 @@
-import type { OperationContext } from '../../../common/operation-context';
-import type { AccountRepositoryPort } from '../../core/ports';
+import type { OperationContext } from '@main/common/operation-context';
+import type { AccountRepositoryPort } from '@main/accounts/core/ports';
 import {
   decodeGoogleAccount,
   encodeGoogleAccount,

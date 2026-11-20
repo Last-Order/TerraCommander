@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Entry, UploadProgress, UploadStatus } from '../../../shared/storage/models';
+import type { Entry, UploadProgress, UploadStatus } from '@shared/storage/models';
 import type { DriverCheckpoint, UploadDriver } from '../core/contracts';
 import { StorageError } from '../core/errors';
 import {

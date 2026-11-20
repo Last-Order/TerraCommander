@@ -2,7 +2,7 @@ import { mkdtempDisposable } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
-import { deferred } from '../../testing/deferred';
+import { deferred } from '@main/testing/deferred';
 import * as downloadPaths from './download-paths';
 import { DownloadPreferences } from './download-preferences';
 

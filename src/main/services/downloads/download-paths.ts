@@ -1,8 +1,8 @@
 import { constants } from 'node:fs';
 import { access, lstat, realpath } from 'node:fs/promises';
 import { isAbsolute, sep } from 'node:path';
-import type { DownloadErrorCode } from '../../../shared/downloads';
-import { StorageError } from '../../storage/core/errors';
+import type { DownloadErrorCode } from '@shared/downloads';
+import { StorageError } from '@main/storage/core/errors';
 
 export class DownloadError extends Error {
   constructor(readonly code: DownloadErrorCode | 'PersistenceFailed') {

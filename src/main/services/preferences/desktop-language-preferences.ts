@@ -1,6 +1,6 @@
 import log from 'electron-log/main';
 import Store from 'electron-store';
-import type { LanguagePreference } from '../../../shared/language';
+import type { LanguagePreference } from '@shared/language';
 import { LanguagePreferences } from './language-preferences';
 
 export function createDesktopLanguagePreferences(

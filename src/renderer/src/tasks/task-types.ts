@@ -13,7 +13,7 @@ import type {
   TaskProgress,
   TaskStatus,
   TaskViewItem,
-} from '../../../shared/tasks';
+} from '@shared/tasks';
 
 export type {
   TaskControlAvailability,

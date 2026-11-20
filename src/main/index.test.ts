@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { defaultLanguageSettings } from '../shared/language';
+import { defaultLanguageSettings } from '@shared/language';
 
 const host = vi.hoisted(() => {
   const callbacks = new Map<string, (event: { preventDefault(): void }) => void>();

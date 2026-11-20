@@ -1,12 +1,12 @@
 import { realpath, stat } from 'node:fs/promises';
-import type { Space } from '../../../../shared/storage';
-import { emptyLocalConnection, localConnectionId } from '../../../../shared/storage-browser';
-import { StorageError } from '../../../storage';
+import type { Space } from '@shared/storage';
+import { emptyLocalConnection, localConnectionId } from '@shared/storage-browser';
+import { StorageError } from '@main/storage';
 import {
   localAdapterFactory,
   localFailure,
   localSpace,
-} from '../../../storage/providers/local/local-adapter';
+} from '@main/storage/providers/local/local-adapter';
 import type { StoragePreferences } from '../storage-preferences';
 import type { LocalStorageProviderIntegration } from '../storage-provider';
 

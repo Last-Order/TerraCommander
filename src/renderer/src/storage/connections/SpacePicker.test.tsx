@@ -1,10 +1,10 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, it, vi } from 'vitest';
-import type { Space } from '../../../../shared/storage';
-import type { StorageBrowserApi } from '../../../../shared/storage-browser';
-import { renderWorkspace } from '../../testing/render-app';
-import { success } from '../../testing/storage-browser-fixtures';
+import type { Space } from '@shared/storage';
+import type { StorageBrowserApi } from '@shared/storage-browser';
+import { renderWorkspace } from '@renderer/testing/render-app';
+import { success } from '@renderer/testing/storage-browser-fixtures';
 
 it('refreshes the space picker explicitly and keeps valid draft selections', async () => {
   const user = userEvent.setup();

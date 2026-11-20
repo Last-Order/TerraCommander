@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { StorageError } from '../../core/errors';
+import { StorageError } from '@main/storage/core/errors';
 
 const failureSchema = z.object({
   error: z.object({ errors: z.array(z.object({ reason: z.string() })).optional() }),

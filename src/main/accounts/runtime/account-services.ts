@@ -1,4 +1,4 @@
-import type { StructuredLogger } from '../../common/logger';
+import type { StructuredLogger } from '@main/common/logger';
 import { AccountManager } from '../core/account-manager';
 import { AccountCredentialResolver } from '../core/account-credential-resolver';
 import { AccountProviderRegistry } from '../core/account-provider-registry';

@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { jsonFingerprint } from '../../common/canonical-json';
-import type { OperationContext } from '../../common/operation-context';
+import { jsonFingerprint } from '@main/common/canonical-json';
+import type { OperationContext } from '@main/common/operation-context';
 import { assertNotCancelled, AccountError } from '../core/errors';
 import {
   accountRecordSchema,

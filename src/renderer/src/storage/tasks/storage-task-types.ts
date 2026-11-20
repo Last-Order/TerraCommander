@@ -11,4 +11,4 @@ export type {
   StorageTaskItem,
   StorageTaskRequest,
   StorageTaskSnapshot,
-} from '../../../../shared/tasks';
+} from '@shared/tasks';

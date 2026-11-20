@@ -1,8 +1,8 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { DownloadSettings, DownloadsApi } from '../../../shared/downloads';
-import type { BrowserResult } from '../../../shared/storage-browser';
+import type { DownloadSettings, DownloadsApi } from '@shared/downloads';
+import type { BrowserResult } from '@shared/storage-browser';
 import { renderWorkspace } from '../testing/render-app';
 import { pausePage, success } from '../testing/storage-browser-fixtures';
 

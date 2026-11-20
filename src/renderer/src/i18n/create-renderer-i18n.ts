@@ -1,6 +1,6 @@
 import { createInstance, type i18n } from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import { appLanguages, fallbackLanguage, type AppLanguage } from '../../../shared/language';
+import { appLanguages, fallbackLanguage, type AppLanguage } from '@shared/language';
 import { en } from './en';
 import { zhCN } from './zh-CN';
 

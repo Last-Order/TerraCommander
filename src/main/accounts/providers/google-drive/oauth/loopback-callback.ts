@@ -1,8 +1,8 @@
 import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { fallbackLanguage, type AppLanguage } from '../../../../../shared/language';
-import { nativeMessages } from '../../../../native-messages';
-import { assertNotCancelled, AccountError } from '../../../core/errors';
+import { fallbackLanguage, type AppLanguage } from '@shared/language';
+import { nativeMessages } from '@main/native-messages';
+import { assertNotCancelled, AccountError } from '@main/accounts/core/errors';
 import type { AuthorizationCallback } from '../ports';
 
 const CALLBACK_PATH = '/oauth2/callback';

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { parseAccountData } from '../../../core/models';
+import { parseAccountData } from '@main/accounts/core/models';
 import type { GoogleClientConfiguration } from '../ports';
 
 const clientSchema = z.strictObject({

@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { StorageError } from '../../core/errors';
+import { StorageError } from '@main/storage/core/errors';
 import { logGoogleDriveFailure } from './google-drive-diagnostics';
 
 it('records a safe nested network cause without exposing provider details', () => {

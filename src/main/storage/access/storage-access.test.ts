@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ByteRange } from '../../../shared/storage/models';
+import type { ByteRange } from '@shared/storage/models';
 import { StorageError } from '../core/errors';
 import {
   byteSource,

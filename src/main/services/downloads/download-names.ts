@@ -1,5 +1,5 @@
 import { extname, sep } from 'node:path';
-import type { Entry } from '../../../shared/storage';
+import type { Entry } from '@shared/storage';
 
 export function downloadPathKey(path: string): string {
   return sep === '\\' ? path.toLowerCase() : path;

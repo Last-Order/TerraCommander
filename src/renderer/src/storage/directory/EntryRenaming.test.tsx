@@ -1,16 +1,16 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { Entry, EntryRef, Space } from '../../../../shared/storage';
+import type { Entry, EntryRef, Space } from '@shared/storage';
 import {
   emptyLocalConnection,
   localConnectionId,
   type BrowserResult,
   type StorageBrowserApi,
-} from '../../../../shared/storage-browser';
-import { createFakeTasksApi } from '../../testing/fake-tasks-api';
-import { renderWorkspace } from '../../testing/render-app';
-import { pausePage, success } from '../../testing/storage-browser-fixtures';
+} from '@shared/storage-browser';
+import { createFakeTasksApi } from '@renderer/testing/fake-tasks-api';
+import { renderWorkspace } from '@renderer/testing/render-app';
+import { pausePage, success } from '@renderer/testing/storage-browser-fixtures';
 
 afterEach(() => vi.unstubAllGlobals());
 

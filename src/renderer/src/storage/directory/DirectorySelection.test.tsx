@@ -1,14 +1,14 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { Entry, Space } from '../../../../shared/storage';
+import type { Entry, Space } from '@shared/storage';
 import {
   emptyLocalConnection,
   localConnectionId,
   type StorageBrowserApi,
-} from '../../../../shared/storage-browser';
-import { renderWorkspace } from '../../testing/render-app';
-import { success } from '../../testing/storage-browser-fixtures';
+} from '@shared/storage-browser';
+import { renderWorkspace } from '@renderer/testing/render-app';
+import { success } from '@renderer/testing/storage-browser-fixtures';
 
 afterEach(() => vi.unstubAllGlobals());
 

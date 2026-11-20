@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { AccountProviderDescriptor } from '../../../shared/accounts';
-import { LazyService } from '../../services/lazy-service';
+import type { AccountProviderDescriptor } from '@shared/accounts';
+import { LazyService } from '@main/services/lazy-service';
 import { AccountError, accountError, assertNotCancelled } from './errors';
 import { parseAccountData } from './models';
 import type {

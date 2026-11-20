@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { summarizeTasks } from '../../shared/task-selectors';
+import { summarizeTasks } from '@shared/task-selectors';
 import { deferred } from '../testing/deferred';
 import { TaskQueue } from './task-queue';
 import type { TaskContext, TaskExecutionOutcome, TaskHandler } from './types';

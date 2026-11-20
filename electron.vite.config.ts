@@ -1,4 +1,3 @@
-import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'electron-vite';
 
@@ -17,8 +16,11 @@ export default defineConfig(({ command }) => {
   ].join('; ');
 
   return {
-    main: {},
+    main: {
+      resolve: { tsconfigPaths: true },
+    },
     preload: {
+      resolve: { tsconfigPaths: true },
       build: {
         externalizeDeps: false,
         isolatedEntries: true,
@@ -29,9 +31,7 @@ export default defineConfig(({ command }) => {
     },
     renderer: {
       build: { minify: 'oxc' },
-      resolve: {
-        alias: { '@': fileURLToPath(new URL('./src/renderer/src', import.meta.url)) },
-      },
+      resolve: { tsconfigPaths: true },
       plugins: [
         react(),
         {

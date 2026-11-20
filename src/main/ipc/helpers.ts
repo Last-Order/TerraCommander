@@ -1,6 +1,6 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import { z } from 'zod';
-import type { BrowserResult } from '../../shared/storage-browser';
+import type { BrowserResult } from '@shared/storage-browser';
 import { AccountError } from '../accounts/core/errors';
 import { isTrustedRenderer } from '../security';
 import { DownloadError } from '../services/downloads/download-paths';

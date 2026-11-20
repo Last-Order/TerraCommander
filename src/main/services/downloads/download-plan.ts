@@ -1,7 +1,7 @@
 import { dirname, join } from 'node:path';
 import type { DownloadPlanItem, DownloadPlanPage } from './download-types';
-import type { Entry, EntryRef } from '../../../shared/storage';
-import { StorageError, throwIfAborted } from '../../storage/core/errors';
+import type { Entry, EntryRef } from '@shared/storage';
+import { StorageError, throwIfAborted } from '@main/storage/core/errors';
 import { DownloadDirectories } from './download-directories';
 import { allocateDownloadNames } from './download-names';
 import { DownloadError, validateDownloadName } from './download-paths';

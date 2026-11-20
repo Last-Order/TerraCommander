@@ -1,4 +1,4 @@
-import type { AccountProviderServices } from '../../core/ports';
+import type { AccountProviderServices } from '@main/accounts/core/ports';
 import { GoogleDriveAccountProvider } from './account-provider';
 import { GoogleAccountRepository } from './account-repository';
 import { GoogleDriveCredentials } from './credentials';

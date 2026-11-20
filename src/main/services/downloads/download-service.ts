@@ -10,14 +10,14 @@ import type {
   PreparedDownloadBatch,
   DownloadWorkRef,
 } from './download-types';
-import { StorageError, throwIfAborted } from '../../storage/core/errors';
+import { StorageError, throwIfAborted } from '@main/storage/core/errors';
 import { checkDownloadTarget } from './download-output';
 import { downloadDirectory, DownloadError, validateDownloadName } from './download-paths';
 import { type DownloadTransfer, type DownloadSource } from './download-transfer';
 import { DownloadPlan } from './download-plan';
 import { downloadTargetInfo } from './download-directories';
 import { allocateDownloadNames, downloadPathKey, downloadPathsOverlap } from './download-names';
-import type { EntryRef } from '../../../shared/storage';
+import type { EntryRef } from '@shared/storage';
 
 interface DownloadRecord {
   owner: number;

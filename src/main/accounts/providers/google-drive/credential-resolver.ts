@@ -1,12 +1,12 @@
-import type { CredentialResolver } from '../../../common/credentials';
-import type { OperationContext } from '../../../common/operation-context';
+import type { CredentialResolver } from '@main/common/credentials';
+import type { OperationContext } from '@main/common/operation-context';
 import {
   isGoogleDriveAuthorization,
   matchesGoogleDriveAuthorization,
   type GoogleDriveAuthorization,
-} from '../../../storage/providers/google-drive/authorization';
-import { storageAuthorizationError } from '../../core/credential-errors';
-import { assertNotCancelled, AccountError } from '../../core/errors';
+} from '@main/storage/providers/google-drive/authorization';
+import { storageAuthorizationError } from '@main/accounts/core/credential-errors';
+import { assertNotCancelled, AccountError } from '@main/accounts/core/errors';
 import type { GoogleAccountRepository } from './account-repository';
 import type { GoogleTokenProvider } from './token-provider';
 

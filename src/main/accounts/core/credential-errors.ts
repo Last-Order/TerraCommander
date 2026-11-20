@@ -1,4 +1,4 @@
-import { StorageError } from '../../storage/core/errors';
+import { StorageError } from '@main/storage/core/errors';
 import { AccountError } from './errors';
 
 /** Translate account failures only at the boundary consumed by storage adapters. */

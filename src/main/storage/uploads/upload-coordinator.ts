@@ -6,7 +6,7 @@ import type {
   SourceDescriptor,
   UploadStatus,
   WriteTarget,
-} from '../../../shared/storage/models';
+} from '@shared/storage/models';
 import {
   checkedEntry,
   requireCapabilities,

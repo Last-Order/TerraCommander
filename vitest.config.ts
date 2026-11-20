@@ -3,11 +3,13 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   plugins: [react()],
+  resolve: { tsconfigPaths: true },
   test: {
     clearMocks: true,
     restoreMocks: true,
     projects: [
       {
+        resolve: { tsconfigPaths: true },
         test: {
           name: 'backend',
           environment: 'node',
@@ -15,6 +17,7 @@ export default defineConfig({
         },
       },
       {
+        resolve: { tsconfigPaths: true },
         test: {
           name: 'renderer',
           environment: 'jsdom',

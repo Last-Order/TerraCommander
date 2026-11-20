@@ -1,7 +1,7 @@
 import { useLayoutEffect, useState, useSyncExternalStore } from 'react';
 import { ChevronRight, FolderOpen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { EntryRef, Space, StorageLabel } from '../../../../shared/storage';
+import type { EntryRef, Space, StorageLabel } from '@shared/storage';
 import { formatStorageLabel } from '../storage-labels';
 import classes from './DirectoryPane.module.css';
 import { DirectoryListing } from './DirectoryListing';

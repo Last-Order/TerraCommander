@@ -1,4 +1,4 @@
-import type { BrowserErrorCode, BrowserResult } from '../../../shared/storage-browser';
+import type { BrowserErrorCode, BrowserResult } from '@shared/storage-browser';
 
 export type StorageErrorKey = BrowserErrorCode | 'unknown';
 

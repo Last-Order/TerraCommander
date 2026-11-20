@@ -1,4 +1,4 @@
-import type { OperationContext } from '../../common/operation-context';
+import type { OperationContext } from '@main/common/operation-context';
 import { assertNotCancelled, AccountError } from './errors';
 
 /** Cancelling one waiter must not cancel a refresh shared by other operations. */

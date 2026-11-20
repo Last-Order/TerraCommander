@@ -1,6 +1,6 @@
 import { Menu, shell, type MenuItemConstructorOptions } from 'electron';
 import log from 'electron-log/main';
-import type { AppLanguage } from '../shared/language';
+import type { AppLanguage } from '@shared/language';
 import { nativeMessages } from './native-messages';
 
 const chineseLabels = new Map(

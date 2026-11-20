@@ -8,6 +8,7 @@ const outputDirectory = resolve('node_modules/.cache/google-drive-smoke');
 await build({
   configFile: false,
   mode: 'development',
+  resolve: { tsconfigPaths: true },
   build: {
     ssr: 'scripts/google-drive-accounts-smoke.ts',
     target: 'node24',

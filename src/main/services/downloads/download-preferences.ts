@@ -1,4 +1,4 @@
-import type { DownloadSettings } from '../../../shared/downloads';
+import type { DownloadSettings } from '@shared/downloads';
 import { DownloadError, downloadDirectory } from './download-paths';
 
 export class DownloadPreferences {

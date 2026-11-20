@@ -1,5 +1,5 @@
-import type { CredentialResolver } from '../../common/credentials';
-import type { StructuredLogger } from '../../common/logger';
+import type { CredentialResolver } from '@main/common/credentials';
+import type { StructuredLogger } from '@main/common/logger';
 
 export type { CredentialResolver };
 export type StorageLogger = StructuredLogger;

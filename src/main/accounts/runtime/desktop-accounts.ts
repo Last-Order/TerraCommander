@@ -1,6 +1,6 @@
 import { app, safeStorage } from 'electron';
 import log from 'electron-log/main';
-import { fallbackLanguage, type AppLanguage } from '../../../shared/language';
+import { fallbackLanguage, type AppLanguage } from '@shared/language';
 import { ElectronAccountStore } from '../infrastructure/electron-account-store';
 import { SafeStorageAccountCipher } from '../infrastructure/safe-storage-cipher';
 import { googleDriveDescriptor } from '../providers/google-drive/descriptor';

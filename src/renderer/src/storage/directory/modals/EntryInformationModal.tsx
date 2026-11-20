@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Alert, Group, Loader, Modal } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
-import type { Entry } from '../../../../../shared/storage';
-import { errorKey, resultOf, type StorageErrorKey } from '../../storage-client';
+import type { Entry } from '@shared/storage';
+import { errorKey, resultOf, type StorageErrorKey } from '@renderer/storage/storage-client';
 import classes from './EntryInformationModal.module.css';
-import { formatSize } from '../../../format/size';
+import { formatSize } from '@renderer/format/size';
 
 export type EntrySelection = [Entry, ...Entry[]];
 

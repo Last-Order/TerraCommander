@@ -1,5 +1,5 @@
-import type { CredentialResolver } from '../../common/credentials';
-import type { OperationContext } from '../../common/operation-context';
+import type { CredentialResolver } from '@main/common/credentials';
+import type { OperationContext } from '@main/common/operation-context';
 import type { AccountProviderRegistry } from './account-provider-registry';
 import { storageAuthorizationError } from './credential-errors';
 import { assertNotCancelled } from './errors';

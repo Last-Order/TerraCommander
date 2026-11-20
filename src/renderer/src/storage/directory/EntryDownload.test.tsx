@@ -1,16 +1,12 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { DownloadsApi } from '../../../../shared/downloads';
-import type { Entry, Space } from '../../../../shared/storage';
-import type {
-  StorageTaskGroupItem,
-  StorageTaskItem,
-  TaskControlAvailability,
-} from '../../../../shared/tasks';
-import { createFakeTasksApi } from '../../testing/fake-tasks-api';
-import { renderWorkspace } from '../../testing/render-app';
-import { success } from '../../testing/storage-browser-fixtures';
+import type { DownloadsApi } from '@shared/downloads';
+import type { Entry, Space } from '@shared/storage';
+import type { StorageTaskGroupItem, StorageTaskItem, TaskControlAvailability } from '@shared/tasks';
+import { createFakeTasksApi } from '@renderer/testing/fake-tasks-api';
+import { renderWorkspace } from '@renderer/testing/render-app';
+import { success } from '@renderer/testing/storage-browser-fixtures';
 
 afterEach(() => vi.unstubAllGlobals());
 

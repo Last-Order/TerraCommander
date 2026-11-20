@@ -1,5 +1,5 @@
-import { normalizeStorageError } from '../../core/errors';
-import type { StorageLogger } from '../../ports/services';
+import { normalizeStorageError } from '@main/storage/core/errors';
+import type { StorageLogger } from '@main/storage/ports/services';
 
 const networkCodes = new Set([
   'ECONNRESET',

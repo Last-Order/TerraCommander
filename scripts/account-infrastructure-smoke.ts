@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { safeStorage } from 'electron';
-import { AccountRepository } from '../src/main/accounts/persistence/account-repository';
-import { ElectronAccountStore } from '../src/main/accounts/infrastructure/electron-account-store';
-import type { AccountRecord } from '../src/main/accounts/core/models';
-import { CredentialStore } from '../src/main/accounts/persistence/credential-store';
-import { SafeStorageAccountCipher } from '../src/main/accounts/infrastructure/safe-storage-cipher';
+import { AccountRepository } from '@main/accounts/persistence/account-repository';
+import { ElectronAccountStore } from '@main/accounts/infrastructure/electron-account-store';
+import type { AccountRecord } from '@main/accounts/core/models';
+import { CredentialStore } from '@main/accounts/persistence/credential-store';
+import { SafeStorageAccountCipher } from '@main/accounts/infrastructure/safe-storage-cipher';
 
 /** Loaded only by the explicit infrastructure command, never by the idle harness. */
 export async function checkAccountInfrastructure(profile: string): Promise<void> {

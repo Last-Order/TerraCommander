@@ -1,9 +1,9 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, it, vi } from 'vitest';
-import type { LanguageSettings } from '../../../shared/language';
-import type { Space } from '../../../shared/storage';
-import type { StorageBrowserApi, StorageConnectionSummary } from '../../../shared/storage-browser';
+import type { LanguageSettings } from '@shared/language';
+import type { Space } from '@shared/storage';
+import type { StorageBrowserApi, StorageConnectionSummary } from '@shared/storage-browser';
 import { renderWorkspace } from '../testing/render-app';
 import { success } from '../testing/storage-browser-fixtures';
 

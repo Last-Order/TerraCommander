@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import type { Entry, EntryRef } from '../../../../shared/storage';
+import type { Entry, EntryRef } from '@shared/storage';
 import { errorKey, resultOf, StorageBrowserError, type StorageErrorKey } from '../storage-client';
 import {
   directoryKey,

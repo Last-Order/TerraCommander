@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { OperationContext } from '../../../common/operation-context';
+import type { OperationContext } from '@main/common/operation-context';
 import type { GoogleDriveCredentials } from './credentials';
 import type { GoogleAccountRepository } from './account-repository';
-import { AccountError } from '../../core/errors';
+import { AccountError } from '@main/accounts/core/errors';
 import type { GoogleAccountRecord, SavedCredentials } from './models';
-import { waitForAccountOperation } from '../../core/operations';
+import { waitForAccountOperation } from '@main/accounts/core/operations';
 import type { GoogleAccountGateway, GoogleAuthorizationGrant } from './ports';
 
 interface GrantWriterOptions {

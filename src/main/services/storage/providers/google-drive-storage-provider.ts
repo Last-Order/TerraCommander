@@ -1,7 +1,7 @@
 import {
   googleDriveAdapterFactory,
   myDriveSpace,
-} from '../../../storage/providers/google-drive/google-drive-adapter';
+} from '@main/storage/providers/google-drive/google-drive-adapter';
 import type { AccountStorageProviderIntegration } from '../storage-provider';
 
 export function createGoogleDriveStorageProvider(): AccountStorageProviderIntegration {

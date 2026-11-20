@@ -3,10 +3,10 @@ import type {
   AccountProviderDescriptor,
   AccountSetupRequest,
   AccountState,
-} from '../../../shared/accounts';
-import type { JsonValue } from '../../../shared/json';
-import type { StructuredLogger } from '../../common/logger';
-import type { OperationContext } from '../../common/operation-context';
+} from '@shared/accounts';
+import type { JsonValue } from '@shared/json';
+import type { StructuredLogger } from '@main/common/logger';
+import type { OperationContext } from '@main/common/operation-context';
 import type { AccountRecord, AccountSnapshot, CredentialBinding } from './models';
 
 export interface AccountRepositoryPort {

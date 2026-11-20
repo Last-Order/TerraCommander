@@ -1,4 +1,4 @@
-import type { Entry, SourceDescriptor, WriteTarget } from '../../../shared/storage/models';
+import type { Entry, SourceDescriptor, WriteTarget } from '@shared/storage/models';
 import { targetRef } from '../core/adapter-operations';
 import type {
   DriverCheckpoint,
