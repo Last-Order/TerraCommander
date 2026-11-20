@@ -58,6 +58,7 @@ export function StorageSidebar({
         <div className={classes.sidebarHeading}>
           <h2>{t('title')}</h2>
           <ActionIcon
+            size={24}
             variant="subtle"
             color="gray"
             aria-label={t('add')}
@@ -93,6 +94,7 @@ export function StorageSidebar({
       </nav>
       <footer className={classes.sidebarFooter}>
         <Button
+          size="compact-sm"
           fullWidth
           justify="flex-start"
           variant="subtle"
@@ -143,6 +145,7 @@ function ConnectionGroup({ connection, activeSpace, onManage, onReauthorize, onO
         </button>
         {connection.needsAuthorization ? (
           <ActionIcon
+            size={26}
             variant="subtle"
             color="red"
             aria-label={t('reauthorize')}
@@ -150,10 +153,12 @@ function ConnectionGroup({ connection, activeSpace, onManage, onReauthorize, onO
             aria-haspopup="dialog"
             onClick={() => onReauthorize(connection)}
           >
-            <RefreshCw size={16} strokeWidth={1.5} aria-hidden="true" />
+            <RefreshCw size={14} strokeWidth={1.5} aria-hidden="true" />
           </ActionIcon>
         ) : (
           <ActionIcon
+            size={26}
+            className={classes.connectionAction}
             variant="subtle"
             color="gray"
             aria-label={t('manageConnectionSpaces', { name })}
@@ -161,7 +166,7 @@ function ConnectionGroup({ connection, activeSpace, onManage, onReauthorize, onO
             aria-haspopup="dialog"
             onClick={() => onManage(connection)}
           >
-            <SlidersHorizontal size={16} strokeWidth={1.5} aria-hidden="true" />
+            <SlidersHorizontal size={14} strokeWidth={1.5} aria-hidden="true" />
           </ActionIcon>
         )}
       </div>
