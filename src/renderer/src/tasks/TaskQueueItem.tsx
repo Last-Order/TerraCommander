@@ -16,7 +16,7 @@ export function TaskQueueItem<TTask extends TaskViewItem, TGroup extends TaskGro
       status={task.status}
       model={presentTask(task)}
       progress={task.progress}
-      failure={task.status === 'failed' ? task.failure : undefined}
+      failure={task.status === 'failed' || task.status === 'paused' ? task.failure : undefined}
       pausing={task.controlRequest === 'pause'}
       pauseSupported={task.controls.supportsPause}
       cancelSupported={task.controls.supportsCancel}

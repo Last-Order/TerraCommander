@@ -6,6 +6,7 @@ import { PassThrough, Readable } from 'node:stream';
 import { expect, it, vi } from 'vitest';
 import type { DownloadRequest } from './download-types';
 import type { Entry } from '@shared/storage';
+import { StorageError } from '@main/storage/core/errors';
 import { DownloadOutput } from './download-output';
 import { DownloadService } from './download-service';
 import type { DownloadSource } from './download-transfer';
@@ -323,6 +324,35 @@ it.each([0, 16])(
     }
   },
 );
+
+it('pauses a resumable download on retryable failure and resumes from the saved offset', async () => {
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-resume-retryable-'));
+  const f = await fixture(temporary.path);
+  try {
+    const first = await f.start('first');
+    await f.writePrefix(first.stream, f.content.subarray(0, 6), '012345');
+    first.stream.destroy(new StorageError('NetworkError'));
+    await expect(first.running).resolves.toMatchObject({
+      status: 'paused',
+      completedBytes: 6,
+      totalBytes: f.content.length,
+      error: expect.objectContaining({ code: 'NetworkError' }),
+    });
+    expect(await readFile(f.prepared.path, 'utf8')).toBe('012345');
+
+    const second = await f.start('second');
+    expect(f.read).toHaveBeenLastCalledWith(
+      f.entry.ref,
+      { range: { offset: 6 } },
+      expect.anything(),
+    );
+    second.stream.end(f.content.subarray(6));
+    await expect(second.running).resolves.toEqual({ status: 'completed' });
+    expect(await readFile(f.prepared.path)).toEqual(f.content);
+  } finally {
+    await f.service.dispose();
+  }
+});
 
 async function prepareExecution(
   service: DownloadService,

@@ -405,3 +405,68 @@ it('cancels owner-scoped browser operations and pending task confirmations on cr
 
   await taskService.dispose();
 });
+
+it('pauses an upload on retryable failure and resumes the existing write session', async () => {
+  const { event, browser, parent, services, send } = setup();
+  const taskService = new StorageTaskService(browser);
+  vi.spyOn(services.tasks, 'get').mockResolvedValue(taskService);
+  const target = vi.spyOn(browser, 'validateUploadDestination').mockResolvedValue(undefined);
+  const remoteParent = { ...parent, connectionId: '5e45885a-89f0-462e-9821-7195cba174e5' };
+  const entry = {
+    ref: { ...remoteParent, locator: 'uploaded-retry' },
+    name: 'retry.bin',
+    kind: 'file' as const,
+    size: 7,
+    capabilities: {},
+  };
+  const run = vi
+    .fn()
+    .mockImplementationOnce(async ({ onProgress }) => {
+      onProgress?.({ confirmedBytes: 3, processedBytes: 4, totalBytes: 7 });
+      throw new StorageError('NetworkError', { retryHint: 'safe' });
+    })
+    .mockResolvedValueOnce(entry);
+  const prepare = vi.spyOn(browser, 'prepareUpload').mockReturnValue({ run });
+
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-upload-retry-'));
+  const path = join(temporary.path, entry.name);
+  await writeFile(path, 'content');
+  picker.mockResolvedValueOnce({ canceled: false, filePaths: [path] });
+
+  expect(
+    await handlers.get(channels.uploadFileTask)!(event, {
+      parent: remoteParent,
+      directoryPath: 'My Drive',
+    }),
+  ).toEqual({ ok: true, value: undefined });
+  expect(target).toHaveBeenCalledWith(remoteParent);
+  const snapshot = () => handlers.get(channels.getTaskSnapshot)!(event);
+  await vi.waitFor(async () =>
+    expect(await snapshot()).toMatchObject({
+      value: {
+        tasks: [
+          {
+            id: 1,
+            status: 'paused',
+            failure: { code: 'NetworkError' },
+            controls: { canResume: true, canCancel: true },
+            progress: { completed: 3, total: 7 },
+          },
+        ],
+      },
+    }),
+  );
+  expect(await handlers.get(channels.resumeTask)!(event, 1)).toEqual({
+    ok: true,
+    value: undefined,
+  });
+  await vi.waitFor(() =>
+    expect(send).toHaveBeenCalledWith(channels.taskEvent, {
+      type: 'directory-changed',
+      change: { kind: 'added', parent: remoteParent, entry },
+    }),
+  );
+  expect(prepare).toHaveBeenCalledTimes(1);
+  expect(run).toHaveBeenCalledTimes(2);
+  await taskService.dispose();
+});

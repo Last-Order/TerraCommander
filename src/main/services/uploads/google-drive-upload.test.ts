@@ -238,3 +238,30 @@ it.each(['resume', 'completed', 'changed'] as const)(
     expect(request.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
   },
 );
+
+it('reports Cancelled instead of OutcomeUnknown when cancelled during the final chunk', async () => {
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-upload-cancel-'));
+  const content = Buffer.alloc(128 * 1024, 5);
+  const { target, source } = await createLocalSource(join(temporary.path, 'example.bin'), content);
+  const cancel = new AbortController();
+  const { storage, request } = await setup(async (call) => {
+    const reader = call.body!.getReader();
+    await reader.read();
+    cancel.abort();
+    await reader.cancel();
+    throw new DOMException('Cancelled', 'AbortError');
+  });
+  const execution = storage.createWriteSession(target, source);
+  const pause = new AbortController();
+  await expect(
+    execution.run({ signal: cancel.signal, pauseSignal: pause.signal }),
+  ).rejects.toMatchObject({
+    code: 'Cancelled',
+  });
+  expect(
+    request.mock.calls.filter(([input]) => {
+      const raw = input instanceof Request ? input.url : input;
+      return new URL(raw).pathname === '/drive/v3/files/new-id';
+    }),
+  ).toHaveLength(0);
+});

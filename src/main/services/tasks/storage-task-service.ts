@@ -180,8 +180,10 @@ export class StorageTaskService {
         type: 'upload',
         input: {
           display: { ...request, name },
-          transfer: new UploadTransfer(source.descriptor.size, () =>
-            this.browser.prepareUpload(request.parent, name, source),
+          transfer: new UploadTransfer(
+            source.descriptor.size,
+            () => this.browser.prepareUpload(request.parent, name, source),
+            toTaskFailure,
           ),
         },
       });
@@ -481,7 +483,10 @@ export class StorageTaskService {
                   }
                 : { kind: 'indeterminate', completedBytes: result.completedBytes },
             );
-            return { status: 'paused' };
+            return {
+              status: 'paused',
+              ...(result.error !== undefined ? { failure: toTaskFailure(result.error) } : {}),
+            };
           }
           return { status: 'completed', result: undefined };
         } catch (error) {
@@ -699,7 +704,9 @@ export class StorageTaskService {
       controls,
       ...(task.controlRequest !== undefined ? { controlRequest: task.controlRequest } : {}),
       ...(task.progress !== undefined ? { progress: task.progress } : {}),
-      ...(task.status === 'failed' ? { failure: task.failure } : {}),
+      ...(task.status === 'failed' || (task.status === 'paused' && task.failure)
+        ? { failure: task.failure }
+        : {}),
       ...(task.status === 'completed' ? { result: task.result } : {}),
       ...(task.groupId !== undefined ? { groupId: task.groupId } : {}),
       ...(task.memberKey !== undefined ? { memberKey: task.memberKey } : {}),

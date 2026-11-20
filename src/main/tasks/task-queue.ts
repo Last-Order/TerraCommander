@@ -245,7 +245,14 @@ export class TaskQueue<
     const task = this.state.tasks.find((candidate) => candidate.id === id);
     if (!task || task.status !== 'paused' || !this.canResume(task)) return;
     this.order.set(id, ++this.nextOrder);
-    this.update({ ...task, status: 'queued' });
+    this.update({
+      id: task.id,
+      request: task.request,
+      status: 'queued',
+      ...(task.progress ? { progress: task.progress } : {}),
+      ...(task.groupId !== undefined ? { groupId: task.groupId } : {}),
+      ...(task.memberKey !== undefined ? { memberKey: task.memberKey } : {}),
+    });
     this.drain();
   }
 
@@ -439,6 +446,10 @@ export class TaskQueue<
         });
         return;
       case 'paused': {
+        if (outcome.failure) {
+          const failure = outcome.failure;
+          await this.invokeHook(task.id, () => handler.onFailure?.(input, failure));
+        }
         const current = this.state.tasks.find(({ id }) => id === task.id);
         if (current)
           this.update({
@@ -446,6 +457,7 @@ export class TaskQueue<
             request: task.request,
             status: 'paused',
             ...(current.progress ? { progress: current.progress } : {}),
+            ...(outcome.failure ? { failure: outcome.failure } : {}),
           });
         return;
       }

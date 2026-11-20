@@ -69,4 +69,5 @@ export type DownloadRunResult =
       status: 'paused';
       completedBytes: number;
       totalBytes?: number;
+      error?: unknown;
     };

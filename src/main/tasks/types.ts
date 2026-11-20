@@ -35,7 +35,13 @@ export type TaskRequest<
 }[Type];
 
 export type TaskState<Result> =
-  | { status: 'queued' | 'paused'; controlRequest?: 'cancel' | undefined; controls?: never }
+  | { status: 'queued'; controlRequest?: 'cancel' | undefined; controls?: never }
+  | {
+      status: 'paused';
+      controlRequest?: 'cancel' | undefined;
+      controls?: never;
+      failure?: TaskFailure | undefined;
+    }
   | {
       status: 'running';
       controlRequest?: 'pause' | 'cancel' | undefined;
@@ -50,7 +56,7 @@ export type TaskState<Result> =
 export type TaskExecutionOutcome<Result> =
   | { status: 'completed'; result: Result }
   | { status: 'failed'; failure: TaskFailure }
-  | { status: 'paused' }
+  | { status: 'paused'; failure?: TaskFailure | undefined }
   | { status: 'cancelled' | 'skipped' };
 
 export type QueueTask<

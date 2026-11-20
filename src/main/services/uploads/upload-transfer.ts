@@ -1,7 +1,7 @@
 import type { Entry } from '@shared/storage';
 import { AccountError } from '@main/accounts/core/errors';
 import { normalizeStorageError, type WriteExecution } from '@main/storage';
-import type { TaskContext, TaskExecutionOutcome } from '@main/tasks/types';
+import type { TaskContext, TaskExecutionOutcome, TaskFailure } from '@main/tasks/types';
 import { TransferRateReporter } from '../transfer-rate-reporter';
 
 export class UploadTransfer {
@@ -13,6 +13,7 @@ export class UploadTransfer {
   constructor(
     private readonly total: number,
     private readonly prepare: () => WriteExecution,
+    private readonly toFailure: (error: unknown) => TaskFailure,
   ) {}
 
   async run(context: TaskContext): Promise<TaskExecutionOutcome<Entry>> {
@@ -70,7 +71,14 @@ export class UploadTransfer {
         report();
         return { status: 'paused' };
       }
-      this.retryable = failure.retryHint === 'safe';
+      const retryable =
+        failure.retryHint === 'safe' || (error instanceof AccountError && code === 'AuthRequired');
+      if (retryable && this.execution) {
+        paused = true;
+        report();
+        return { status: 'paused', failure: this.toFailure(error) };
+      }
+      this.retryable = retryable;
       throw error;
     } finally {
       reporter.dispose();

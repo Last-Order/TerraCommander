@@ -9,6 +9,7 @@ import type {
 } from '@shared/storage';
 import type { OperationContext, ReadHandle } from '@main/storage/core/contracts';
 import { normalizeStorageError, StorageError, throwIfAborted } from '@main/storage/core/errors';
+import { AccountError } from '@main/accounts/core/errors';
 import { DownloadOutput } from './download-output';
 import { downloadDirectory, DownloadError, downloadFailure } from './download-paths';
 import { DownloadProgressReporter } from './download-progress-reporter';
@@ -127,10 +128,8 @@ export class DownloadTransfer {
     resuming: boolean,
   ): Promise<DownloadRunResult> {
     const signal = this.controller.signal;
-    let handle: ReadHandle | undefined;
     let reporter: DownloadProgressReporter | undefined;
     let completed = false;
-    let failed = false;
     let failure: unknown;
     try {
       await downloadDirectory(this.directory);
@@ -138,111 +137,158 @@ export class DownloadTransfer {
       if (resuming) await this.verifySource(signal);
       await this.output.open(signal);
       throwIfAborted(signal);
-      const offset = this.output.bytes;
-      if (!resuming || offset !== this.totalBytes) {
-        handle = await this.source.read(this.request.ref, offset > 0 ? { range: { offset } } : {}, {
-          signal,
-        });
-        throwIfAborted(signal);
-        if (handle.length !== undefined) {
-          const total = offset + handle.length;
-          if (this.totalBytes !== undefined && total !== this.totalBytes)
-            throw new StorageError('OutcomeUnknown');
-          this.totalBytes = total;
-        }
-        this.stage = 'downloading';
-        reporter = new DownloadProgressReporter(
-          id,
-          this.totalBytes,
-          () => this.output.bytes,
-          (progress) =>
-            onProgress({
-              ...progress,
-              attempt,
-              controls: {
-                cancellable: progress.stage !== 'saving',
-                pausable: progress.stage === 'downloading' && this.resumable,
-              },
-            }),
-        );
-        const chunks: AsyncIterable<unknown> = handle.stream;
-        const abort = () => handle?.stream.destroy(new StorageError('Cancelled'));
-        signal.addEventListener('abort', abort, { once: true });
-        try {
-          await this.writeChunks(chunks, signal);
-        } finally {
-          signal.removeEventListener('abort', abort);
-        }
-        throwIfAborted(signal);
-        if (this.totalBytes !== undefined && this.output.bytes !== this.totalBytes)
-          throw new StorageError('OutcomeUnknown');
-        await handle.dispose();
-        handle = undefined;
+
+      if (!resuming || this.output.bytes !== this.totalBytes) {
+        reporter = await this.receiveRemainingBytes(id, attempt, onProgress, signal);
       }
       throwIfAborted(signal);
-      this.stage = 'saving';
-      if (reporter) reporter.saving();
-      else {
-        try {
-          onProgress({
-            id,
-            attempt,
-            controls: { cancellable: false, pausable: false },
-            stage: 'saving',
-            completedBytes: this.output.bytes,
-            ...(this.totalBytes !== undefined ? { totalBytes: this.totalBytes } : {}),
-          });
-        } catch {
-          /* Progress delivery must not interrupt publication. */
-        }
-      }
-      await this.output.verify(signal);
-      if (this.checksum && this.output.contentChecksum !== this.checksum.value.toLowerCase())
-        throw new StorageError('SourceChanged');
-      await this.output.close();
-      await this.output.publish();
+      await this.publishOutput(id, attempt, onProgress, reporter, signal);
       completed = true;
     } catch (error) {
-      failed = true;
       failure = error;
+    } finally {
+      reporter?.dispose();
     }
-    reporter?.dispose();
-    let cleanupFailed = false;
-    try {
-      await handle?.dispose();
-    } catch {
-      cleanupFailed = true;
+
+    const cleanupFailed = await this.closeOutput();
+    if (!completed && !cleanupFailed) {
+      const paused = this.pausedOutcome(failure);
+      if (paused) return paused;
     }
-    try {
-      await this.output.close();
-    } catch {
-      cleanupFailed = true;
-    }
-    if (
-      !cleanupFailed &&
-      failed &&
-      this.pauseRequested &&
-      normalizeStorageError(failure).code === 'Cancelled'
-    ) {
-      this.stage = 'paused';
-      return {
-        status: 'paused',
-        completedBytes: this.output.bytes,
-        ...(this.totalBytes !== undefined ? { totalBytes: this.totalBytes } : {}),
-      };
-    }
-    try {
-      await this.output.cleanup(completed);
-    } catch {
-      cleanupFailed = true;
-    }
+
+    const discardFailed = await this.cleanupOutput(completed);
     this.stage = completed ? 'completed' : 'failed';
-    if (cleanupFailed) throw new DownloadError('DownloadCleanupFailed');
-    if (failed) {
+    if (cleanupFailed || discardFailed) throw new DownloadError('DownloadCleanupFailed');
+    if (!completed) {
       if (failure instanceof DownloadError) throw failure;
       downloadFailure(failure);
     }
     return { status: 'completed' };
+  }
+
+  private async receiveRemainingBytes(
+    id: string,
+    attempt: string,
+    onProgress: (progress: DownloadProgress) => void,
+    signal: AbortSignal,
+  ): Promise<DownloadProgressReporter> {
+    const offset = this.output.bytes;
+    const handle = await this.source.read(
+      this.request.ref,
+      offset > 0 ? { range: { offset } } : {},
+      {
+        signal,
+      },
+    );
+    const abort = () => handle.stream.destroy(new StorageError('Cancelled'));
+    signal.addEventListener('abort', abort, { once: true });
+    let reporter: DownloadProgressReporter | undefined;
+    try {
+      throwIfAborted(signal);
+      if (handle.length !== undefined) {
+        const total = offset + handle.length;
+        if (this.totalBytes !== undefined && total !== this.totalBytes) {
+          throw new StorageError('OutcomeUnknown');
+        }
+        this.totalBytes = total;
+      }
+      this.stage = 'downloading';
+      reporter = new DownloadProgressReporter(
+        id,
+        this.totalBytes,
+        () => this.output.bytes,
+        (progress) =>
+          onProgress({
+            ...progress,
+            attempt,
+            controls: {
+              cancellable: progress.stage !== 'saving',
+              pausable: progress.stage === 'downloading' && this.resumable,
+            },
+          }),
+      );
+      await this.writeChunks(handle.stream, signal);
+      throwIfAborted(signal);
+      if (this.totalBytes !== undefined && this.output.bytes !== this.totalBytes) {
+        throw new StorageError('OutcomeUnknown');
+      }
+      return reporter;
+    } catch (error) {
+      reporter?.dispose();
+      throw error;
+    } finally {
+      signal.removeEventListener('abort', abort);
+      await handle.dispose().catch(() => {});
+    }
+  }
+
+  private async publishOutput(
+    id: string,
+    attempt: string,
+    onProgress: (progress: DownloadProgress) => void,
+    reporter: DownloadProgressReporter | undefined,
+    signal: AbortSignal,
+  ): Promise<void> {
+    this.stage = 'saving';
+    if (reporter) {
+      reporter.saving();
+    } else {
+      try {
+        onProgress({
+          id,
+          attempt,
+          controls: { cancellable: false, pausable: false },
+          stage: 'saving',
+          completedBytes: this.output.bytes,
+          ...(this.totalBytes !== undefined ? { totalBytes: this.totalBytes } : {}),
+        });
+      } catch {
+        /* Progress delivery must not interrupt publication. */
+      }
+    }
+    await this.output.verify(signal);
+    if (this.checksum && this.output.contentChecksum !== this.checksum.value.toLowerCase()) {
+      throw new StorageError('SourceChanged');
+    }
+    await this.output.close();
+    await this.output.publish();
+  }
+
+  private pausedOutcome(failure: unknown): DownloadRunResult | undefined {
+    const pausedByControl =
+      this.pauseRequested && normalizeStorageError(failure).code === 'Cancelled';
+    const pausedByRetryableError =
+      !this.pauseRequested &&
+      this.resumable &&
+      this.stage !== 'saving' &&
+      isRetryableDownloadFailure(failure);
+    if (!pausedByControl && !pausedByRetryableError) return undefined;
+
+    this.stage = 'paused';
+    return {
+      status: 'paused',
+      completedBytes: this.output.bytes,
+      ...(this.totalBytes !== undefined ? { totalBytes: this.totalBytes } : {}),
+      ...(pausedByRetryableError ? { error: failure } : {}),
+    };
+  }
+
+  private async closeOutput(): Promise<boolean> {
+    try {
+      await this.output.close();
+      return false;
+    } catch {
+      return true;
+    }
+  }
+
+  private async cleanupOutput(completed: boolean): Promise<boolean> {
+    try {
+      await this.output.cleanup(completed);
+      return false;
+    } catch {
+      return true;
+    }
   }
 
   private async writeChunks(chunks: AsyncIterable<unknown>, signal: AbortSignal): Promise<void> {
@@ -270,4 +316,15 @@ export class DownloadTransfer {
     )
       throw new StorageError('SourceChanged');
   }
+}
+
+function isRetryableDownloadFailure(error: unknown): boolean {
+  if (error instanceof AccountError) return error.code === 'AuthRequired';
+  const storage = normalizeStorageError(error);
+  return (
+    storage.retryHint === 'safe' ||
+    storage.code === 'NetworkError' ||
+    storage.code === 'RateLimited' ||
+    storage.code === 'AuthRequired'
+  );
 }

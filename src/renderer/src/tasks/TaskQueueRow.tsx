@@ -96,7 +96,7 @@ export function TaskQueueRow({
             <p className={classes.summary}>{translateMessage(model.resultMessage)}</p>
           )}
           {summaryNote && <p className={classes.summary}>{summaryNote}</p>}
-          {status === 'failed' && failure && (
+          {(status === 'failed' || status === 'paused') && failure && (
             <p className={classes.error}>{translateMessage(failure.message)}</p>
           )}
         </div>

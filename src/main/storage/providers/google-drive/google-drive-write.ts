@@ -37,7 +37,7 @@ export function createGoogleDriveWriteSession(
   }).toString();
   let session: URL | undefined;
   let confirmed = 0;
-  const prefix = createHash('sha256');
+  let prefix = createHash('sha256');
   let pending: { end: number; digest: string } | undefined;
   let mayHaveCommitted = false;
 
@@ -98,6 +98,13 @@ export function createGoogleDriveWriteSession(
     );
   }
 
+  function resetSession() {
+    session = undefined;
+    confirmed = 0;
+    pending = undefined;
+    prefix = createHash('sha256');
+  }
+
   function inspect({ response, payload }: Awaited<ReturnType<typeof send>>, end: number) {
     if (response.ok) {
       mayHaveCommitted = true;
@@ -105,7 +112,10 @@ export function createGoogleDriveWriteSession(
     }
     if (response.status !== 308) {
       mayHaveCommitted ||= response.status === 409 || (end === size && response.status === 404);
-      if (response.status === 404) throw new StorageError('ResumeExpired', { retryHint: 'safe' });
+      if (response.status === 404) {
+        resetSession();
+        throw new StorageError('ResumeExpired', { retryHint: 'safe' });
+      }
       throw driveFailure(response.status, payload);
     }
     const offset = confirmedOffset(response.headers.get('Range'));
@@ -122,25 +132,120 @@ export function createGoogleDriveWriteSession(
     pending = undefined;
   }
 
+  function reportProgress(
+    onProgress: SessionWriteContext['onProgress'],
+    processed: number,
+    acknowledged: number,
+  ) {
+    try {
+      onProgress?.({
+        processedBytes: processed,
+        confirmedBytes: acknowledged,
+        totalBytes: size,
+      });
+    } catch {
+      /* Progress is an observation of the write. */
+    }
+  }
+
+  async function resumeSession(
+    url: URL,
+    source: ReopenableByteSource,
+    transfer: OperationContext,
+    onProgress: SessionWriteContext['onProgress'],
+  ): Promise<Entry | undefined> {
+    const status = inspect(await probe(url, transfer), pending?.end ?? confirmed);
+    if (status.entry) return status.entry;
+    mayHaveCommitted = false;
+    if (pending) {
+      const bytes = await readChunk(source, confirmed, pending.end - confirmed, transfer);
+      if (chunkDigest(bytes) !== pending.digest) throw new StorageError('SourceChanged');
+      acknowledge(status.offset, bytes);
+    }
+    if (confirmed > 0) {
+      await verifyPrefix(source, confirmed, prefix.copy().digest('hex'), transfer);
+    }
+    reportProgress(onProgress, confirmed, confirmed);
+    return undefined;
+  }
+
+  async function uploadNextChunk(
+    url: URL,
+    source: ReopenableByteSource,
+    transfer: OperationContext,
+    finalContext: OperationContext,
+    onBytesSent?: (count: number) => void,
+  ) {
+    const length = Math.min(chunkSize, size - confirmed);
+    const end = confirmed + length;
+    const final = end === size;
+    const requestContext = final ? finalContext : transfer;
+    const bytes = await readChunk(source, confirmed, length, transfer);
+    throwIfAborted(transfer.signal);
+    pending = { end, digest: chunkDigest(bytes) };
+
+    const reply = await send(
+      url,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': String(length),
+          'Content-Range': length === 0 ? 'bytes */0' : `bytes ${confirmed}-${end - 1}/${size}`,
+        },
+        body: length > 0 && onBytesSent ? streamBody(bytes, onBytesSent) : bytes,
+      },
+      requestContext,
+    ).catch((error: unknown) => {
+      const code = normalizeStorageError(error).code;
+      mayHaveCommitted ||= final && (code === 'NetworkError' || code === 'Cancelled');
+      if (code !== 'NetworkError') throw error;
+      return probe(url, requestContext);
+    });
+
+    const status = inspect(reply, end);
+    return { status, bytes, end };
+  }
+
+  async function recoverFailure(
+    error: unknown,
+    context: {
+      signal?: AbortSignal | undefined;
+      pauseSignal?: AbortSignal | undefined;
+      transferSignal?: AbortSignal | undefined;
+      commitContext: OperationContext;
+      onProgress: SessionWriteContext['onProgress'];
+    },
+  ): Promise<Entry> {
+    const failure = normalizeStorageError(error);
+    if (context.transferSignal?.aborted && failure.code === 'Cancelled') {
+      const pausedOnly = Boolean(context.pauseSignal?.aborted && !context.signal?.aborted);
+      if (pausedOnly && mayHaveCommitted && session) {
+        const status = await probe(session, context.commitContext)
+          .then((reply) => inspect(reply, pending?.end ?? confirmed))
+          .catch(() => undefined);
+        if (status?.entry) return status.entry;
+        if (!status) return reconcile(context.commitContext);
+        reportProgress(context.onProgress, status.offset, status.offset);
+      }
+      throw error;
+    }
+    if (mayHaveCommitted) return reconcile(context.commitContext);
+    throwIfAborted(context.transferSignal);
+    if (failure.code === 'NetworkError' || failure.code === 'AuthRequired') {
+      throw new StorageError(failure.code, { retryHint: 'safe', cause: failure });
+    }
+    throw error;
+  }
+
   async function run(source: ReopenableByteSource, context: SessionWriteContext): Promise<Entry> {
     const { signal, pauseSignal, ...commitContext } = context;
     const transfer = pauseSignal
       ? { ...context, signal: signal ? AbortSignal.any([signal, pauseSignal]) : pauseSignal }
       : context;
     const finalContext = pauseSignal ? transfer : commitContext;
-    const progress = (processed: number, acknowledged: number) => {
-      try {
-        context.onProgress?.({
-          processedBytes: processed,
-          confirmedBytes: acknowledged,
-          totalBytes: size,
-        });
-      } catch {
-        /* Progress is an observation of the write. */
-      }
-    };
-    const completed = (entry: Entry) => {
-      progress(size, size);
+    const complete = (entry: Entry) => {
+      reportProgress(context.onProgress, size, size);
       return entry;
     };
 
@@ -148,74 +253,35 @@ export function createGoogleDriveWriteSession(
       if (!session) {
         session = await openSession(transfer);
       } else {
-        const status = inspect(await probe(session, transfer), pending?.end ?? confirmed);
-        if (status.entry) return completed(status.entry);
-        mayHaveCommitted = false;
-        if (pending) {
-          const bytes = await readChunk(source, confirmed, pending.end - confirmed, transfer);
-          if (chunkDigest(bytes) !== pending.digest) throw new StorageError('SourceChanged');
-          acknowledge(status.offset, bytes);
-        }
-        if (confirmed > 0)
-          await verifyPrefix(source, confirmed, prefix.copy().digest('hex'), transfer);
-        progress(confirmed, confirmed);
+        const existing = await resumeSession(session, source, transfer, context.onProgress);
+        if (existing) return complete(existing);
       }
 
       const url = session;
       let stalled = false;
       for (;;) {
-        const length = Math.min(chunkSize, size - confirmed);
-        const end = confirmed + length;
-        const final = end === size;
-        const bytes = await readChunk(source, confirmed, length, transfer);
-        throwIfAborted(transfer.signal);
-        pending = { end, digest: chunkDigest(bytes) };
-        const reply = await send(
+        const { status, bytes, end } = await uploadNextChunk(
           url,
-          {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/octet-stream',
-              'Content-Length': String(length),
-              'Content-Range': length === 0 ? 'bytes */0' : `bytes ${confirmed}-${end - 1}/${size}`,
-            },
-            body:
-              length > 0 && context.onBytesSent ? streamBody(bytes, context.onBytesSent) : bytes,
-          },
-          final ? finalContext : transfer,
-        ).catch((error: unknown) => {
-          const code = normalizeStorageError(error).code;
-          mayHaveCommitted ||= final && (code === 'NetworkError' || code === 'Cancelled');
-          if (code !== 'NetworkError') throw error;
-          return probe(url, final ? finalContext : transfer);
-        });
-
-        const status = inspect(reply, end);
-        if (status.entry) return completed(status.entry);
+          source,
+          transfer,
+          finalContext,
+          context.onBytesSent,
+        );
+        if (status.entry) return complete(status.entry);
         if (status.offset === confirmed && stalled) throw new StorageError('NetworkError');
         stalled = status.offset === confirmed;
         acknowledge(status.offset, bytes);
-        progress(end, confirmed);
+        reportProgress(context.onProgress, end, confirmed);
       }
     } catch (error) {
-      const failure = normalizeStorageError(error);
-      if (transfer.signal?.aborted && failure.code === 'Cancelled') {
-        if (mayHaveCommitted && session) {
-          const status = await probe(session, commitContext)
-            .then((reply) => inspect(reply, pending?.end ?? confirmed))
-            .catch(() => undefined);
-          if (status?.entry) return completed(status.entry);
-          if (!status) return completed(await reconcile(commitContext));
-          progress(status.offset, status.offset);
-        }
-        throw error;
-      }
-      if (mayHaveCommitted) return completed(await reconcile(commitContext));
-      throwIfAborted(transfer.signal);
-      if (failure.code === 'NetworkError' || failure.code === 'AuthRequired') {
-        throw new StorageError(failure.code, { retryHint: 'safe', cause: failure });
-      }
-      throw error;
+      const recovered = await recoverFailure(error, {
+        signal,
+        pauseSignal,
+        transferSignal: transfer.signal,
+        commitContext,
+        onProgress: context.onProgress,
+      });
+      return complete(recovered);
     }
   }
 
