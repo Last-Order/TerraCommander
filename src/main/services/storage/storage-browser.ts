@@ -8,6 +8,7 @@ import { StorageAccess, StorageError, type StorageLogger } from '@main/storage';
 import type { ReopenableByteSource, WriteExecution } from '@main/storage/core/contracts';
 import type { AccountRuntime } from '../application-services';
 import { DownloadService } from '../downloads/download-service';
+import { UploadService } from '../uploads/upload-service';
 import { measureDirectorySize } from './measure-directory-size';
 import { StorageConnectionManager } from './storage-connections';
 import type { StoragePreferences } from './storage-preferences';
@@ -23,6 +24,7 @@ export interface StorageBrowserOptions {
 
 export class StorageBrowser {
   readonly downloads: DownloadService;
+  readonly uploads: UploadService;
   private readonly connections: StorageConnectionManager;
   private readonly storage: StorageAccess;
   private readonly spaces: StorageSpaceCatalog;
@@ -41,6 +43,15 @@ export class StorageBrowser {
         this.spaces.withBrowsableSpace(ref, () => this.storage.read(ref, options, context)),
       list: (ref, request, context) =>
         this.spaces.withBrowsableSpace(ref, () => this.storage.list(ref, request, context)),
+    });
+    this.uploads = new UploadService({
+      stat: (ref, context) =>
+        this.spaces.withBrowsableSpace(ref, () => this.storage.stat(ref, context)),
+      createDirectory: (target, context) =>
+        this.spaces.withBrowsableSpace(target.parent, () =>
+          this.storage.createDirectory(target, context),
+        ),
+      prepareUpload: (parent, name, source) => this.prepareUpload(parent, name, source),
     });
   }
 
@@ -83,14 +94,6 @@ export class StorageBrowser {
 
   listDirectory(parent: EntryRef, cursor?: string) {
     return this.spaces.withBrowsableSpace(parent, () => this.storage.list(parent, { cursor }));
-  }
-
-  async validateUploadDestination(parent: EntryRef): Promise<void> {
-    const directory = await this.spaces.withBrowsableSpace(parent, () => this.storage.stat(parent));
-    if (directory.kind !== 'directory') throw new StorageError('InvalidArgument');
-    if (directory.capabilities.write?.support === 'unsupported') {
-      throw new StorageError('PermissionDenied');
-    }
   }
 
   prepareUpload(parent: EntryRef, name: string, source: ReopenableByteSource): WriteExecution {
@@ -147,6 +150,7 @@ export class StorageBrowser {
 
   cancelOwnerOperations(owner: number): void {
     this.downloads.cancelOwner(owner);
+    this.uploads.cancelOwner(owner);
     if (this.directoryMeasurement?.owner === owner) this.directoryMeasurement.controller.abort();
     this.cancelAuthorization(owner);
   }
@@ -155,7 +159,7 @@ export class StorageBrowser {
     this.connections.cancelAuthorization();
     this.directoryMeasurement?.controller.abort();
     try {
-      await this.downloads.dispose();
+      await Promise.allSettled([this.downloads.dispose(), this.uploads.dispose()]);
     } finally {
       await this.connections.dispose();
     }

@@ -1,13 +1,17 @@
+import { mkdir, mkdtempDisposable, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
 import type { Entry } from '@shared/storage';
 import { localConnectionId } from '@shared/storage-browser';
 import type { StorageTaskEvent } from '@shared/tasks';
-import { StorageError } from '@main/storage';
+import { StorageError, type WriteExecution } from '@main/storage';
 import { deferred } from '@main/testing/deferred';
 import { DownloadError } from '../downloads/download-paths';
 import type { DownloadProgress, DownloadRunResult } from '../downloads/download-types';
 import type { DownloadService } from '../downloads/download-service';
 import type { StorageBrowser } from '../storage/storage-browser';
+import { UploadService } from '../uploads/upload-service';
 import { StorageTaskService } from './storage-task-service';
 
 const connectionId = '5e45885a-89f0-462e-9821-7195cba174e5';
@@ -312,4 +316,103 @@ it('rejects prepareDownload if DownloadTargetBusy occurs after enqueue conflict 
 
   blocked.resolve({ status: 'completed' });
   await service.dispose();
+});
+
+it('uploads mixed files and folders as a task group, emits directory changes, and retains folder IDs on retry', async () => {
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-task-upload-'));
+  const rootFile = join(temporary.path, 'cover.txt');
+  const folder = join(temporary.path, 'docs');
+  await writeFile(rootFile, 'cover');
+  await mkdir(folder, { recursive: true });
+  await writeFile(join(folder, 'guide.txt'), 'guide');
+
+  let nextId = 1;
+  const createDirectory = vi.fn(
+    async ({ parent: targetParent, name }: { parent: typeof parent; name: string }) => ({
+      ref: { ...targetParent, locator: `created-dir-${nextId++}` },
+      name,
+      kind: 'directory' as const,
+      capabilities: {
+        write: { support: 'supported' as const },
+        createDirectory: { support: 'supported' as const },
+      },
+    }),
+  );
+  const prepareUpload = vi.fn((targetParent: typeof parent, name: string): WriteExecution => {
+    if (
+      name === 'guide.txt' &&
+      prepareUpload.mock.calls.filter((call) => call[1] === 'guide.txt').length === 1
+    ) {
+      throw new StorageError('OutcomeUnknown', { retryHint: 'safe' });
+    }
+    return {
+      run: vi.fn<WriteExecution['run']>(async () => ({
+        ref: { ...targetParent, locator: `uploaded-${nextId++}` },
+        name,
+        kind: 'file',
+        capabilities: {},
+      })),
+    };
+  });
+  const uploads = new UploadService({
+    stat: async (ref) => ({
+      ref,
+      name: 'Root',
+      kind: 'directory',
+      capabilities: { write: { support: 'supported' }, createDirectory: { support: 'supported' } },
+    }),
+    createDirectory,
+    prepareUpload,
+  });
+  const browser = {
+    uploads,
+  } as unknown as StorageBrowser;
+  const service = new StorageTaskService(browser);
+  const events: StorageTaskEvent[] = [];
+  service.subscribe((event) => events.push(event));
+
+  try {
+    await service.uploadPaths(1, { parent, directoryPath: '/Drive' }, async () => [
+      rootFile,
+      folder,
+    ]);
+
+    await vi.waitFor(() => {
+      const snapshot = service.getSnapshot();
+      expect(snapshot.groups[0]?.state).toEqual({ phase: 'settled', outcome: 'partial' });
+    });
+
+    const createdDocsRef = { ...parent, locator: 'created-dir-1' };
+    expect(createDirectory).toHaveBeenCalledTimes(1);
+    expect(events).toContainEqual({
+      type: 'directory-changed',
+      change: {
+        kind: 'added',
+        parent,
+        entry: expect.objectContaining({ ref: createdDocsRef, name: 'docs', kind: 'directory' }),
+      },
+    });
+
+    const failedTask = service
+      .getSnapshot()
+      .tasks.find(
+        (task) => task.request.type === 'upload' && task.request.input.name === 'guide.txt',
+      )!;
+    expect(failedTask.status).toBe('failed');
+    expect(failedTask.controls.canRetry).toBe(true);
+
+    await service.retry(failedTask.id);
+    await vi.waitFor(() => {
+      const snapshot = service.getSnapshot();
+      expect(snapshot.groups[0]?.state).toEqual({ phase: 'settled', outcome: 'completed' });
+    });
+
+    expect(createDirectory).toHaveBeenCalledTimes(1);
+    const guideCalls = prepareUpload.mock.calls.filter((call) => call[1] === 'guide.txt');
+    expect(guideCalls).toHaveLength(2);
+    expect(guideCalls[1]?.[0]).toEqual(createdDocsRef);
+  } finally {
+    await service.dispose();
+    await uploads.dispose();
+  }
 });

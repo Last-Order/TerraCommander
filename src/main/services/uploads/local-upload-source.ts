@@ -21,7 +21,7 @@ function identity(stat: BigIntStats): string {
   return `${stat.dev}:${stat.ino}`;
 }
 
-export async function prepareLocalUpload(path: string) {
+export async function prepareLocalUpload(path: string, allocatedName?: string) {
   const original = await lstat(path, { bigint: true }).catch((error: unknown) =>
     localFileError(error, 'NotFound'),
   );
@@ -94,5 +94,5 @@ export async function prepareLocalUpload(path: string) {
       }
     },
   };
-  return { name: basename(path), source };
+  return { name: allocatedName ?? basename(path), source };
 }

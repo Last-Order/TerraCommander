@@ -36,7 +36,13 @@ import type {
   PreparedDownloadBatch,
 } from '../downloads/download-types';
 import type { StorageBrowser } from '../storage/storage-browser';
-import { prepareLocalUpload } from '../uploads/local-upload-source';
+import type {
+  PreparedUploadBatch,
+  UploadPlanItem,
+  UploadPlanPage,
+  UploadWork,
+  UploadWorkRef,
+} from '../uploads/upload-types';
 import { UploadTransfer } from '../uploads/upload-transfer';
 
 interface InternalDownloadInput extends DownloadTaskDisplayInput {
@@ -45,7 +51,7 @@ interface InternalDownloadInput extends DownloadTaskDisplayInput {
 
 interface InternalUploadInput {
   display: UploadTaskDisplayInput;
-  transfer: UploadTransfer;
+  workRef: UploadWorkRef;
 }
 
 type InternalTaskDefinitions = {
@@ -56,7 +62,8 @@ type InternalTaskDefinitions = {
 };
 
 type InternalGroupDefinitions = {
-  download: { input: StorageTaskGroupRequest['input'] };
+  download: { input: Extract<StorageTaskGroupRequest, { kind: 'download' }>['input'] };
+  upload: { input: Extract<StorageTaskGroupRequest, { kind: 'upload' }>['input'] };
 };
 
 type TaskCategory = 'operation' | 'transfer';
@@ -76,12 +83,17 @@ const fatalDirectoryErrorCodes: ReadonlySet<BrowserErrorCode> = new Set<BrowserE
   'InsufficientSpace',
   'InvalidDownloadDirectory',
 ]);
+const fatalUploadDirectoryErrorCodes: ReadonlySet<BrowserErrorCode> = new Set<BrowserErrorCode>([
+  'AuthRequired',
+  'PermissionDenied',
+  'InsufficientSpace',
+]);
 
 function entryKey({ connectionId, spaceId, locator }: EntryRef): string {
   return JSON.stringify([connectionId, spaceId, locator]);
 }
 
-function workKey(ref: DownloadWorkRef): string {
+function workKey(ref: { planId: string; itemId: number }): string {
   return `${ref.planId}:${ref.itemId}`;
 }
 
@@ -111,6 +123,7 @@ export class StorageTaskService {
     TaskCategory
   >;
   private readonly downloadExecutions = new Map<string, DownloadExecution>();
+  private readonly uploadTransfers = new Map<string, UploadTransfer>();
   private readonly confirmations = new Map<string, PendingConfirmation>();
   private readonly ownerEpochs = new Map<number, number>();
   private readonly uploadPickers = new Set<number>();
@@ -157,36 +170,60 @@ export class StorageTaskService {
     return this.queue.enqueue({ type: 'delete', input: request });
   }
 
-  // TODO: When adding folder uploads, introduce UploadService alongside DownloadService.
-  // Share the upload plan with single-file uploads, define the same-name folder policy,
-  // and retain destination directory IDs across retries. Keep task group scheduling here.
   async uploadFile(
     owner: number,
     request: UploadFileRequest,
     pickFile: () => Promise<string | undefined>,
+  ): Promise<void> {
+    await this.uploadPaths(owner, request, async () => {
+      const path = await pickFile();
+      return path ? [path] : [];
+    });
+  }
+
+  async uploadPaths(
+    owner: number,
+    request: UploadFileRequest,
+    pickPaths: () => Promise<readonly string[]>,
+    options?: { requireCreateDirectory?: boolean },
   ): Promise<void> {
     if (this.disposed || this.uploadPickers.has(owner)) return;
     const epoch = this.ownerEpochs.get(owner) ?? 0;
     const active = () => !this.disposed && (this.ownerEpochs.get(owner) ?? 0) === epoch;
     this.uploadPickers.add(owner);
     try {
-      await this.browser.validateUploadDestination(request.parent);
+      await this.browser.uploads.validateDestination(
+        request.parent,
+        options?.requireCreateDirectory,
+      );
       if (!active()) return;
-      const path = await pickFile();
-      if (!path || !active()) return;
-      const { name, source } = await prepareLocalUpload(path);
-      if (!active()) return;
-      this.queue.enqueue({
-        type: 'upload',
-        input: {
-          display: { ...request, name },
-          transfer: new UploadTransfer(
-            source.descriptor.size,
-            () => this.browser.prepareUpload(request.parent, name, source),
-            toTaskFailure,
-          ),
+      const paths = await pickPaths();
+      if (paths.length === 0 || !active()) return;
+      const selection = await this.browser.uploads.prepareSelection(queueOwnerId, {
+        parent: request.parent,
+        paths,
+        validated: true,
+        onDirectoryCreated: (parent, entry) => {
+          this.emitDirectoryChanged({ kind: 'added', parent, entry });
         },
       });
+      if (!active()) {
+        if (selection.kind === 'single') {
+          await this.releaseUploadWorkQuietly(selection.work.ref);
+        } else {
+          await this.releaseUploadBatchQuietly(selection.prepared.id);
+        }
+        return;
+      }
+      if (selection.kind === 'single') {
+        if (!this.enqueueStandaloneUpload(request, selection.work)) {
+          await this.releaseUploadWorkQuietly(selection.work.ref);
+        }
+        return;
+      }
+      if (!this.enqueueUploadGroup(request, selection.prepared)) {
+        await this.releaseUploadBatchQuietly(selection.prepared.id);
+      }
     } finally {
       this.uploadPickers.delete(owner);
     }
@@ -527,10 +564,43 @@ export class StorageTaskService {
       category: 'transfer',
       // Each creation has its own provider ID, even when the destination name is shared.
       conflictKeys: () => [],
-      execute: ({ transfer }, context) => transfer.run(context),
-      pause: ({ transfer }) => transfer.pause(),
-      cancel: ({ transfer }) => transfer.cancel(),
-      canRetry: ({ transfer }) => transfer.retryable,
+      execute: async ({ workRef }, context) => {
+        const key = workKey(workRef);
+        let keepTransfer = false;
+        try {
+          let transfer = this.uploadTransfers.get(key);
+          if (!transfer) {
+            const work = await this.browser.uploads.resolveWork(queueOwnerId, workRef);
+            if (context.signal.aborted) {
+              await this.browser.uploads.cancelWork(queueOwnerId, workRef);
+              return { status: 'cancelled' };
+            }
+            transfer = new UploadTransfer(work.size, work.prepare, toTaskFailure);
+            this.uploadTransfers.set(key, transfer);
+          }
+          const outcome = await transfer.run(context);
+          if (outcome.status === 'paused') keepTransfer = true;
+          return outcome;
+        } catch (error) {
+          if (toBrowserErrorCode(error) === 'Cancelled') return { status: 'cancelled' };
+          keepTransfer = this.uploadTransfers.has(key);
+          throw error;
+        } finally {
+          if (!keepTransfer) this.uploadTransfers.delete(key);
+        }
+      },
+      pause: ({ workRef }) => {
+        this.uploadTransfers.get(workKey(workRef))?.pause();
+      },
+      cancel: async ({ workRef }) => {
+        try {
+          await this.browser.uploads.cancelWork(queueOwnerId, workRef);
+          this.uploadTransfers.get(workKey(workRef))?.cancel();
+        } finally {
+          this.uploadTransfers.delete(workKey(workRef));
+        }
+      },
+      canRetry: ({ workRef }) => this.uploadTransfers.get(workKey(workRef))?.retryable ?? true,
       retry: async () => {}, // The source revalidates the selected file when it opens.
       onSuccess: ({ display }, entry) => {
         this.emitDirectoryChanged({ kind: 'added', parent: display.parent, entry });
@@ -540,6 +610,10 @@ export class StorageTaskService {
         if (failure.code === 'AuthRequired') {
           this.emit({ type: 'auth-required', connectionId: display.parent.connectionId });
         }
+      },
+      release: async ({ workRef }) => {
+        this.uploadTransfers.delete(workKey(workRef));
+        await this.browser.uploads.releaseWork(queueOwnerId, workRef);
       },
     };
   }
@@ -689,6 +763,148 @@ export class StorageTaskService {
     }
   }
 
+  private enqueueStandaloneUpload(request: UploadFileRequest, work: UploadWork): boolean {
+    return this.queue.enqueue({
+      type: 'upload',
+      input: {
+        display: { ...request, name: work.name },
+        workRef: work.ref,
+      },
+    });
+  }
+
+  private enqueueUploadGroup(request: UploadFileRequest, prepared: PreparedUploadBatch): boolean {
+    const hooks: TaskGroupHooks<InternalTaskDefinitions> = {
+      prepare: (context) => this.prepareUploadGroup(request, prepared, context),
+      toFailure: (error) => toTaskFailure(error),
+      onPreparationFailure: (failure) => {
+        if (failure.code === 'AuthRequired') {
+          this.emit({ type: 'auth-required', connectionId: request.parent.connectionId });
+        }
+      },
+      onSettled: async () => {
+        this.browser.uploads.finishBatch(queueOwnerId, prepared.id);
+      },
+      release: () => this.browser.uploads.releaseBatch(queueOwnerId, prepared.id),
+    };
+    return (
+      this.queue.createGroup(
+        {
+          kind: 'upload',
+          input: {
+            names: prepared.items.map((item) => item.name),
+            sourcePath: prepared.sourcePath,
+            destinationPath: request.directoryPath,
+          },
+        },
+        hooks,
+      ) !== undefined
+    );
+  }
+
+  private async prepareUploadGroup(
+    request: UploadFileRequest,
+    prepared: PreparedUploadBatch,
+    context: TaskGroupPreparationContext<InternalTaskDefinitions>,
+  ): Promise<void> {
+    const pending = [...prepared.items].reverse();
+    let activeDirectory: UploadPlanItem | undefined;
+    let discoveredFiles = 0;
+    let preparedFolders = 0;
+    const enqueueFile = async (item: UploadPlanItem) => {
+      if (item.code) {
+        context.reportIssue({
+          label: item.path,
+          failure: toTaskFailure(new StorageError(item.code)),
+        });
+        return;
+      }
+      discoveredFiles++;
+      await context.enqueue(
+        {
+          type: 'upload',
+          input: {
+            display: {
+              parent: item.parent,
+              directoryPath: request.directoryPath,
+              name: item.name,
+              displayName: item.path,
+            },
+            workRef: { planId: prepared.id, itemId: item.id },
+          },
+        },
+        `${prepared.id}:${item.id}`,
+      );
+    };
+    const cancelDirectory = () => {
+      if (!activeDirectory) return;
+      void this.browser.uploads
+        .cancelBatchItem(queueOwnerId, prepared.id, activeDirectory.id)
+        .catch(() => {
+          console.error('Upload directory preparation cancellation failed.');
+        });
+    };
+    context.signal.addEventListener('abort', cancelDirectory, { once: true });
+    const discoverDirectory = async (item: UploadPlanItem) => {
+      let offset: number | undefined = 0;
+      while (offset !== undefined && !context.signal.aborted) {
+        const page: UploadPlanPage = await this.browser.uploads.discoverBatchDirectory(
+          queueOwnerId,
+          prepared.id,
+          item.id,
+          offset,
+        );
+        for (const child of page.items) {
+          if (context.signal.aborted) break;
+          if (child.kind === 'directory') pending.push(child);
+          else await enqueueFile(child);
+        }
+        offset = page.nextOffset;
+      }
+    };
+    const prepareDirectory = async (item: UploadPlanItem) => {
+      if (item.code) {
+        context.reportIssue({
+          label: item.path,
+          failure: toTaskFailure(new StorageError(item.code)),
+        });
+        return;
+      }
+      activeDirectory = item;
+      try {
+        await discoverDirectory(item);
+        preparedFolders++;
+      } catch (error) {
+        if (
+          context.signal.aborted ||
+          fatalUploadDirectoryErrorCodes.has(toBrowserErrorCode(error))
+        ) {
+          throw error;
+        }
+        context.reportIssue({ label: item.path, failure: toTaskFailure(error) });
+      } finally {
+        activeDirectory = undefined;
+      }
+    };
+    try {
+      while (pending.length && !context.signal.aborted) {
+        const item = pending.pop()!;
+        if (item.kind === 'directory') await prepareDirectory(item);
+        else await enqueueFile(item);
+        context.reportProgress({
+          kind: 'indeterminate',
+          stage: { key: 'storage:uploadScanning' },
+          summary: {
+            key: 'storage:uploadPreparationProgress',
+            values: { discoveredFiles, preparedFolders },
+          },
+        });
+      }
+    } finally {
+      context.signal.removeEventListener('abort', cancelDirectory);
+    }
+  }
+
   private projectTask(task: QueueTask<InternalTaskDefinitions>): StorageTaskItem {
     const controls: TaskControlAvailability = {
       supportsPause: this.queue.supportsControl(task, 'pause'),
@@ -748,6 +964,22 @@ export class StorageTaskService {
       await this.browser.downloads.releaseBatch(queueOwnerId, id);
     } catch {
       console.error('Download batch cleanup failed.');
+    }
+  }
+
+  private async releaseUploadWorkQuietly(ref: UploadWorkRef): Promise<void> {
+    try {
+      await this.browser.uploads.releaseWork(queueOwnerId, ref);
+    } catch {
+      console.error('Upload work cleanup failed.');
+    }
+  }
+
+  private async releaseUploadBatchQuietly(id: string): Promise<void> {
+    try {
+      await this.browser.uploads.releaseBatch(queueOwnerId, id);
+    } catch {
+      console.error('Upload batch cleanup failed.');
     }
   }
 }

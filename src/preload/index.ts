@@ -30,6 +30,7 @@ const api: DesktopApi = {
     enqueueRename: (request) => ipcRenderer.invoke(channels.enqueueRenameTask, request),
     enqueueDelete: (request) => ipcRenderer.invoke(channels.enqueueDeleteTask, request),
     uploadFile: (request) => ipcRenderer.invoke(channels.uploadFileTask, request),
+    uploadFolder: (request) => ipcRenderer.invoke(channels.uploadFolderTask, request),
     prepareDownload: (request) => ipcRenderer.invoke(channels.prepareDownloadTask, request),
     confirmDownload: (confirmationId) =>
       ipcRenderer.invoke(channels.confirmDownloadTask, confirmationId),

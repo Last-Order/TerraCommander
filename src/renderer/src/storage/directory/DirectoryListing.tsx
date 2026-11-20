@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActionIcon, Button, Menu, Transition, VisuallyHidden } from '@mantine/core';
 import { useReducedMotion } from '@mantine/hooks';
-import { CircleAlert, RefreshCw, Upload } from 'lucide-react';
+import { CircleAlert, FileUp, FolderUp, RefreshCw, Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
 import type { Entry, EntryRef } from '@shared/storage';
@@ -42,6 +42,7 @@ interface ListingProps {
   version: number;
   directoryPath: string;
   canUpload: boolean;
+  canUploadFolder: boolean;
   onOpen: (entry: Entry) => void;
   onAuthRequired: () => void;
   children: ReactNode;
@@ -54,6 +55,7 @@ export function DirectoryListing({
   version,
   directoryPath,
   canUpload,
+  canUploadFolder,
   onOpen,
   onAuthRequired,
   children,
@@ -127,11 +129,11 @@ export function DirectoryListing({
     actions.closeMenu();
     refresh();
   };
-  const uploadFile = async () => {
+  const startUpload = async (upload: () => Promise<void>) => {
     setUploadPending(true);
     setUploadError(null);
     try {
-      await queue.uploadFile({ parent, directoryPath });
+      await upload();
     } catch (failure) {
       const code = errorKey(failure);
       if (code !== 'Cancelled') setUploadError(code);
@@ -140,6 +142,8 @@ export function DirectoryListing({
       setUploadPending(false);
     }
   };
+  const uploadFile = () => startUpload(() => queue.uploadFile({ parent, directoryPath }));
+  const uploadFolder = () => startUpload(() => queue.uploadFolder({ parent, directoryPath }));
   const openSearch = () => {
     actions.closeMenu();
     search.open();
@@ -182,19 +186,49 @@ export function DirectoryListing({
       <header className={classes.directoryHeader}>
         {children}
         <div className={classes.directoryActions}>
-          {canUpload && (
-            <ActionIcon
-              type="button"
-              variant="subtle"
-              color="gray"
-              aria-label={t('uploadFile')}
-              title={t('uploadFile')}
-              disabled={loading || uploadPending || error !== null}
-              onClick={() => void uploadFile()}
-            >
-              <Upload size={16} strokeWidth={1.5} aria-hidden="true" />
-            </ActionIcon>
-          )}
+          {canUpload &&
+            (canUploadFolder ? (
+              <Menu position="bottom-end" withinPortal>
+                <Menu.Target>
+                  <ActionIcon
+                    type="button"
+                    variant="subtle"
+                    color="gray"
+                    aria-label={t('upload')}
+                    title={t('upload')}
+                    disabled={loading || uploadPending || error !== null}
+                  >
+                    <Upload size={16} strokeWidth={1.5} aria-hidden="true" />
+                  </ActionIcon>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Item
+                    leftSection={<FileUp size={16} strokeWidth={1.5} aria-hidden="true" />}
+                    onClick={() => void uploadFile()}
+                  >
+                    {t('uploadFile')}
+                  </Menu.Item>
+                  <Menu.Item
+                    leftSection={<FolderUp size={16} strokeWidth={1.5} aria-hidden="true" />}
+                    onClick={() => void uploadFolder()}
+                  >
+                    {t('uploadFolder')}
+                  </Menu.Item>
+                </Menu.Dropdown>
+              </Menu>
+            ) : (
+              <ActionIcon
+                type="button"
+                variant="subtle"
+                color="gray"
+                aria-label={t('upload')}
+                title={t('upload')}
+                disabled={loading || uploadPending || error !== null}
+                onClick={() => void uploadFile()}
+              >
+                <Upload size={16} strokeWidth={1.5} aria-hidden="true" />
+              </ActionIcon>
+            ))}
           <ActionIcon
             ref={refreshButton}
             variant="subtle"

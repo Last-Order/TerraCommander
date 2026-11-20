@@ -180,7 +180,7 @@ it('uploads the selected file with speed reporting, pause and resume in the task
   const upload = handlers.get(channels.uploadFileTask)!;
   const remoteParent = { ...parent, connectionId: '5e45885a-89f0-462e-9821-7195cba174e5' };
   const request = { parent: remoteParent, directoryPath: '/Drive' };
-  const target = vi.spyOn(browser, 'validateUploadDestination').mockResolvedValue(undefined);
+  const target = vi.spyOn(browser.uploads, 'validateDestination').mockResolvedValue(undefined);
   const uploaded = { ...entry, ref: { ...remoteParent, locator: 'uploaded-file' } };
   const run = vi
     .fn<WriteExecution['run']>()
@@ -214,9 +214,10 @@ it('uploads the selected file with speed reporting, pause and resume in the task
   await writeFile(path, 'content');
   picker.mockResolvedValueOnce({ canceled: false, filePaths: [path] });
   expect(await upload(event, request)).toEqual({ ok: true, value: undefined });
-  expect(picker).toHaveBeenLastCalledWith(expect.anything(), { properties: ['openFile'] });
-  expect(target).toHaveBeenLastCalledWith(remoteParent);
-  expect(write).toHaveBeenCalledExactlyOnceWith(remoteParent, entry.name, expect.anything());
+  expect(picker).toHaveBeenLastCalledWith(expect.anything(), {
+    properties: ['openFile', 'multiSelections'],
+  });
+  expect(target).toHaveBeenLastCalledWith(remoteParent, undefined);
   await vi.waitFor(async () =>
     expect(await snapshot()).toMatchObject({
       value: {
@@ -231,6 +232,7 @@ it('uploads the selected file with speed reporting, pause and resume in the task
       },
     }),
   );
+  expect(write).toHaveBeenCalledExactlyOnceWith(remoteParent, entry.name, expect.anything());
   await vi.waitFor(async () => {
     const result = (await snapshot()) as {
       value: { tasks: [{ progress: { bytesPerSecond: number } }] };
@@ -410,7 +412,7 @@ it('pauses an upload on retryable failure and resumes the existing write session
   const { event, browser, parent, services, send } = setup();
   const taskService = new StorageTaskService(browser);
   vi.spyOn(services.tasks, 'get').mockResolvedValue(taskService);
-  const target = vi.spyOn(browser, 'validateUploadDestination').mockResolvedValue(undefined);
+  const target = vi.spyOn(browser.uploads, 'validateDestination').mockResolvedValue(undefined);
   const remoteParent = { ...parent, connectionId: '5e45885a-89f0-462e-9821-7195cba174e5' };
   const entry = {
     ref: { ...remoteParent, locator: 'uploaded-retry' },
@@ -439,7 +441,7 @@ it('pauses an upload on retryable failure and resumes the existing write session
       directoryPath: 'My Drive',
     }),
   ).toEqual({ ok: true, value: undefined });
-  expect(target).toHaveBeenCalledWith(remoteParent);
+  expect(target).toHaveBeenCalledWith(remoteParent, undefined);
   const snapshot = () => handlers.get(channels.getTaskSnapshot)!(event);
   await vi.waitFor(async () =>
     expect(await snapshot()).toMatchObject({
@@ -469,4 +471,21 @@ it('pauses an upload on retryable failure and resumes the existing write session
   expect(prepare).toHaveBeenCalledTimes(1);
   expect(run).toHaveBeenCalledTimes(2);
   await taskService.dispose();
+});
+
+it('opens a multi-directory picker for folder upload requests', async () => {
+  const { event, browser, parent } = setup();
+  const uploadFolder = handlers.get(channels.uploadFolderTask)!;
+  const remoteParent = { ...parent, connectionId: '5e45885a-89f0-462e-9821-7195cba174e5' };
+  const target = vi.spyOn(browser.uploads, 'validateDestination').mockResolvedValue(undefined);
+  picker.mockResolvedValueOnce({ canceled: true, filePaths: [] });
+
+  expect(await uploadFolder(event, { parent: remoteParent, directoryPath: '/Drive' })).toEqual({
+    ok: true,
+    value: undefined,
+  });
+  expect(picker).toHaveBeenLastCalledWith(expect.anything(), {
+    properties: ['openDirectory', 'multiSelections'],
+  });
+  expect(target).toHaveBeenLastCalledWith(remoteParent, true);
 });

@@ -260,3 +260,90 @@ it('reports scope-accurate capabilities, omits absent metadata, and respects can
     await registry.dispose();
   }
 });
+
+it.each([
+  { spaceId: 'my-drive', driveId: undefined, parentLocator: 'root' },
+  { spaceId: 'shared:team', driveId: 'team', parentLocator: 'team' },
+])(
+  'creates folders in $spaceId and enforces parent kind and permissions',
+  async ({ spaceId, driveId, parentLocator }) => {
+    let canAddChildren = true;
+    let parentMimeType = 'application/vnd.google-apps.folder';
+    const request = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      if (init?.method === 'POST') {
+        expect(url.pathname).toBe('/drive/v3/files');
+        expect(url.searchParams.get('supportsAllDrives')).toBe('true');
+        expect(JSON.parse(init.body as string)).toEqual({
+          name: 'Photos',
+          mimeType: 'application/vnd.google-apps.folder',
+          parents: [parentLocator],
+        });
+        return Response.json({
+          id: 'new-folder',
+          name: 'Photos',
+          mimeType: 'application/vnd.google-apps.folder',
+          driveId,
+          parents: [parentLocator],
+          capabilities: { canAddChildren: true, canRename: true, canTrash: true },
+        });
+      }
+      expect(url.pathname).toBe(`/drive/v3/files/${parentLocator}`);
+      return Response.json({
+        id: parentLocator,
+        name: 'Parent',
+        mimeType: parentMimeType,
+        driveId,
+        capabilities: { canAddChildren },
+      });
+    });
+    const registry = new AdapterRegistry({
+      credentials: {
+        async resolve() {
+          return {
+            provider: 'google-drive',
+            connectionId: 'account',
+            subject: 'subject',
+            oauthClientId: 'client',
+            getAccessToken: async () => 'test-access-token',
+          };
+        },
+      },
+      logger: { event() {} },
+    });
+    registry.register(googleDriveAdapterFactory(request));
+    const storage = new StorageAccess(registry);
+    const parent = { connectionId: 'account', spaceId, locator: parentLocator };
+    try {
+      await registry.connect({
+        id: 'account',
+        provider: 'google-drive',
+        configuration: { subject: 'subject', oauthClientId: 'client' },
+        credentialRef: 'ref',
+      });
+      const created = await storage.createDirectory({ parent, name: 'Photos' });
+      expect(created).toMatchObject({
+        ref: { connectionId: 'account', spaceId, locator: 'new-folder' },
+        name: 'Photos',
+        kind: 'directory',
+        capabilities: {
+          createDirectory: { support: 'supported' },
+          write: { support: 'supported' },
+        },
+      });
+
+      canAddChildren = false;
+      await expect(storage.createDirectory({ parent, name: 'Photos' })).rejects.toMatchObject({
+        code: 'PermissionDenied',
+      });
+
+      canAddChildren = true;
+      parentMimeType = 'text/plain';
+      await expect(storage.createDirectory({ parent, name: 'Photos' })).rejects.toMatchObject({
+        code: 'InvalidArgument',
+      });
+    } finally {
+      await registry.dispose();
+    }
+  },
+);

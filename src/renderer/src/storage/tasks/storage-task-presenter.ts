@@ -31,7 +31,7 @@ export const presentStorageTask: TaskPresenter<StorageTaskItem> = (task) => {
       return {
         compact: true,
         typeLabel: { key: 'storage:uploadTask' },
-        title: [{ text: task.request.input.name }],
+        title: [{ text: task.request.input.displayName ?? task.request.input.name }],
         summary: task.request.input.directoryPath,
       };
     case 'download': {
@@ -52,7 +52,9 @@ export const presentStorageTask: TaskPresenter<StorageTaskItem> = (task) => {
 export const presentStorageTaskGroup: TaskGroupPresenter<StorageTaskGroupItem> = (group) => {
   const input = group.request.input;
   return {
-    typeLabel: { key: 'storage:downloadEntry' },
+    typeLabel: {
+      key: group.request.kind === 'upload' ? 'storage:uploadTask' : 'storage:downloadEntry',
+    },
     title: input.names.slice(0, 3).map((name) => ({ text: name })),
     summary: `${input.sourcePath} → ${input.destinationPath}`,
   };

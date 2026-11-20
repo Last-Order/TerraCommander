@@ -75,6 +75,12 @@ export class StorageTaskClient implements TaskQueueViewClient<
     return resultOf(api.uploadFile(request));
   }
 
+  uploadFolder(request: UploadFileRequest): Promise<void> {
+    const api = this.api;
+    if (!api) return Promise.reject(new StorageBrowserError('Unsupported'));
+    return resultOf(api.uploadFolder(request));
+  }
+
   prepareDownload(request: PrepareDownloadRequest): Promise<PrepareDownloadResponse> {
     const api = this.api;
     if (!api) return Promise.reject(new StorageBrowserError('Unsupported'));

@@ -106,6 +106,7 @@ export function createFakeTasksApi(options: FakeTasksOptions = {}) {
   const api = {
     getSnapshot: vi.fn<TasksApi['getSnapshot']>(async () => success(snapshot)),
     uploadFile: vi.fn<TasksApi['uploadFile']>(async () => success(undefined)),
+    uploadFolder: vi.fn<TasksApi['uploadFolder']>(async () => success(undefined)),
     enqueueRename: vi.fn<TasksApi['enqueueRename']>(async (request) => {
       if (isBusy(request.entry.ref)) return success(false);
       const id = ++nextId;

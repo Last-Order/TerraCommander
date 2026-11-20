@@ -24,6 +24,7 @@ export const channels = {
   enqueueRenameTask: 'tasks:enqueue-rename',
   enqueueDeleteTask: 'tasks:enqueue-delete',
   uploadFileTask: 'tasks:upload-file',
+  uploadFolderTask: 'tasks:upload-folder',
   prepareDownloadTask: 'tasks:prepare-download',
   confirmDownloadTask: 'tasks:confirm-download',
   cancelDownloadConfirmation: 'tasks:cancel-download-confirmation',

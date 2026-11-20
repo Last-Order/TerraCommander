@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type {
   Capabilities,
   CapabilityScope,
+  CreateTarget,
   Entry,
   EntryPage,
   EntryRef,
@@ -34,7 +35,7 @@ const driveBaseCapabilities: Capabilities = {
   rename: supported,
   remove: supported,
   write: unknown,
-  createDirectory: unsupported,
+  createDirectory: unknown,
   copyWithin: unsupported,
   moveWithin: unsupported,
   conditionalRead: unsupported,
@@ -282,6 +283,37 @@ class GoogleDriveAdapter implements StorageAdapter {
     );
   }
 
+  async createDirectory(target: CreateTarget, context: OperationContext): Promise<Entry> {
+    const { parent, name } = target;
+    const folder = await this.getFile(parent, context);
+    if (folder.mimeType !== 'application/vnd.google-apps.folder') {
+      throw new StorageError('InvalidArgument');
+    }
+    if (folder.capabilities?.canAddChildren === false) throw new StorageError('PermissionDenied');
+    const params = new URLSearchParams({
+      fields: `${fileFields},parents`,
+      supportsAllDrives: 'true',
+    });
+    const created = await this.requestJson('files', params, fileSchema, context, {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [folder.id],
+      }),
+    });
+    if (
+      created.trashed ||
+      created.name !== name ||
+      created.mimeType !== 'application/vnd.google-apps.folder' ||
+      created.driveId !== this.sharedDriveId(parent.spaceId) ||
+      !created.parents?.includes(folder.id)
+    ) {
+      throw new StorageError('OutcomeUnknown');
+    }
+    return fileEntry({ ...parent, locator: created.id }, created, false);
+  }
+
   async remove(ref: EntryRef, context: OperationContext): Promise<void> {
     const id = parse(identifier, ref.locator);
     const driveId = this.sharedDriveId(ref.spaceId);
@@ -388,6 +420,7 @@ function fileEntry(ref: EntryRef, file: z.infer<typeof fileSchema>, isRoot: bool
         file.capabilities?.canDownload,
       ),
       write: grantedCapability(kind !== 'directory', file.capabilities?.canAddChildren),
+      createDirectory: grantedCapability(kind !== 'directory', file.capabilities?.canAddChildren),
       rename: grantedCapability(isRoot, file.capabilities?.canRename),
       remove: grantedCapability(isRoot || kind === 'directory', file.capabilities?.canTrash),
     },

@@ -119,10 +119,25 @@ export function registerTaskIpc(
     (tasks, _window, request) => tasks.enqueueDelete(request),
   );
   handleTask(channels.uploadFileTask, z.tuple([uploadFileSchema]), (tasks, window, request) =>
-    tasks.uploadFile(window.webContents.id, request, async () => {
-      const result = await dialog.showOpenDialog(window, { properties: ['openFile'] });
-      return result.canceled ? undefined : result.filePaths[0];
+    tasks.uploadPaths(window.webContents.id, request, async () => {
+      const result = await dialog.showOpenDialog(window, {
+        properties: ['openFile', 'multiSelections'],
+      });
+      return result.canceled ? [] : result.filePaths;
     }),
+  );
+  handleTask(channels.uploadFolderTask, z.tuple([uploadFileSchema]), (tasks, window, request) =>
+    tasks.uploadPaths(
+      window.webContents.id,
+      request,
+      async () => {
+        const result = await dialog.showOpenDialog(window, {
+          properties: ['openDirectory', 'multiSelections'],
+        });
+        return result.canceled ? [] : result.filePaths;
+      },
+      { requireCreateDirectory: true },
+    ),
   );
   handleTask(
     channels.prepareDownloadTask,

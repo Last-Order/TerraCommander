@@ -56,6 +56,11 @@ export function DirectoryPane({ space, cache, onAuthRequired }: DirectoryProps) 
           current.ref.connectionId !== localConnectionId &&
           current.capabilities?.write?.support !== 'unsupported'
         }
+        canUploadFolder={
+          current.ref.connectionId !== localConnectionId &&
+          current.capabilities?.write?.support !== 'unsupported' &&
+          current.capabilities?.createDirectory?.support !== 'unsupported'
+        }
         onOpen={(entry) => setTrail([...trail, entry])}
         onAuthRequired={onAuthRequired}
       >
