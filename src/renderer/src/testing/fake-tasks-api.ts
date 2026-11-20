@@ -96,12 +96,16 @@ export function createFakeTasksApi(options: FakeTasksOptions = {}) {
   const isBusy = (ref: EntryRef) => {
     const target = entryKey(ref);
     return snapshot.tasks.some(
-      (task) => !isFinishedStatus(task.status) && entryKey(task.request.input.entry.ref) === target,
+      (task) =>
+        task.request.type !== 'upload' &&
+        !isFinishedStatus(task.status) &&
+        entryKey(task.request.input.entry.ref) === target,
     );
   };
 
   const api = {
     getSnapshot: vi.fn<TasksApi['getSnapshot']>(async () => success(snapshot)),
+    uploadFile: vi.fn<TasksApi['uploadFile']>(async () => success(undefined)),
     enqueueRename: vi.fn<TasksApi['enqueueRename']>(async (request) => {
       if (isBusy(request.entry.ref)) return success(false);
       const id = ++nextId;

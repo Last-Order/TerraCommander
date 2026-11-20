@@ -20,7 +20,14 @@ import {
   targetRef,
   writeRequirements,
 } from '../core/adapter-operations';
-import type { ByteSource, OperationContext, ReadHandle } from '../core/contracts';
+import type {
+  AdapterWriteSession,
+  ByteSource,
+  OperationContext,
+  ReadHandle,
+  ReopenableByteSource,
+  WriteExecution,
+} from '../core/contracts';
 import { normalizeStorageError, StorageError, throwIfAborted } from '../core/errors';
 import { managedRead, scopeSource } from '../core/streams';
 import {
@@ -35,6 +42,7 @@ import {
   writeTargetSchema,
 } from '../core/validation';
 import type { AdapterLease, AdapterRegistry } from '../registry/adapter-registry';
+import type { StorageAdapter } from '../ports/adapter';
 import { CursorCodec } from './cursors';
 
 const DEFAULT_PAGE_SIZE = 100;
@@ -173,6 +181,49 @@ export class StorageAccess {
         await sourceScope.dispose();
       }
     });
+  }
+
+  createWriteSession(input: WriteTarget, source: ReopenableByteSource): WriteExecution {
+    const target = parse(writeTargetSchema, input);
+    const ref = targetRef(target);
+    let prepared: { adapter: StorageAdapter; session: AdapterWriteSession } | undefined;
+    let running = false;
+    const run: WriteExecution['run'] = (context) =>
+      this.withConnection(ref.connectionId, context, async (lease) => {
+        const { adapter, context: operation } = lease;
+        if (!prepared) {
+          const { pauseSignal } = context;
+          const signal =
+            pauseSignal && operation.signal
+              ? AbortSignal.any([pauseSignal, operation.signal])
+              : (pauseSignal ?? operation.signal);
+          const preparation = signal ? { ...operation, signal } : operation;
+          await requireCapabilities(adapter, ref, writeRequirements(target), preparation);
+          if (!adapter.prepareWrite) throw new StorageError('Unsupported');
+          const session = await adapter.prepareWrite(target, source.descriptor, preparation);
+          prepared = { adapter, session };
+        }
+        if (prepared.adapter !== adapter) throw new StorageError('ResumeInvalid');
+        const scoped = scopeSource(source, operation);
+        try {
+          if (scoped.source.kind !== 'reopenable') throw new StorageError('ResumeInvalid');
+          const entry = await prepared.session.run(scoped.source, { ...context, ...operation });
+          return checkedEntry(entry, ref.connectionId, ref.spaceId);
+        } finally {
+          await scoped.dispose();
+        }
+      });
+    return {
+      async run(context) {
+        if (running) throw new StorageError('PreconditionFailed');
+        running = true;
+        try {
+          return await run(context);
+        } finally {
+          running = false;
+        }
+      },
+    };
   }
 
   async createDirectory(input: CreateTarget, context: OperationContext = {}): Promise<Entry> {

@@ -5,6 +5,7 @@ import type {
   StorageProvider,
 } from '@shared/storage-browser';
 import { StorageAccess, StorageError, type StorageLogger } from '@main/storage';
+import type { ReopenableByteSource, WriteExecution } from '@main/storage/core/contracts';
 import type { AccountRuntime } from '../application-services';
 import { DownloadService } from '../downloads/download-service';
 import { measureDirectorySize } from './measure-directory-size';
@@ -82,6 +83,24 @@ export class StorageBrowser {
 
   listDirectory(parent: EntryRef, cursor?: string) {
     return this.spaces.withBrowsableSpace(parent, () => this.storage.list(parent, { cursor }));
+  }
+
+  async validateUploadDestination(parent: EntryRef): Promise<void> {
+    const directory = await this.spaces.withBrowsableSpace(parent, () => this.storage.stat(parent));
+    if (directory.kind !== 'directory') throw new StorageError('InvalidArgument');
+    if (directory.capabilities.write?.support === 'unsupported') {
+      throw new StorageError('PermissionDenied');
+    }
+  }
+
+  prepareUpload(parent: EntryRef, name: string, source: ReopenableByteSource): WriteExecution {
+    const execution = this.storage.createWriteSession(
+      { kind: 'create', parent, name, policy: 'create-only' },
+      source,
+    );
+    return {
+      run: (context) => this.spaces.withBrowsableSpace(parent, () => execution.run(context)),
+    };
   }
 
   renameEntry(ref: EntryRef, name: string) {

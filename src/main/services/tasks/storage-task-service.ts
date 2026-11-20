@@ -14,6 +14,8 @@ import type {
   StorageTaskSnapshot,
   TaskControlAvailability,
   TaskFailure,
+  UploadFileRequest,
+  UploadTaskDisplayInput,
 } from '@shared/tasks';
 import { AccountError } from '@main/accounts/core/errors';
 import { StorageError, normalizeStorageError } from '@main/storage';
@@ -34,15 +36,23 @@ import type {
   PreparedDownloadBatch,
 } from '../downloads/download-types';
 import type { StorageBrowser } from '../storage/storage-browser';
+import { prepareLocalUpload } from '../uploads/local-upload-source';
+import { UploadTransfer } from '../uploads/upload-transfer';
 
 interface InternalDownloadInput extends DownloadTaskDisplayInput {
   workRef: DownloadWorkRef;
+}
+
+interface InternalUploadInput {
+  display: UploadTaskDisplayInput;
+  transfer: UploadTransfer;
 }
 
 type InternalTaskDefinitions = {
   rename: { input: RenameTaskRequest; result: Entry };
   delete: { input: DeleteTaskRequest; result: void };
   download: { input: InternalDownloadInput; result: void };
+  upload: { input: InternalUploadInput; result: Entry };
 };
 
 type InternalGroupDefinitions = {
@@ -103,6 +113,7 @@ export class StorageTaskService {
   private readonly downloadExecutions = new Map<string, DownloadExecution>();
   private readonly confirmations = new Map<string, PendingConfirmation>();
   private readonly ownerEpochs = new Map<number, number>();
+  private readonly uploadPickers = new Set<number>();
   private readonly listeners = new Set<(event: StorageTaskEvent) => void>();
   private readonly unsubscribeQueue: () => void;
   private disposed = false;
@@ -114,6 +125,7 @@ export class StorageTaskService {
         rename: this.createRenameHandler(),
         delete: this.createDeleteHandler(),
         download: this.createDownloadHandler(),
+        upload: this.createUploadHandler(),
       },
       { concurrencyLimits: { operation: 16, transfer: 8 } },
     );
@@ -143,6 +155,39 @@ export class StorageTaskService {
 
   enqueueDelete(request: DeleteTaskRequest): boolean {
     return this.queue.enqueue({ type: 'delete', input: request });
+  }
+
+  // TODO: When adding folder uploads, introduce UploadService alongside DownloadService.
+  // Share the upload plan with single-file uploads, define the same-name folder policy,
+  // and retain destination directory IDs across retries. Keep task group scheduling here.
+  async uploadFile(
+    owner: number,
+    request: UploadFileRequest,
+    pickFile: () => Promise<string | undefined>,
+  ): Promise<void> {
+    if (this.disposed || this.uploadPickers.has(owner)) return;
+    const epoch = this.ownerEpochs.get(owner) ?? 0;
+    const active = () => !this.disposed && (this.ownerEpochs.get(owner) ?? 0) === epoch;
+    this.uploadPickers.add(owner);
+    try {
+      await this.browser.validateUploadDestination(request.parent);
+      if (!active()) return;
+      const path = await pickFile();
+      if (!path || !active()) return;
+      const { name, source } = await prepareLocalUpload(path);
+      if (!active()) return;
+      this.queue.enqueue({
+        type: 'upload',
+        input: {
+          display: { ...request, name },
+          transfer: new UploadTransfer(source.descriptor.size, () =>
+            this.browser.prepareUpload(request.parent, name, source),
+          ),
+        },
+      });
+    } finally {
+      this.uploadPickers.delete(owner);
+    }
   }
 
   async prepareDownload(
@@ -472,6 +517,28 @@ export class StorageTaskService {
     };
   }
 
+  private createUploadHandler(): TaskHandler<InternalUploadInput, Entry, TaskCategory> {
+    return {
+      category: 'transfer',
+      // Each creation has its own provider ID, even when the destination name is shared.
+      conflictKeys: () => [],
+      execute: ({ transfer }, context) => transfer.run(context),
+      pause: ({ transfer }) => transfer.pause(),
+      cancel: ({ transfer }) => transfer.cancel(),
+      canRetry: ({ transfer }) => transfer.retryable,
+      retry: async () => {}, // The source revalidates the selected file when it opens.
+      onSuccess: ({ display }, entry) => {
+        this.emitDirectoryChanged({ kind: 'added', parent: display.parent, entry });
+      },
+      toFailure: (error) => toTaskFailure(error),
+      onFailure: ({ display }, failure) => {
+        if (failure.code === 'AuthRequired') {
+          this.emit({ type: 'auth-required', connectionId: display.parent.connectionId });
+        }
+      },
+    };
+  }
+
   private enqueueStandaloneDownload(
     request: PrepareDownloadRequest,
     entry: Entry,
@@ -640,6 +707,9 @@ export class StorageTaskService {
     if (task.request.type === 'download') {
       const { workRef: _workRef, ...displayInput } = task.request.input;
       return { ...common, request: { type: 'download', input: displayInput } };
+    }
+    if (task.request.type === 'upload') {
+      return { ...common, request: { type: 'upload', input: task.request.input.display } };
     }
     return { ...common, request: task.request };
   }

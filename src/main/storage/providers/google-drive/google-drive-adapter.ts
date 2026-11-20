@@ -8,9 +8,11 @@ import type {
   ListRequest,
   ReadOptions,
   Space,
+  SourceDescriptor,
+  WriteTarget,
 } from '@shared/storage';
 import { matchesGoogleDriveAuthorization, type GoogleDriveAuthorization } from './authorization';
-import type { OperationContext } from '@main/storage/core/contracts';
+import type { ByteSource, OperationContext } from '@main/storage/core/contracts';
 import { StorageError, throwIfAborted } from '@main/storage/core/errors';
 import { parse } from '@main/storage/core/validation';
 import type { AdapterFactory, StorageAdapter } from '@main/storage/ports/adapter';
@@ -18,6 +20,7 @@ import type { StorageLogger } from '@main/storage/ports/services';
 import { logGoogleDriveFailure } from './google-drive-diagnostics';
 import { driveFailure } from './google-drive-errors';
 import { readGoogleDriveContent } from './google-drive-read';
+import { createGoogleDriveWriteSession } from './google-drive-write';
 
 const myDriveId = 'my-drive';
 const sharedPrefix = 'shared:';
@@ -30,7 +33,7 @@ const driveBaseCapabilities: Capabilities = {
   rangeRead: supported,
   rename: supported,
   remove: supported,
-  write: unsupported,
+  write: unknown,
   createDirectory: unsupported,
   copyWithin: unsupported,
   moveWithin: unsupported,
@@ -39,15 +42,17 @@ const driveBaseCapabilities: Capabilities = {
   resumeWrite: unsupported,
 };
 const identifier = z.string().regex(/^[A-Za-z0-9_-]+$/);
+const generatedIdsSchema = z.object({ ids: z.tuple([identifier]) });
 const token = z.string().min(1);
 const fileFields =
-  'id,name,mimeType,driveId,trashed,size,modifiedTime,sha256Checksum,md5Checksum,capabilities(canRename,canTrash,canDownload)';
+  'id,name,mimeType,driveId,trashed,size,modifiedTime,sha256Checksum,md5Checksum,capabilities(canRename,canTrash,canDownload,canAddChildren)';
 const fileSchema = z.object({
   id: identifier,
   name: z.string(),
   mimeType: token,
   driveId: identifier.optional(),
   trashed: z.boolean().optional(),
+  parents: z.array(identifier).optional(),
   size: z.string().regex(/^\d+$/).optional(),
   modifiedTime: z.iso.datetime({ offset: true }).optional(),
   sha256Checksum: z
@@ -63,6 +68,7 @@ const fileSchema = z.object({
       canRename: z.boolean().optional(),
       canTrash: z.boolean().optional(),
       canDownload: z.boolean().optional(),
+      canAddChildren: z.boolean().optional(),
     })
     .optional(),
 });
@@ -139,15 +145,20 @@ class GoogleDriveAdapter implements StorageAdapter {
   }
 
   async stat(ref: EntryRef, context: OperationContext): Promise<Entry> {
+    const file = await this.getFile(ref, context);
+    const isRoot = ref.locator === 'root' || ref.locator === this.sharedDriveId(ref.spaceId);
+    return fileEntry(ref, file, isRoot);
+  }
+
+  private async getFile(ref: EntryRef, context: OperationContext, fields = fileFields) {
     const id = parse(identifier, ref.locator);
     const driveId = this.sharedDriveId(ref.spaceId);
-    const params = new URLSearchParams({ fields: fileFields, supportsAllDrives: 'true' });
+    const params = new URLSearchParams({ fields, supportsAllDrives: 'true' });
     const file = await this.requestJson('files/' + id, params, fileSchema, context);
     if (file.trashed || (file.driveId !== driveId && file.id !== driveId)) {
       throw new StorageError('NotFound');
     }
-    const isRoot = id === 'root' || id === driveId;
-    return fileEntry(ref, file, isRoot);
+    return file;
   }
 
   async list(
@@ -212,6 +223,62 @@ class GoogleDriveAdapter implements StorageAdapter {
       context,
       options.range,
       this.logger,
+    );
+  }
+
+  async write(target: WriteTarget, source: ByteSource, context: OperationContext): Promise<Entry> {
+    if (source.kind !== 'reopenable') throw new StorageError('Unsupported');
+    const session = await this.prepareWrite(target, source.descriptor, context);
+    return session.run(source, context);
+  }
+
+  async prepareWrite(target: WriteTarget, source: SourceDescriptor, context: OperationContext) {
+    if (target.kind !== 'create') throw new StorageError('Unsupported');
+    const { parent, name } = target;
+    const folder = await this.getFile(parent, context);
+    if (folder.mimeType !== 'application/vnd.google-apps.folder') {
+      throw new StorageError('InvalidArgument');
+    }
+    if (folder.capabilities?.canAddChildren === false) throw new StorageError('PermissionDenied');
+
+    const {
+      ids: [id],
+    } = await this.requestJson(
+      'files/generateIds',
+      new URLSearchParams({ count: '1', space: 'drive' }),
+      generatedIdsSchema,
+      context,
+    );
+    const ref = { ...parent, locator: id };
+    const fields = `${fileFields},parents`;
+    const complete = (payload: unknown): Entry => {
+      const uploaded = parse(fileSchema, payload, 'OutcomeUnknown');
+      if (
+        uploaded.id !== id ||
+        uploaded.trashed ||
+        uploaded.name !== name ||
+        uploaded.driveId !== this.sharedDriveId(parent.spaceId) ||
+        !uploaded.parents?.includes(folder.id) ||
+        uploaded.size === undefined ||
+        Number(uploaded.size) !== source.size ||
+        uploaded.mimeType.startsWith('application/vnd.google-apps.')
+      ) {
+        throw new StorageError('OutcomeUnknown');
+      }
+      return fileEntry(ref, uploaded, false);
+    };
+    return createGoogleDriveWriteSession(
+      {
+        id,
+        name,
+        parentId: folder.id,
+        fields,
+        size: source.size,
+        complete,
+        reconcile: async (operation) => complete(await this.getFile(ref, operation, fields)),
+      },
+      this.authorization,
+      this.request,
     );
   }
 
@@ -320,6 +387,7 @@ function fileEntry(ref: EntryRef, file: z.infer<typeof fileSchema>, isRoot: bool
         kind !== 'file' || file.mimeType.startsWith('application/vnd.google-apps.'),
         file.capabilities?.canDownload,
       ),
+      write: grantedCapability(kind !== 'directory', file.capabilities?.canAddChildren),
       rename: grantedCapability(isRoot, file.capabilities?.canRename),
       remove: grantedCapability(isRoot || kind === 'directory', file.capabilities?.canTrash),
     },

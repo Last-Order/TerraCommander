@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActionIcon, Button, Menu, Transition, VisuallyHidden } from '@mantine/core';
 import { useReducedMotion } from '@mantine/hooks';
-import { CircleAlert, RefreshCw } from 'lucide-react';
+import { CircleAlert, RefreshCw, Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
 import type { Entry, EntryRef } from '@shared/storage';
 import { useKeyboardShortcuts } from '@renderer/shortcuts/useKeyboardShortcuts';
+import { errorKey, type StorageErrorKey } from '../storage-client';
 import { selectPendingEntryEffects } from '../tasks/pending-entry-effects';
 import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
 import type { DirectoryCache } from './directory-cache';
@@ -40,6 +41,7 @@ interface ListingProps {
   cacheable: boolean;
   version: number;
   directoryPath: string;
+  canUpload: boolean;
   onOpen: (entry: Entry) => void;
   onAuthRequired: () => void;
   children: ReactNode;
@@ -51,6 +53,7 @@ export function DirectoryListing({
   cacheable,
   version,
   directoryPath,
+  canUpload,
   onOpen,
   onAuthRequired,
   children,
@@ -59,6 +62,8 @@ export function DirectoryListing({
   const reduceMotion = useReducedMotion();
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const [sort, setSort] = useState<DirectorySort | null>(null);
+  const [uploadPending, setUploadPending] = useState(false);
+  const [uploadError, setUploadError] = useState<StorageErrorKey | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const refreshButton = useRef<HTMLButtonElement>(null);
   const { entries, phase, snapshot, error, refresh } = useDirectoryListing({
@@ -122,6 +127,19 @@ export function DirectoryListing({
     actions.closeMenu();
     refresh();
   };
+  const uploadFile = async () => {
+    setUploadPending(true);
+    setUploadError(null);
+    try {
+      await queue.uploadFile({ parent, directoryPath });
+    } catch (failure) {
+      const code = errorKey(failure);
+      if (code !== 'Cancelled') setUploadError(code);
+      if (code === 'AuthRequired') onAuthRequired();
+    } finally {
+      setUploadPending(false);
+    }
+  };
   const openSearch = () => {
     actions.closeMenu();
     search.open();
@@ -163,19 +181,39 @@ export function DirectoryListing({
     <>
       <header className={classes.directoryHeader}>
         {children}
-        <ActionIcon
-          ref={refreshButton}
-          variant="subtle"
-          color="gray"
-          aria-label={t('refreshDirectory')}
-          aria-keyshortcuts="F5"
-          title={`${t('refreshDirectory')} (F5)`}
-          disabled={loading}
-          onClick={reload}
-        >
-          <RefreshCw size={16} strokeWidth={1.5} aria-hidden="true" />
-        </ActionIcon>
+        <div className={classes.directoryActions}>
+          {canUpload && (
+            <ActionIcon
+              type="button"
+              variant="subtle"
+              color="gray"
+              aria-label={t('uploadFile')}
+              title={t('uploadFile')}
+              disabled={loading || uploadPending || error !== null}
+              onClick={() => void uploadFile()}
+            >
+              <Upload size={16} strokeWidth={1.5} aria-hidden="true" />
+            </ActionIcon>
+          )}
+          <ActionIcon
+            ref={refreshButton}
+            variant="subtle"
+            color="gray"
+            aria-label={t('refreshDirectory')}
+            aria-keyshortcuts="F5"
+            title={`${t('refreshDirectory')} (F5)`}
+            disabled={loading}
+            onClick={reload}
+          >
+            <RefreshCw size={16} strokeWidth={1.5} aria-hidden="true" />
+          </ActionIcon>
+        </div>
       </header>
+      {uploadError && (
+        <p className={classes.directoryStatus} role="alert">
+          {t(`errors:${uploadError}`)}
+        </p>
+      )}
       {loadingWithoutEntries && (
         <VisuallyHidden>
           <output>{t('loadingDirectory')}</output>

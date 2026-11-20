@@ -1,4 +1,4 @@
-import type { BrowserWindow } from 'electron';
+import { dialog, type BrowserWindow } from 'electron';
 import { z } from 'zod';
 import { channels } from '@shared/contracts';
 import { localConnectionId } from '@shared/storage-browser';
@@ -43,6 +43,8 @@ const deleteRequestSchema = z.strictObject({
   entry: taskEntrySchema,
   directoryPath: pathSchema,
 });
+
+const uploadFileSchema = z.strictObject({ parent: remoteRefSchema, directoryPath: pathSchema });
 
 const prepareDownloadSchema = z.strictObject({
   parent: remoteRefSchema,
@@ -115,6 +117,12 @@ export function registerTaskIpc(
     channels.enqueueDeleteTask,
     z.tuple([deleteRequestSchema]),
     (tasks, _window, request) => tasks.enqueueDelete(request),
+  );
+  handleTask(channels.uploadFileTask, z.tuple([uploadFileSchema]), (tasks, window, request) =>
+    tasks.uploadFile(window.webContents.id, request, async () => {
+      const result = await dialog.showOpenDialog(window, { properties: ['openFile'] });
+      return result.canceled ? undefined : result.filePaths[0];
+    }),
   );
   handleTask(
     channels.prepareDownloadTask,

@@ -1,5 +1,5 @@
 import { createStore } from 'zustand/vanilla';
-import type { TasksApi } from '@shared/tasks';
+import type { TasksApi, UploadFileRequest } from '@shared/tasks';
 import type { TaskQueueViewClient, TaskQueueViewSnapshot } from '@renderer/tasks/task-types';
 import type { DirectoryCache } from '../directory/directory-cache';
 import { resultOf, StorageBrowserError } from '../storage-client';
@@ -67,6 +67,12 @@ export class StorageTaskClient implements TaskQueueViewClient<
   enqueueDelete(request: DeleteTaskRequest): Promise<boolean> {
     const api = this.api;
     return api ? resultOf(api.enqueueDelete(request)) : Promise.resolve(false);
+  }
+
+  uploadFile(request: UploadFileRequest): Promise<void> {
+    const api = this.api;
+    if (!api) return Promise.reject(new StorageBrowserError('Unsupported'));
+    return resultOf(api.uploadFile(request));
   }
 
   prepareDownload(request: PrepareDownloadRequest): Promise<PrepareDownloadResponse> {
@@ -142,6 +148,14 @@ export class StorageTaskClient implements TaskQueueViewClient<
           this.directoryCache.remove(change);
         } catch {
           console.error('Could not apply the deletion result; invalidating the directory cache.');
+          this.directoryCache.invalidateConnection(change.parent.connectionId);
+        }
+        return;
+      case 'added':
+        try {
+          this.directoryCache.add(change);
+        } catch {
+          console.error('Could not apply the upload result; invalidating the directory cache.');
           this.directoryCache.invalidateConnection(change.parent.connectionId);
         }
         return;

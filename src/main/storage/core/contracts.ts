@@ -39,6 +39,20 @@ export interface ReopenableByteSource extends SourceBase {
 
 export type ByteSource = StreamingByteSource | ReopenableByteSource;
 
+export interface SessionWriteContext extends OperationContext {
+  pauseSignal?: AbortSignal;
+  /** Counts bytes handed to the transport, including re-sent bytes. */
+  onBytesSent?: (count: number) => void;
+}
+
+export interface WriteExecution {
+  run(context: SessionWriteContext): Promise<Entry>;
+}
+
+export interface AdapterWriteSession {
+  run(source: ReopenableByteSource, context: SessionWriteContext): Promise<Entry>;
+}
+
 export interface DriverCheckpoint {
   /** Driver payload version; independent of the common persisted-envelope version. */
   version: number;

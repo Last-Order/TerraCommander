@@ -125,10 +125,20 @@ export interface DownloadTaskDisplayInput {
   displayName?: string | undefined;
 }
 
+export interface UploadFileRequest {
+  parent: EntryRef;
+  directoryPath: string;
+}
+
+export interface UploadTaskDisplayInput extends UploadFileRequest {
+  name: string;
+}
+
 export type StorageTaskRequest =
   | { type: 'rename'; input: RenameTaskRequest }
   | { type: 'delete'; input: DeleteTaskRequest }
-  | { type: 'download'; input: DownloadTaskDisplayInput };
+  | { type: 'download'; input: DownloadTaskDisplayInput }
+  | { type: 'upload'; input: UploadTaskDisplayInput };
 
 export interface StorageTaskGroupRequest {
   kind: 'download';
@@ -151,6 +161,7 @@ export interface StorageTaskSnapshot {
 export type StorageDirectoryChange =
   | { kind: 'renamed'; parent: EntryRef; previous: EntryRef; entry: Entry }
   | { kind: 'removed'; parent: EntryRef; ref: EntryRef }
+  | { kind: 'added'; parent: EntryRef; entry: Entry }
   | { kind: 'invalidate-connection'; connectionId: string };
 
 export type StorageTaskEvent =
@@ -173,6 +184,7 @@ export interface TasksApi {
   getSnapshot(): Promise<BrowserResult<StorageTaskSnapshot>>;
   enqueueRename(request: RenameTaskRequest): Promise<BrowserResult<boolean>>;
   enqueueDelete(request: DeleteTaskRequest): Promise<BrowserResult<boolean>>;
+  uploadFile(request: UploadFileRequest): Promise<BrowserResult<void>>;
   prepareDownload(request: PrepareDownloadRequest): Promise<BrowserResult<PrepareDownloadResponse>>;
   confirmDownload(confirmationId: string): Promise<BrowserResult<void>>;
   cancelDownloadConfirmation(confirmationId: string): Promise<BrowserResult<void>>;

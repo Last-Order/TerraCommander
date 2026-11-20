@@ -27,6 +27,13 @@ export const presentStorageTask: TaskPresenter<StorageTaskItem> = (task) => {
         title: [{ text: task.request.input.entry.name }],
         summary: task.request.input.directoryPath,
       };
+    case 'upload':
+      return {
+        compact: true,
+        typeLabel: { key: 'storage:uploadTask' },
+        title: [{ text: task.request.input.name }],
+        summary: task.request.input.directoryPath,
+      };
     case 'download': {
       const input = task.request.input;
       return {

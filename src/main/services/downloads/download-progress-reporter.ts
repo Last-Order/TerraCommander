@@ -1,9 +1,9 @@
 import type { DownloadProgress } from './download-types';
+import { TransferRateReporter } from '../transfer-rate-reporter';
 
 /** Samples recent throughput even while the source is stalled. */
 export class DownloadProgressReporter {
-  private readonly samples: { time: number; bytes: number }[] = [];
-  private readonly timer: ReturnType<typeof setInterval>;
+  private readonly rate: TransferRateReporter;
   private stopped = false;
 
   constructor(
@@ -12,9 +12,9 @@ export class DownloadProgressReporter {
     private readonly completedBytes: () => number,
     private readonly onProgress: (progress: Omit<DownloadProgress, 'attempt' | 'controls'>) => void,
   ) {
-    this.timer = setInterval(() => this.downloading(), 500);
-    this.timer.unref();
-    this.downloading();
+    this.rate = new TransferRateReporter(this.completedBytes, (bytes, bytesPerSecond) => {
+      this.emit({ ...this.snapshot(bytes), stage: 'downloading', bytesPerSecond });
+    });
   }
 
   saving(): void {
@@ -25,30 +25,15 @@ export class DownloadProgressReporter {
 
   dispose(): void {
     this.stopped = true;
-    clearInterval(this.timer);
+    this.rate.dispose();
   }
 
-  private snapshot() {
+  private snapshot(completedBytes = this.completedBytes()) {
     return {
       id: this.id,
-      completedBytes: this.completedBytes(),
+      completedBytes,
       ...(this.totalBytes !== undefined ? { totalBytes: this.totalBytes } : {}),
     };
-  }
-
-  private downloading(): void {
-    if (this.stopped) return;
-    const time = performance.now();
-    const snapshot = this.snapshot();
-    this.samples.push({ time, bytes: snapshot.completedBytes });
-    while (this.samples.length > 2 && (this.samples[1]?.time ?? Infinity) <= time - 2000)
-      this.samples.shift();
-    const first = this.samples[0];
-    const bytesPerSecond =
-      first && time > first.time
-        ? Math.max(0, ((snapshot.completedBytes - first.bytes) * 1000) / (time - first.time))
-        : 0;
-    this.emit({ ...snapshot, stage: 'downloading', bytesPerSecond });
   }
 
   private emit(progress: Omit<DownloadProgress, 'attempt' | 'controls'>): void {

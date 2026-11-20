@@ -13,6 +13,15 @@ export interface EntryRemoved {
   ref: EntryRef;
 }
 
+export interface EntryAdded {
+  parent: EntryRef;
+  entry: Entry;
+}
+
+export function addDirectoryEntry(entries: DirectoryEntries, entry: Entry): DirectoryEntries {
+  return new Map(entries).set(entry.ref.locator, entry);
+}
+
 export function removeDirectoryEntry(entries: DirectoryEntries, locator: string): DirectoryEntries {
   const remaining = new Map(entries);
   remaining.delete(locator);
@@ -43,6 +52,7 @@ export class DirectoryCache {
   private readonly listeners = new Set<() => void>();
   private readonly renameListeners = new Set<(change: EntryRenamed) => void>();
   private readonly removeListeners = new Set<(change: EntryRemoved) => void>();
+  private readonly addListeners = new Set<(change: EntryAdded) => void>();
   private entryCount = 0;
 
   peek(ref: EntryRef): DirectoryEntries | undefined {
@@ -101,6 +111,17 @@ export class DirectoryCache {
     return () => {
       this.removeListeners.delete(listener);
     };
+  }
+
+  add(change: EntryAdded): void {
+    const cached = this.peek(change.parent);
+    if (cached) this.save(change.parent, addDirectoryEntry(cached, change.entry));
+    for (const listener of this.addListeners) listener(change);
+  }
+
+  subscribeAdditions(listener: (change: EntryAdded) => void): () => void {
+    this.addListeners.add(listener);
+    return () => this.addListeners.delete(listener);
   }
 
   invalidateConnection(connectionId: string): void {

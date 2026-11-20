@@ -9,9 +9,16 @@ import type {
   ListRequest,
   ReadOptions,
   Space,
+  SourceDescriptor,
   WriteTarget,
 } from '@shared/storage/models';
-import type { ByteSource, OperationContext, ReadHandle, UploadDriver } from '../core/contracts';
+import type {
+  AdapterWriteSession,
+  ByteSource,
+  OperationContext,
+  ReadHandle,
+  UploadDriver,
+} from '../core/contracts';
 import type { CredentialResolver, StorageLogger } from './services';
 
 /** Core lifecycle and metadata port required by every storage adapter. */
@@ -35,6 +42,11 @@ export interface ReadableAdapter {
 export interface WritableAdapter {
   readonly uploads?: UploadDriver;
   write?(target: WriteTarget, source: ByteSource, ctx: OperationContext): Promise<Entry>;
+  prepareWrite?(
+    target: WriteTarget,
+    source: SourceDescriptor,
+    ctx: OperationContext,
+  ): Promise<AdapterWriteSession>;
   createDirectory?(target: CreateTarget, ctx: OperationContext): Promise<Entry>;
 }
 

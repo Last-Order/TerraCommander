@@ -1,7 +1,8 @@
 import { useLayoutEffect, useState, useSyncExternalStore } from 'react';
 import { ChevronRight, FolderOpen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { EntryRef, Space, StorageLabel } from '@shared/storage';
+import type { Capabilities, EntryRef, Space, StorageLabel } from '@shared/storage';
+import { localConnectionId } from '@shared/storage-browser';
 import { formatStorageLabel } from '../storage-labels';
 import classes from './DirectoryPane.module.css';
 import { DirectoryListing } from './DirectoryListing';
@@ -10,6 +11,7 @@ import { directoryKey, type DirectoryCache } from './directory-cache';
 interface Location {
   ref: EntryRef;
   name: StorageLabel;
+  capabilities?: Capabilities;
 }
 
 interface DirectoryProps {
@@ -34,7 +36,7 @@ export function DirectoryPane({ space, cache, onAuthRequired }: DirectoryProps) 
           );
           if (index < 0) return locations;
           const updated = [...locations];
-          updated[index] = { ref: entry.ref, name: entry.name };
+          updated[index] = entry;
           return previous.locator === entry.ref.locator ? updated : updated.slice(0, index + 1);
         });
       }),
@@ -50,6 +52,10 @@ export function DirectoryPane({ space, cache, onAuthRequired }: DirectoryProps) 
         cacheable={trail.length === 1}
         version={version}
         directoryPath={trail.map(({ name }) => formatStorageLabel(name, t)).join(' / ')}
+        canUpload={
+          current.ref.connectionId !== localConnectionId &&
+          current.capabilities?.write?.support !== 'unsupported'
+        }
         onOpen={(entry) => setTrail([...trail, entry])}
         onAuthRequired={onAuthRequired}
       >

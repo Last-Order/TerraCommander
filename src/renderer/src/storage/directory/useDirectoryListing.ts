@@ -2,6 +2,7 @@ import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type { Entry, EntryRef } from '@shared/storage';
 import { errorKey, resultOf, StorageBrowserError, type StorageErrorKey } from '../storage-client';
 import {
+  addDirectoryEntry,
   directoryKey,
   removeDirectoryEntry,
   replaceRenamedEntry,
@@ -47,15 +48,21 @@ export function useDirectoryListing({
       ? { phase: 'ready', entries: cached }
       : { phase: 'loading', entries: emptyEntries };
   });
-  const currentRequest = useRef<symbol | null>(null);
+  const currentRequest = useRef<{ additions: Map<string, Entry> } | null>(null);
 
   const load = useCallback(
     async (previous?: DirectoryEntries) => {
       if (cache.version(parent.connectionId) !== version) return;
-      const request = Symbol();
+      const request = { additions: currentRequest.current?.additions ?? new Map<string, Entry>() };
       currentRequest.current = request;
       const isCurrent = () =>
         currentRequest.current === request && cache.version(parent.connectionId) === version;
+      const withAdditions = (listed: DirectoryEntries) => {
+        if (!request.additions.size) return listed;
+        const updated = new Map(listed);
+        for (const [locator, entry] of request.additions) updated.set(locator, entry);
+        return updated;
+      };
 
       setListing({ phase: previous ? 'refreshing' : 'loading', entries: previous ?? emptyEntries });
       const entries = new Map<string, Entry>();
@@ -74,16 +81,22 @@ export function useDirectoryListing({
           seenCursors.add(cursor);
 
           if (!previous && page.entries.length > 0) {
-            setListing({ phase: 'loading', entries: new Map(entries) });
+            setListing({ phase: 'loading', entries: withAdditions(new Map(entries)) });
           }
         } while (cursor !== undefined);
 
-        if (cacheable) cache.save(parent, entries);
-        setListing({ phase: 'ready', entries });
+        const updated = withAdditions(entries);
+        if (cacheable) cache.save(parent, updated);
+        setListing({ phase: 'ready', entries: updated });
       } catch (failure) {
         if (!isCurrent()) return;
         const error = errorKey(failure);
-        setListing({ phase: 'error', entries: previous ?? entries, snapshot: previous, error });
+        setListing({
+          phase: 'error',
+          entries: withAdditions(previous ?? entries),
+          snapshot: previous ? withAdditions(previous) : undefined,
+          error,
+        });
         if (error === 'AuthRequired') onAuthRequired();
       } finally {
         if (currentRequest.current === request) currentRequest.current = null;
@@ -119,8 +132,25 @@ export function useDirectoryListing({
 
   useLayoutEffect(
     () =>
+      cache.subscribeAdditions(({ parent: changedParent, entry }) => {
+        if (directoryKey(changedParent) !== directoryKey(parent)) return;
+        currentRequest.current?.additions.set(entry.ref.locator, entry);
+        setListing((current) => {
+          const entries = addDirectoryEntry(current.entries, entry);
+          if (current.phase === 'error' && current.snapshot) {
+            return { ...current, entries, snapshot: addDirectoryEntry(current.snapshot, entry) };
+          }
+          return { ...current, entries };
+        });
+      }),
+    [cache, parent],
+  );
+
+  useLayoutEffect(
+    () =>
       cache.subscribeRemovals(({ parent: changedParent, ref }) => {
         if (directoryKey(changedParent) !== directoryKey(parent)) return;
+        currentRequest.current?.additions.delete(ref.locator);
         if (currentRequest.current !== null || snapshot === undefined) {
           void load(removeDirectoryEntry(entries, ref.locator));
         } else {
@@ -138,6 +168,8 @@ export function useDirectoryListing({
       cache.subscribeRenames((change) => {
         if (directoryKey(change.parent) !== directoryKey(parent)) return;
         const { previous, entry } = change;
+        const additions = currentRequest.current?.additions;
+        if (additions?.delete(previous.locator)) additions.set(entry.ref.locator, entry);
         if (currentRequest.current !== null || snapshot === undefined) {
           void load(replaceRenamedEntry(entries, previous.locator, entry));
         } else {

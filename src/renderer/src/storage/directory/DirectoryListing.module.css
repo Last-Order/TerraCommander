@@ -16,6 +16,12 @@
   border-bottom: 1px solid var(--storage-border);
 }
 
+.directoryActions {
+  display: flex;
+  flex: none;
+  gap: 0.25rem;
+}
+
 .directoryBody {
   position: relative;
   display: flex;

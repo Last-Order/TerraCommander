@@ -218,7 +218,7 @@ it('reports scope-accurate capabilities, omits absent metadata, and respects can
     ).toMatchObject({
       list: { support: 'supported' },
       read: { support: 'supported' },
-      write: { support: 'unsupported' },
+      write: { support: 'unknown' },
     });
 
     const rootRef = { connectionId: 'account', spaceId: 'my-drive', locator: 'root' };

@@ -48,6 +48,8 @@ Byte streams and executable callbacks remain backend-only. Reads preserve backpr
 
 A one-shot source cannot promise replay or recovery after reopening. A reopenable source supplies a descriptor and bounded range reads so retries and recovery can verify and access the required bytes. Callers remain responsible for keeping the source available.
 
+The caller owns the lifetime of an in-memory write session, and the adapter owns its unfinished remote write. A resumed session verifies the source and reconciles remote progress before sending content again.
+
 ## Upload Recovery Guarantees
 
 The [upload coordinator](../src/main/storage/uploads/upload-coordinator.ts) owns common recovery state. Adapter drivers own transport protocols and private checkpoint payloads. Different backends can use contiguous offsets, independent parts, and different publication semantics; a common chunk size or universal commit/rollback is not assumed.

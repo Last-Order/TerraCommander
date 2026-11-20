@@ -1,9 +1,13 @@
-import type { BrowserWindow } from 'electron';
+import { mkdtempDisposable, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { BrowserWindow, OpenDialogReturnValue } from 'electron';
 import { afterEach, expect, it, vi } from 'vitest';
 import { channels } from '@shared/contracts';
 import { defaultLanguageSettings, type LanguagePreference } from '@shared/language';
 import type { Entry } from '@shared/storage';
 import { AccountError } from '../accounts/core/errors';
+import { StorageError, type WriteExecution } from '../storage';
 import { registerIpcHandlers } from './';
 import { ApplicationServices } from '../services/application-services';
 import { DownloadPreferences } from '../services/downloads/download-preferences';
@@ -13,9 +17,10 @@ import { StoragePreferences } from '../services/storage/storage-preferences';
 import { StorageTaskService } from '../services/tasks/storage-task-service';
 
 const handlers = vi.hoisted(() => new Map<string, (...args: unknown[]) => Promise<unknown>>());
+const picker = vi.hoisted(() => vi.fn<() => Promise<OpenDialogReturnValue>>());
 vi.mock('electron', () => ({
   app: { getName: () => 'TerraCommander', getVersion: () => '0.1.0' },
-  dialog: {},
+  dialog: { showOpenDialog: picker },
   ipcMain: {
     handle: (channel: string, handler: (...args: unknown[]) => Promise<unknown>) => {
       handlers.set(channel, handler);
@@ -25,6 +30,7 @@ vi.mock('electron', () => ({
 
 const activeServices: ApplicationServices[] = [];
 afterEach(async () => {
+  picker.mockReset();
   await Promise.all(activeServices.splice(0).map((services) => services.dispose()));
 });
 
@@ -167,6 +173,110 @@ it('reads download settings without loading storage or accounts', async () => {
   });
   expect(getBrowser).not.toHaveBeenCalled();
   await expect(get({ ...event, sender: {} })).rejects.toThrow('Untrusted IPC sender');
+});
+
+it('uploads the selected file with speed reporting, pause and resume in the task queue', async () => {
+  const { event, browser, parent, entry, send } = setup();
+  const upload = handlers.get(channels.uploadFileTask)!;
+  const remoteParent = { ...parent, connectionId: '5e45885a-89f0-462e-9821-7195cba174e5' };
+  const request = { parent: remoteParent, directoryPath: '/Drive' };
+  const target = vi.spyOn(browser, 'validateUploadDestination').mockResolvedValue(undefined);
+  const uploaded = { ...entry, ref: { ...remoteParent, locator: 'uploaded-file' } };
+  const run = vi
+    .fn<WriteExecution['run']>()
+    .mockImplementationOnce(async ({ pauseSignal, onBytesSent, onProgress }) => {
+      const interrupted = new Promise<never>((_, reject) => {
+        pauseSignal!.addEventListener('abort', () => reject(new StorageError('Cancelled')), {
+          once: true,
+        });
+      });
+      onBytesSent?.(4);
+      onProgress?.({ confirmedBytes: 3, processedBytes: 4, totalBytes: 7 });
+      return interrupted;
+    })
+    .mockResolvedValueOnce(uploaded);
+  const write = vi.spyOn(browser, 'prepareUpload').mockReturnValue({ run });
+  const snapshot = () => handlers.get(channels.getTaskSnapshot)!(event);
+
+  expect(await upload(event, { ...request, path: 'D:\\other.txt' })).toEqual({
+    ok: false,
+    code: 'InvalidArgument',
+  });
+  await expect(upload({ ...event, sender: {} }, request)).rejects.toThrow('Untrusted IPC sender');
+  expect(picker).not.toHaveBeenCalled();
+
+  picker.mockResolvedValueOnce({ canceled: true, filePaths: [] });
+  expect(await upload(event, request)).toEqual({ ok: true, value: undefined });
+  expect(write).not.toHaveBeenCalled();
+
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-upload-ipc-'));
+  const path = join(temporary.path, entry.name);
+  await writeFile(path, 'content');
+  picker.mockResolvedValueOnce({ canceled: false, filePaths: [path] });
+  expect(await upload(event, request)).toEqual({ ok: true, value: undefined });
+  expect(picker).toHaveBeenLastCalledWith(expect.anything(), { properties: ['openFile'] });
+  expect(target).toHaveBeenLastCalledWith(remoteParent);
+  expect(write).toHaveBeenCalledExactlyOnceWith(remoteParent, entry.name, expect.anything());
+  await vi.waitFor(async () =>
+    expect(await snapshot()).toMatchObject({
+      value: {
+        tasks: [
+          {
+            id: 1,
+            status: 'running',
+            controls: { canPause: true },
+            progress: { completed: 3, bytesPerSecond: expect.any(Number) },
+          },
+        ],
+      },
+    }),
+  );
+  await vi.waitFor(async () => {
+    const result = (await snapshot()) as {
+      value: { tasks: [{ progress: { bytesPerSecond: number } }] };
+    };
+    expect(result.value.tasks[0].progress.bytesPerSecond).toBeGreaterThan(0);
+  });
+  expect(await handlers.get(channels.pauseTask)!(event, 1)).toEqual({ ok: true, value: undefined });
+  await vi.waitFor(async () =>
+    expect(await snapshot()).toMatchObject({
+      value: {
+        tasks: [
+          {
+            id: 1,
+            status: 'paused',
+            controls: { canResume: true },
+            progress: { completed: 3 },
+          },
+        ],
+      },
+    }),
+  );
+  expect(await handlers.get(channels.resumeTask)!(event, 1)).toEqual({
+    ok: true,
+    value: undefined,
+  });
+  await vi.waitFor(() =>
+    expect(send).toHaveBeenCalledWith(channels.taskEvent, {
+      type: 'directory-changed',
+      change: { kind: 'added', parent: remoteParent, entry: uploaded },
+    }),
+  );
+  const settled = await snapshot();
+  expect(settled).toMatchObject({
+    ok: true,
+    value: {
+      tasks: [
+        {
+          status: 'completed',
+          request: { type: 'upload', input: { ...request, name: entry.name } },
+        },
+      ],
+    },
+  });
+  expect(JSON.stringify(settled)).not.toContain(JSON.stringify(path));
+  expect(run).toHaveBeenCalledTimes(2);
+  expect(write).toHaveBeenCalledTimes(1);
 });
 
 it('validates coarse task download preparation, confirmation, and task control inputs', async () => {
