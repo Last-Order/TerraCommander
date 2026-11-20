@@ -40,7 +40,7 @@ const renameRequestSchema = z.strictObject({
 
 const deleteRequestSchema = z.strictObject({
   parent: refSchema,
-  entry: taskEntrySchema,
+  entries: z.array(taskEntrySchema).min(1),
   directoryPath: pathSchema,
 });
 

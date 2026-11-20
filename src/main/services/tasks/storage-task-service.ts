@@ -1,6 +1,7 @@
 import type { Entry } from '@shared/storage';
 import { localConnectionId, type BrowserErrorCode } from '@shared/storage-browser';
 import type {
+  DeleteEntriesRequest,
   DeleteTaskRequest,
   PrepareDownloadRequest,
   PrepareDownloadResponse,
@@ -54,6 +55,7 @@ type InternalTaskDefinitions = {
 type InternalGroupDefinitions = {
   download: { input: Extract<StorageTaskGroupRequest, { kind: 'download' }>['input'] };
   upload: { input: Extract<StorageTaskGroupRequest, { kind: 'upload' }>['input'] };
+  delete: { input: Extract<StorageTaskGroupRequest, { kind: 'delete' }>['input'] };
 };
 
 type TaskCategory = 'operation' | 'transfer';
@@ -87,6 +89,7 @@ const groupRequestProjectors: {
 } = {
   download: (input) => ({ kind: 'download', input }),
   upload: (input) => ({ kind: 'upload', input }),
+  delete: (input) => ({ kind: 'delete', input }),
 };
 
 function projectTaskRequest<K extends keyof InternalTaskDefinitions>(request: {
@@ -175,8 +178,52 @@ export class StorageTaskService {
     return this.queue.enqueue({ type: 'rename', input: request });
   }
 
-  enqueueDelete(request: DeleteTaskRequest): boolean {
-    return this.queue.enqueue({ type: 'delete', input: request });
+  enqueueDelete(request: DeleteEntriesRequest): boolean {
+    const uniqueEntries: Entry[] = [];
+    const seen = new Set<string>();
+    for (const entry of request.entries) {
+      const key = entryKey(entry.ref);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      uniqueEntries.push(entry);
+    }
+    if (uniqueEntries.length === 0) return false;
+    if (uniqueEntries.length === 1) {
+      const [entry] = uniqueEntries;
+      return this.queue.enqueue({
+        type: 'delete',
+        input: {
+          parent: request.parent,
+          entry: entry!,
+          directoryPath: request.directoryPath,
+        },
+      });
+    }
+    const groupId = this.queue.createGroup({
+      kind: 'delete',
+      input: {
+        names: uniqueEntries.map((entry) => entry.name),
+        directoryPath: request.directoryPath,
+        entries: uniqueEntries.map((entry) => entry.ref),
+      },
+      resources: uniqueEntries.map((entry) => entryKey(entry.ref)),
+    });
+    if (groupId === undefined) return false;
+    for (const entry of uniqueEntries) {
+      this.queue.enqueue(
+        {
+          type: 'delete',
+          input: {
+            parent: request.parent,
+            entry,
+            directoryPath: request.directoryPath,
+          },
+        },
+        { groupId },
+      );
+    }
+    this.queue.sealGroup(groupId);
+    return true;
   }
 
   uploadFile(

@@ -128,9 +128,74 @@ it('executes rename and delete tasks, projects directory changes, and maps valid
   });
 
   deleteEntry.mockRejectedValueOnce(new StorageError('AuthRequired'));
-  service.enqueueDelete({ parent, entry: fileEntry, directoryPath: '/docs' });
+  service.enqueueDelete({ parent, entries: [fileEntry], directoryPath: '/docs' });
   await vi.waitFor(() => expect(service.getSnapshot().tasks[2]?.status).toBe('failed'));
   expect(events).toContainEqual({ type: 'auth-required', connectionId });
+
+  await service.dispose();
+});
+
+it('creates a delete task group for multiple entries including folders and rejects conflicting batches', async () => {
+  const { service, deleteEntry, events } = setup();
+  const folderEntry: Entry = {
+    ref: { connectionId, spaceId: 'drive', locator: 'folder-1' },
+    name: 'Folder',
+    kind: 'directory',
+    capabilities: { remove: { support: 'supported' } },
+  };
+  let releaseFirst!: () => void;
+  const firstDone = new Promise<undefined>((resolve) => {
+    releaseFirst = () => resolve(undefined);
+  });
+  deleteEntry.mockImplementationOnce(() => firstDone);
+
+  expect(
+    service.enqueueDelete({
+      parent,
+      entries: [fileEntry, folderEntry],
+      directoryPath: '/docs',
+    }),
+  ).toBe(true);
+  expect(
+    service.enqueueDelete({
+      parent,
+      entries: [folderEntry],
+      directoryPath: '/docs',
+    }),
+  ).toBe(false);
+
+  const activeSnapshot = service.getSnapshot();
+  expect(activeSnapshot.groups).toHaveLength(1);
+  expect(activeSnapshot.groups[0]).toMatchObject({
+    sealed: true,
+    request: {
+      kind: 'delete',
+      input: {
+        names: [fileEntry.name, 'Folder'],
+        directoryPath: '/docs',
+        entries: [fileEntry.ref, folderEntry.ref],
+      },
+    },
+  });
+  expect(activeSnapshot.tasks.map((task) => task.groupId)).toEqual([
+    activeSnapshot.groups[0]!.id,
+    activeSnapshot.groups[0]!.id,
+  ]);
+
+  releaseFirst();
+  await vi.waitFor(() =>
+    expect(service.getSnapshot().tasks.every((task) => task.status === 'completed')).toBe(true),
+  );
+  expect(deleteEntry).toHaveBeenCalledWith(fileEntry.ref);
+  expect(deleteEntry).toHaveBeenCalledWith(folderEntry.ref);
+  expect(events).toContainEqual({
+    type: 'directory-changed',
+    change: { kind: 'removed', parent, ref: fileEntry.ref },
+  });
+  expect(events).toContainEqual({
+    type: 'directory-changed',
+    change: { kind: 'removed', parent, ref: folderEntry.ref },
+  });
 
   await service.dispose();
 });

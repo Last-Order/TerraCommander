@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { Dirent, Stats } from 'node:fs';
-import { lstat, readdir, rename, unlink } from 'node:fs/promises';
+import { lstat, readdir, rename, rm, unlink } from 'node:fs/promises';
 import { basename, dirname, join, normalize, parse, sep } from 'node:path';
 import type {
   Capabilities,
@@ -180,10 +180,13 @@ class LocalAdapter implements StorageAdapter {
   async remove(ref: EntryRef, { signal }: OperationContext): Promise<void> {
     if (ref.locator === '.') throw new StorageError('InvalidArgument');
     const { path, info } = await this.locate(ref, signal);
-    if (!info.isFile() && !info.isSymbolicLink()) throw new StorageError('Unsupported');
+    if (!info.isFile() && !info.isSymbolicLink() && !info.isDirectory()) {
+      throw new StorageError('Unsupported');
+    }
     try {
       throwIfAborted(signal);
-      await unlink(path);
+      if (info.isDirectory()) await rm(path, { recursive: true });
+      else await unlink(path);
     } catch (error) {
       localFailure(error, signal);
     }
@@ -246,7 +249,10 @@ function localEntry(ref: EntryRef, name: string, displayPath: string, info: Dire
       ...localBaseCapabilities,
       list: kind === 'directory' ? supported : unsupported,
       rename: ref.locator === '.' ? unsupported : supported,
-      remove: ref.locator !== '.' && (kind === 'file' || kind === 'link') ? supported : unsupported,
+      remove:
+        ref.locator !== '.' && (kind === 'file' || kind === 'link' || kind === 'directory')
+          ? supported
+          : unsupported,
     },
   };
   if ('mtime' in info) {

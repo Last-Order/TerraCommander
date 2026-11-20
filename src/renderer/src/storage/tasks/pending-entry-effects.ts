@@ -35,7 +35,12 @@ export function selectPendingEntryEffects(
     }
   }
   for (const group of groups) {
-    if (group.state.phase === 'settled' || group.request.kind !== 'download') continue;
+    if (
+      group.state.phase === 'settled' ||
+      (group.request.kind !== 'download' && group.request.kind !== 'delete')
+    ) {
+      continue;
+    }
     for (const ref of group.request.input.entries ?? []) {
       if (
         ref.connectionId !== parent.connectionId ||

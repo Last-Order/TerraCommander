@@ -107,12 +107,13 @@ it('validates task delete and rename requests strictly before initializing task 
   const getTasks = vi.spyOn(services.tasks, 'get');
   const enqueueDelete = handlers.get(channels.enqueueDeleteTask)!;
   const enqueueRename = handlers.get(channels.enqueueRenameTask)!;
-  const validDelete = { parent, entry, directoryPath: '/disk' };
+  const validDelete = { parent, entries: [entry], directoryPath: '/disk' };
 
   for (const args of [
     [],
     [null],
-    [{ ...validDelete, entry: { ...entry, ref: { ...entry.ref, connectionId: 'invalid' } } }],
+    [{ ...validDelete, entries: [] }],
+    [{ ...validDelete, entries: [{ ...entry, ref: { ...entry.ref, connectionId: 'invalid' } }] }],
     [{ ...validDelete, mode: 'permanent' }],
     [validDelete, 'extra'],
   ]) {
@@ -141,7 +142,7 @@ it('rejects untrusted senders on task channels before initializing task services
   const { event, parent, entry, services, getBrowser } = setup();
   const getTasks = vi.spyOn(services.tasks, 'get');
   const enqueueDelete = handlers.get(channels.enqueueDeleteTask)!;
-  const request = { parent, entry, directoryPath: '/disk' };
+  const request = { parent, entries: [entry], directoryPath: '/disk' };
 
   for (const untrusted of [
     { ...event, sender: {} },

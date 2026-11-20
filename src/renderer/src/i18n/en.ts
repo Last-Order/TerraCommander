@@ -76,6 +76,7 @@ export const en = {
     downloadItemsExist: 'Items with the same names already exist. Overwrite them?',
     deleteEntry: 'Delete',
     deleteEntryConfirmation: 'Delete “{{name}}”? This action cannot be undone.',
+    deleteEntriesConfirmation: 'Delete {{count}} selected items? This action cannot be undone.',
     invalidEntryName: 'Enter a valid name.',
     entryWriteLocked: 'An operation is in progress. Conflicting operations are disabled.',
     entryPath: 'Path',

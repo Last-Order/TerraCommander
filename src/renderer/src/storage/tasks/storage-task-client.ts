@@ -4,7 +4,7 @@ import type { TaskQueueViewClient, TaskQueueViewSnapshot } from '@renderer/tasks
 import type { DirectoryCache } from '../directory/directory-cache';
 import { resultOf, StorageBrowserError } from '../storage-client';
 import type {
-  DeleteTaskRequest,
+  DeleteEntriesRequest,
   PrepareDownloadRequest,
   PrepareDownloadResponse,
   RenameTaskRequest,
@@ -64,7 +64,7 @@ export class StorageTaskClient implements TaskQueueViewClient<
     return api ? resultOf(api.enqueueRename(request)) : Promise.resolve(false);
   }
 
-  enqueueDelete(request: DeleteTaskRequest): Promise<boolean> {
+  enqueueDelete(request: DeleteEntriesRequest): Promise<boolean> {
     const api = this.api;
     return api ? resultOf(api.enqueueDelete(request)) : Promise.resolve(false);
   }

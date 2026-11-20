@@ -90,8 +90,10 @@ it.each([
     expect(patched()).toBe(false);
     file.capabilities.canTrash = true;
     file.mimeType = 'application/vnd.google-apps.folder';
-    await expect(storage.remove(ref)).rejects.toMatchObject({ code: 'Unsupported' });
-    expect(patched()).toBe(false);
+    result = { ...file, trashed: true };
+    expect((await storage.stat(ref)).capabilities.remove?.support).toBe('supported');
+    await storage.remove(ref);
+    expect(patched()).toBe(true);
     file.mimeType = 'text/plain';
     request.mockClear();
     await expect(

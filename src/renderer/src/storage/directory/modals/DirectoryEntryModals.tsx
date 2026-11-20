@@ -14,7 +14,7 @@ interface DirectoryEntryModalsProps {
   onCloseRename: () => void;
   downloadEntries: Entry[] | null;
   onCloseDownload: () => void;
-  deleteEntry: Entry | null;
+  deleteEntries: Entry[] | null;
   onCloseDelete: () => void;
   informationEntries: EntrySelection | null;
   onCloseInformation: () => void;
@@ -30,7 +30,7 @@ export function DirectoryEntryModals({
   onCloseRename,
   downloadEntries,
   onCloseDownload,
-  deleteEntry,
+  deleteEntries,
   onCloseDelete,
   informationEntries,
   onCloseInformation,
@@ -54,9 +54,9 @@ export function DirectoryEntryModals({
           onAuthRequired={onAuthRequired}
         />
       )}
-      {deleteEntry && (
+      {deleteEntries && (
         <EntryDeleteModal
-          entry={deleteEntry}
+          entries={deleteEntries}
           parent={parent}
           directoryPath={directoryPath}
           onClose={onCloseDelete}

@@ -23,7 +23,7 @@ export function useDirectoryEntryActions({
   const [menuLocator, setMenuLocator] = useState<string | null>(null);
   const [informationEntries, setInformationEntries] = useState<EntrySelection | null>(null);
   const [renameEntry, setRenameEntry] = useState<Entry | null>(null);
-  const [deleteEntry, setDeleteEntry] = useState<Entry | null>(null);
+  const [deleteEntries, setDeleteEntries] = useState<Entry[] | null>(null);
   const [downloadEntries, setDownloadEntries] = useState<Entry[] | null>(null);
 
   const menuEntry = menuLocator === null ? undefined : entries.get(menuLocator);
@@ -38,13 +38,15 @@ export function useDirectoryEntryActions({
     selectedEntry?.capabilities.rename?.support !== 'unsupported' ? selectedEntry : undefined;
   const renamePending =
     renamableEntry !== undefined && pendingEntries.get(renamableEntry.ref.locator)?.busy === true;
-  const deletableEntry = canDeleteEntry(selectedEntry) ? selectedEntry : undefined;
-  const deletePending =
-    deletableEntry !== undefined && pendingEntries.get(deletableEntry.ref.locator)?.busy === true;
   const selectedEntries = [...selectedLocators].flatMap((locator) => {
     const entry = entries.get(locator);
     return entry ? [entry] : [];
   });
+  const canDelete =
+    selectedEntries.length > 0 && selectedEntries.every((entry) => canDeleteEntry(entry));
+  const deletePending = selectedEntries.some(
+    (entry) => pendingEntries.get(entry.ref.locator)?.busy === true,
+  );
   const canDownload =
     selectedEntries.length > 0 &&
     selectedEntries.every(
@@ -87,9 +89,9 @@ export function useDirectoryEntryActions({
   };
 
   const showDelete = () => {
-    if (!deletableEntry || deletePending) return;
+    if (!canDelete || deletePending) return;
     setMenuLocator(null);
-    setDeleteEntry(deletableEntry);
+    setDeleteEntries(selectedEntries);
   };
 
   const showDownload = () => {
@@ -110,12 +112,12 @@ export function useDirectoryEntryActions({
     downloadPending,
     canRename: renamableEntry !== undefined,
     renamePending,
-    canDelete: deletableEntry !== undefined,
+    canDelete,
     deletePending,
     renameEntry,
     closeRename: () => setRenameEntry(null),
-    deleteEntry,
-    closeDelete: () => setDeleteEntry(null),
+    deleteEntries,
+    closeDelete: () => setDeleteEntries(null),
     downloadEntries,
     closeDownload: () => setDownloadEntries(null),
     informationEntries,

@@ -74,6 +74,7 @@ export const zhCN = {
     downloadItemsExist: '已存在同名项目，是否覆盖？',
     deleteEntry: '删除',
     deleteEntryConfirmation: '确定删除“{{name}}”吗？删除后不可恢复。',
+    deleteEntriesConfirmation: '确定删除选中的 {{count}} 个项目吗？删除后不可恢复。',
     invalidEntryName: '请输入有效的名称。',
     entryWriteLocked: '操作进行中，暂不可进行冲突操作。',
     entryPath: '路径',

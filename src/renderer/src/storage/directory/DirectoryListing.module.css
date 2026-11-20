@@ -42,11 +42,41 @@
   scrollbar-gutter: stable;
 }
 
-.centeredError {
+.centeredState {
   display: flex;
   flex-direction: column;
   padding: 0;
   scrollbar-gutter: auto;
+}
+
+.emptyDirectory {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2rem 1.5rem;
+  color: var(--storage-secondary);
+  font-size: var(--mantine-font-size-sm);
+  text-align: center;
+}
+
+.emptyDirectoryIcon {
+  display: flex;
+  width: 3rem;
+  height: 3rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--storage-border);
+  border-radius: var(--mantine-radius-lg);
+  background: var(--storage-hover);
+  color: var(--storage-muted);
+}
+
+.emptyDirectory p {
+  margin: 0;
+  font-weight: 500;
 }
 
 .directoryError {
@@ -60,7 +90,7 @@
   text-align: center;
 }
 
-.centeredError .directoryError {
+.centeredState .directoryError {
   flex: 1;
   justify-content: center;
 }

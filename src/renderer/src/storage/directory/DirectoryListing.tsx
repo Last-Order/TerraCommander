@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActionIcon, Button, Menu, Transition, VisuallyHidden } from '@mantine/core';
 import { useReducedMotion } from '@mantine/hooks';
-import { CircleAlert, FileUp, FolderUp, RefreshCw, Upload } from 'lucide-react';
+import { CircleAlert, FileUp, FolderOpen, FolderUp, RefreshCw, Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
 import type { Entry, EntryRef } from '@shared/storage';
@@ -259,8 +259,8 @@ export function DirectoryListing({
         <div
           ref={setScrollElement}
           className={
-            error && entries.size === 0
-              ? `${classes.directoryContents} ${classes.centeredError}`
+            (error && entries.size === 0) || (!error && snapshot?.size === 0)
+              ? `${classes.directoryContents} ${classes.centeredState}`
               : classes.directoryContents
           }
           aria-busy={loadingWithoutEntries}
@@ -312,7 +312,12 @@ export function DirectoryListing({
             </div>
           )}
           {!error && snapshot?.size === 0 && (
-            <p className={classes.directoryStatus}>{t('emptyDirectory')}</p>
+            <div className={classes.emptyDirectory}>
+              <div className={classes.emptyDirectoryIcon} aria-hidden="true">
+                <FolderOpen size={24} strokeWidth={1.5} />
+              </div>
+              <p>{t('emptyDirectory')}</p>
+            </div>
           )}
           {(loadingWithoutEntries || entries.size > 0) && (
             <Menu
@@ -367,7 +372,7 @@ export function DirectoryListing({
         onCloseRename={actions.closeRename}
         downloadEntries={actions.downloadEntries}
         onCloseDownload={actions.closeDownload}
-        deleteEntry={actions.deleteEntry}
+        deleteEntries={actions.deleteEntries}
         onCloseDelete={actions.closeDelete}
         informationEntries={actions.informationEntries}
         onCloseInformation={actions.closeInformation}

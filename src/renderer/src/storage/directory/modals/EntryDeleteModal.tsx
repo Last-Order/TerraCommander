@@ -6,13 +6,13 @@ import { useStorageTaskQueue } from '@renderer/storage/tasks/storage-task-queue-
 import classes from './EntryDeleteModal.module.css';
 
 interface EntryDeleteProps {
-  entry: Entry;
+  entries: readonly Entry[];
   parent: EntryRef;
   directoryPath: string;
   onClose: () => void;
 }
 
-export function EntryDeleteModal({ entry, parent, directoryPath, onClose }: EntryDeleteProps) {
+export function EntryDeleteModal({ entries, parent, directoryPath, onClose }: EntryDeleteProps) {
   const { t } = useTranslation(['storage', 'common']);
   const queue = useStorageTaskQueue();
   const submitted = useRef(false);
@@ -25,11 +25,11 @@ export function EntryDeleteModal({ entry, parent, directoryPath, onClose }: Entr
     };
   }, []);
 
-  const deleteEntry = async () => {
-    if (submitted.current) return;
+  const deleteEntries = async () => {
+    if (submitted.current || entries.length === 0) return;
     submitted.current = true;
     try {
-      const admitted = await queue.enqueueDelete({ parent, entry, directoryPath });
+      const admitted = await queue.enqueueDelete({ parent, entries, directoryPath });
       if (!active.current) return;
       if (admitted) onClose();
       else submitted.current = false;
@@ -37,6 +37,11 @@ export function EntryDeleteModal({ entry, parent, directoryPath, onClose }: Entr
       submitted.current = false;
     }
   };
+
+  const confirmation =
+    entries.length === 1
+      ? t('deleteEntryConfirmation', { name: entries[0]!.name })
+      : t('deleteEntriesConfirmation', { count: entries.length });
 
   return (
     <Modal
@@ -47,9 +52,7 @@ export function EntryDeleteModal({ entry, parent, directoryPath, onClose }: Entr
       closeButtonProps={{ 'aria-label': t('common:close') }}
     >
       <Stack>
-        <Text className={classes.confirmation}>
-          {t('deleteEntryConfirmation', { name: entry.name })}
-        </Text>
+        <Text className={classes.confirmation}>{confirmation}</Text>
         <Group justify="flex-end">
           <Button data-autofocus variant="default" onClick={onClose}>
             {t('common:cancel')}
@@ -57,7 +60,7 @@ export function EntryDeleteModal({ entry, parent, directoryPath, onClose }: Entr
           <Button
             color="red"
             onClick={() => {
-              void deleteEntry();
+              void deleteEntries();
             }}
           >
             {t('deleteEntry')}

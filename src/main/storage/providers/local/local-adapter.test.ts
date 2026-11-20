@@ -58,6 +58,7 @@ it('deletes a single file while protecting roots, folders and paths through link
   await mkdir(saved);
   await mkdir(outside);
   await mkdir(join(saved, 'folder'));
+  await writeFile(join(saved, 'folder', 'nested.txt'), 'nested');
   await writeFile(join(saved, 'file.txt'), 'delete me');
   await writeFile(join(saved, 'keep.txt'), 'keep me');
   await writeFile(join(outside, 'secret.txt'), 'outside');
@@ -76,14 +77,15 @@ it('deletes a single file while protecting roots, folders and paths through link
     await expect(storage.remove({ ...root, locator: '..' })).rejects.toMatchObject({
       code: 'InvalidArgument',
     });
-    await expect(storage.remove({ ...root, locator: 'folder' })).rejects.toMatchObject({
-      code: 'Unsupported',
+    await storage.remove({ ...root, locator: 'folder' });
+    await expect(storage.stat({ ...root, locator: 'folder' })).rejects.toMatchObject({
+      code: 'NotFound',
     });
     await expect(
       storage.remove({ ...root, locator: join('redirect', 'secret.txt') }),
     ).rejects.toMatchObject({ code: 'NotFound' });
     await storage.remove({ ...root, locator: 'redirect' });
-    expect(await readdir(saved)).toEqual(['folder', 'keep.txt']);
+    expect(await readdir(saved)).toEqual(['keep.txt']);
     expect(await readFile(join(saved, 'keep.txt'), 'utf8')).toBe('keep me');
     expect(await readFile(join(outside, 'secret.txt'), 'utf8')).toBe('outside');
   } finally {
@@ -170,7 +172,7 @@ it('reports scope-accurate capabilities and honors pre-aborted signals', async (
     expect(await storage.capabilities({ kind: 'entry', ref: dirRef })).toMatchObject({
       list: { support: 'supported' },
       rename: { support: 'supported' },
-      remove: { support: 'unsupported' },
+      remove: { support: 'supported' },
     });
 
     await expect(

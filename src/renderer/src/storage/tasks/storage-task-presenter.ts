@@ -50,12 +50,24 @@ export const presentStorageTask: TaskPresenter<StorageTaskItem> = (task) => {
 };
 
 export const presentStorageTaskGroup: TaskGroupPresenter<StorageTaskGroupItem> = (group) => {
-  const input = group.request.input;
-  return {
-    typeLabel: {
-      key: group.request.kind === 'upload' ? 'storage:uploadTask' : 'storage:downloadEntry',
-    },
-    title: input.names.slice(0, 3).map((name) => ({ text: name })),
-    summary: `${input.sourcePath} → ${input.destinationPath}`,
-  };
+  switch (group.request.kind) {
+    case 'upload':
+      return {
+        typeLabel: { key: 'storage:uploadTask' },
+        title: group.request.input.names.slice(0, 3).map((name) => ({ text: name })),
+        summary: `${group.request.input.sourcePath} → ${group.request.input.destinationPath}`,
+      };
+    case 'download':
+      return {
+        typeLabel: { key: 'storage:downloadEntry' },
+        title: group.request.input.names.slice(0, 3).map((name) => ({ text: name })),
+        summary: `${group.request.input.sourcePath} → ${group.request.input.destinationPath}`,
+      };
+    case 'delete':
+      return {
+        typeLabel: { key: 'storage:deleteEntry' },
+        title: group.request.input.names.slice(0, 3).map((name) => ({ text: name })),
+        summary: group.request.input.directoryPath,
+      };
+  }
 };

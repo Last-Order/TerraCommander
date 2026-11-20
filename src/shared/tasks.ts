@@ -116,6 +116,12 @@ export interface DeleteTaskRequest {
   directoryPath: string;
 }
 
+export interface DeleteEntriesRequest {
+  parent: EntryRef;
+  entries: readonly Entry[];
+  directoryPath: string;
+}
+
 export interface DownloadTaskDisplayInput {
   parent: EntryRef;
   entry: Entry;
@@ -157,6 +163,14 @@ export type StorageTaskGroupRequest =
         sourcePath: string;
         destinationPath: string;
       };
+    }
+  | {
+      kind: 'delete';
+      input: {
+        names: readonly string[];
+        directoryPath: string;
+        entries: readonly EntryRef[];
+      };
     };
 
 export type StorageTaskItem = TaskViewItem<StorageTaskRequest>;
@@ -192,7 +206,7 @@ export type PrepareDownloadResponse =
 export interface TasksApi {
   getSnapshot(): Promise<BrowserResult<StorageTaskSnapshot>>;
   enqueueRename(request: RenameTaskRequest): Promise<BrowserResult<boolean>>;
-  enqueueDelete(request: DeleteTaskRequest): Promise<BrowserResult<boolean>>;
+  enqueueDelete(request: DeleteEntriesRequest): Promise<BrowserResult<boolean>>;
   uploadFile(request: UploadFileRequest): Promise<BrowserResult<void>>;
   uploadFolder(request: UploadFileRequest): Promise<BrowserResult<void>>;
   prepareDownload(request: PrepareDownloadRequest): Promise<BrowserResult<PrepareDownloadResponse>>;

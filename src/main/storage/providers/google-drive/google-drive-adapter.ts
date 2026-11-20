@@ -319,7 +319,8 @@ class GoogleDriveAdapter implements StorageAdapter {
     const driveId = this.sharedDriveId(ref.spaceId);
     if (id === 'root' || id === driveId) throw new StorageError('InvalidArgument');
     const entry = await this.stat(ref, context);
-    if (entry.kind !== 'file' && entry.kind !== 'link') throw new StorageError('Unsupported');
+    if (entry.kind !== 'file' && entry.kind !== 'link' && entry.kind !== 'directory')
+      throw new StorageError('Unsupported');
     if (entry.capabilities.remove?.support === 'unsupported')
       throw new StorageError('PermissionDenied');
     const file = await this.requestJson(
@@ -422,7 +423,7 @@ function fileEntry(ref: EntryRef, file: z.infer<typeof fileSchema>, isRoot: bool
       write: grantedCapability(kind !== 'directory', file.capabilities?.canAddChildren),
       createDirectory: grantedCapability(kind !== 'directory', file.capabilities?.canAddChildren),
       rename: grantedCapability(isRoot, file.capabilities?.canRename),
-      remove: grantedCapability(isRoot || kind === 'directory', file.capabilities?.canTrash),
+      remove: grantedCapability(isRoot, file.capabilities?.canTrash),
     },
   };
 }
