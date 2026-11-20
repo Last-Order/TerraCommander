@@ -1,10 +1,17 @@
 import { memo } from 'react';
-import { ChevronRight, File, Folder, Link2, LockKeyhole } from 'lucide-react';
+import { ChevronRight, File, Folder, Link2, LockKeyhole, type LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Entry } from '../../../../shared/storage';
 import type { DirectoryRow, DirectorySelectionModifiers } from './directory-types';
 import classes from './DirectoryTable.module.css';
 import { formatSize } from '../../format/size';
+
+const entryIcons: Record<Entry['kind'], LucideIcon> = {
+  directory: Folder,
+  link: Link2,
+  file: File,
+  other: File,
+};
 
 interface DirectoryEntryRowProps extends DirectoryRow {
   index: number;
@@ -35,7 +42,7 @@ export const DirectoryEntryRow = memo(function DirectoryEntryRow({
   const { t } = useTranslation('storage');
   const { locator } = entry.ref;
   const isDirectory = entry.kind === 'directory';
-  const Icon = isDirectory ? Folder : entry.kind === 'link' ? Link2 : File;
+  const Icon = entryIcons[entry.kind];
 
   return (
     <tr

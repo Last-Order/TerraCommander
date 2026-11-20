@@ -20,12 +20,10 @@ export async function measureDirectorySize(
       for (const { ref, kind, size } of page.entries) {
         if (visited.has(ref.locator)) continue;
         visited.add(ref.locator);
-        if (kind === 'directory') {
-          pending.push(ref);
-        } else if (kind === 'file') {
-          if (size === undefined || !Number.isSafeInteger(bytes + size)) return null;
-          bytes += size;
-        }
+        if (kind === 'directory') pending.push(ref);
+        if (kind !== 'file') continue;
+        if (size === undefined || !Number.isSafeInteger(bytes + size)) return null;
+        bytes += size;
       }
       cursor = page.nextCursor;
       if (cursor !== undefined) {

@@ -25,15 +25,14 @@ export function WorkspaceStatusBar<TTask extends TaskViewItem, TGroup extends Ta
   const tasks = useStore(queue.store, (state) => state.tasks);
   const groups = useStore(queue.store, (state) => state.groups);
   const { active, failed, paused } = summarizeTasks(topLevelEntries(tasks, groups));
+  let summary: string = t('tasksIdle');
+  if (active > 0) summary = t('activeTasks', { count: active });
+  else if (paused > 0) summary = t('pausedTasks', { count: paused });
 
   return (
     <footer className={classes.bar} aria-label={t('statusBar')}>
       <span className={classes.summary} aria-live="polite">
-        {active > 0
-          ? t('activeTasks', { count: active })
-          : paused > 0
-            ? t('pausedTasks', { count: paused })
-            : t('tasksIdle')}
+        {summary}
         {active > 0 && paused > 0 && <span> · {t('pausedTasks', { count: paused })}</span>}
       </span>
       <button

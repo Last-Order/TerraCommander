@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Alert, Button, Group, Modal, Stack, Text } from '@mantine/core';
 import { Cloud, Monitor } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -79,6 +79,74 @@ export function StorageSetupModal({
   else if (existing) title = t('reauthorizeGoogleDrive');
   else if (showAuthorization) title = t('addGoogleDrive');
 
+  let content: ReactNode;
+  if (connection) {
+    content = (
+      <SpacePicker
+        connection={connection}
+        onBusy={setBusy}
+        onCancel={dismiss}
+        onChanged={onChanged}
+        onSaved={() => {
+          onChanged();
+          onClose();
+        }}
+      />
+    );
+  } else if (showAuthorization) {
+    content = (
+      <Stack gap="md">
+        {existing && (
+          <Text size="sm">
+            {t('reauthorizeConfirmation', { name: formatStorageLabel(existing.name, t) })}
+          </Text>
+        )}
+        <Text size="sm" c="dimmed">
+          {existing
+            ? t('reauthorizeInBrowser', { name: formatStorageLabel(existing.name, t) })
+            : t('authorizeHint')}
+        </Text>
+        {error && (
+          <Alert color="red" role="alert">
+            {t(`errors:${error}`)}
+          </Alert>
+        )}
+        <Group justify="flex-end">
+          <Button variant="default" onClick={dismiss}>
+            {authorizing ? t('cancelAuthorization') : t('common:cancel')}
+          </Button>
+          <Button loading={authorizing} onClick={() => void authorize()}>
+            {existing ? t('reauthorize') : t('authorizeInBrowser')}
+          </Button>
+        </Group>
+      </Stack>
+    );
+  } else {
+    content = (
+      <Stack gap="xs">
+        <Text size="sm" c="dimmed">
+          {t('chooseType')}
+        </Text>
+        <Button
+          justify="flex-start"
+          variant="default"
+          leftSection={<Monitor size={16} strokeWidth={1.5} aria-hidden="true" />}
+          onClick={() => setConnection(localConnection ?? emptyLocalConnection)}
+        >
+          {t('localFileSystem')}
+        </Button>
+        <Button
+          justify="flex-start"
+          variant="default"
+          leftSection={<Cloud size={16} strokeWidth={1.5} aria-hidden="true" />}
+          onClick={() => setShowAuthorization(true)}
+        >
+          Google Drive
+        </Button>
+      </Stack>
+    );
+  }
+
   return (
     <Modal
       opened
@@ -89,66 +157,7 @@ export function StorageSetupModal({
       closeOnClickOutside={!busy && !authorizing}
       closeOnEscape={!busy}
     >
-      {connection ? (
-        <SpacePicker
-          connection={connection}
-          onBusy={setBusy}
-          onCancel={dismiss}
-          onChanged={onChanged}
-          onSaved={() => {
-            onChanged();
-            onClose();
-          }}
-        />
-      ) : showAuthorization ? (
-        <Stack gap="md">
-          {existing && (
-            <Text size="sm">
-              {t('reauthorizeConfirmation', { name: formatStorageLabel(existing.name, t) })}
-            </Text>
-          )}
-          <Text size="sm" c="dimmed">
-            {existing
-              ? t('reauthorizeInBrowser', { name: formatStorageLabel(existing.name, t) })
-              : t('authorizeHint')}
-          </Text>
-          {error && (
-            <Alert color="red" role="alert">
-              {t(`errors:${error}`)}
-            </Alert>
-          )}
-          <Group justify="flex-end">
-            <Button variant="default" onClick={dismiss}>
-              {authorizing ? t('cancelAuthorization') : t('common:cancel')}
-            </Button>
-            <Button loading={authorizing} onClick={() => void authorize()}>
-              {existing ? t('reauthorize') : t('authorizeInBrowser')}
-            </Button>
-          </Group>
-        </Stack>
-      ) : (
-        <Stack gap="xs">
-          <Text size="sm" c="dimmed">
-            {t('chooseType')}
-          </Text>
-          <Button
-            justify="flex-start"
-            variant="default"
-            leftSection={<Monitor size={16} strokeWidth={1.5} aria-hidden="true" />}
-            onClick={() => setConnection(localConnection ?? emptyLocalConnection)}
-          >
-            {t('localFileSystem')}
-          </Button>
-          <Button
-            justify="flex-start"
-            variant="default"
-            leftSection={<Cloud size={16} strokeWidth={1.5} aria-hidden="true" />}
-            onClick={() => setShowAuthorization(true)}
-          >
-            Google Drive
-          </Button>
-        </Stack>
-      )}
+      {content}
     </Modal>
   );
 }

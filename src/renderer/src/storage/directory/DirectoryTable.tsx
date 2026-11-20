@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import { Menu, Skeleton } from '@mantine/core';
-import { ChevronDown, ChevronsUpDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronsUpDown, ChevronUp, type LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Entry } from '../../../../shared/storage';
 import classes from './DirectoryTable.module.css';
@@ -14,6 +14,10 @@ import type {
 } from './directory-types';
 
 const entryIconSize = 16;
+const sortIcons: Record<DirectorySort['direction'], LucideIcon> = {
+  ascending: ChevronUp,
+  descending: ChevronDown,
+};
 const columns = [
   { field: 'name', label: 'entryName', className: undefined },
   { field: 'modifiedAt', label: 'entryModifiedAt', className: classes.entryDate },
@@ -139,8 +143,7 @@ export function DirectoryTable({
         <tr>
           {columns.map(({ field, label, className }) => {
             const direction = canSort && sort?.field === field ? sort.direction : undefined;
-            const Icon =
-              direction === 'ascending' ? ChevronUp : direction ? ChevronDown : ChevronsUpDown;
+            const Icon = direction ? sortIcons[direction] : ChevronsUpDown;
             return (
               <th key={field} scope="col" className={className} aria-sort={direction}>
                 {canSort ? (

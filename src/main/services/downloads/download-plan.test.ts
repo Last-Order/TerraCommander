@@ -132,13 +132,11 @@ it('reads every sibling page before numbering and caches names for repeated disc
     entry('two', 'report.txt'),
     entry('three', 'report (1).txt'),
   ];
-  const list = vi.fn<NonNullable<DownloadSource['list']>>(async (_ref, { cursor }) =>
-    !cursor
-      ? { entries: [children[0]!], nextCursor: 'empty' }
-      : cursor === 'empty'
-        ? { entries: [], nextCursor: 'last' }
-        : { entries: children.slice(1) },
-  );
+  const list = vi.fn<NonNullable<DownloadSource['list']>>(async (_ref, { cursor }) => {
+    if (!cursor) return { entries: [children[0]!], nextCursor: 'empty' };
+    if (cursor === 'empty') return { entries: [], nextCursor: 'last' };
+    return { entries: children.slice(1) };
+  });
   const { service, request } = fixture(
     temporary.path,
     [entry('folder', 'A', 'directory')],

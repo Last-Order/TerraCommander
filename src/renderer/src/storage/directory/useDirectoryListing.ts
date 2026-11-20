@@ -28,6 +28,12 @@ interface ListingOptions {
 
 const emptyEntries: DirectoryEntries = new Map();
 
+function listingSnapshot(listing: ListingState): DirectoryEntries | undefined {
+  if (listing.phase === 'error') return listing.snapshot;
+  if (listing.phase === 'loading') return undefined;
+  return listing.entries;
+}
+
 export function useDirectoryListing({
   parent,
   cache,
@@ -109,7 +115,7 @@ export function useDirectoryListing({
   }, [parent, cache, cacheable, version, load]);
 
   const { phase, entries } = listing;
-  const snapshot = phase === 'error' ? listing.snapshot : phase === 'loading' ? undefined : entries;
+  const snapshot = listingSnapshot(listing);
 
   useLayoutEffect(
     () =>

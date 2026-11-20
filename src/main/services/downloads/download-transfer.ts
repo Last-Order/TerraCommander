@@ -169,17 +169,7 @@ export class DownloadTransfer {
         const abort = () => handle?.stream.destroy(new StorageError('Cancelled'));
         signal.addEventListener('abort', abort, { once: true });
         try {
-          throwIfAborted(signal);
-          for await (const chunk of chunks) {
-            throwIfAborted(signal);
-            if (!(chunk instanceof Uint8Array)) throw new StorageError('OutcomeUnknown');
-            if (
-              this.totalBytes !== undefined &&
-              this.output.bytes + chunk.byteLength > this.totalBytes
-            )
-              throw new StorageError('OutcomeUnknown');
-            await this.output.write(chunk);
-          }
+          await this.writeChunks(chunks, signal);
         } finally {
           signal.removeEventListener('abort', abort);
         }
@@ -253,6 +243,17 @@ export class DownloadTransfer {
       downloadFailure(failure);
     }
     return { status: 'completed' };
+  }
+
+  private async writeChunks(chunks: AsyncIterable<unknown>, signal: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
+    for await (const chunk of chunks) {
+      throwIfAborted(signal);
+      if (!(chunk instanceof Uint8Array)) throw new StorageError('OutcomeUnknown');
+      if (this.totalBytes !== undefined && this.output.bytes + chunk.byteLength > this.totalBytes)
+        throw new StorageError('OutcomeUnknown');
+      await this.output.write(chunk);
+    }
   }
 
   private async verifySource(signal: AbortSignal): Promise<void> {

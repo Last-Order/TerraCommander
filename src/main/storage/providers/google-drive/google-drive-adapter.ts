@@ -316,26 +316,17 @@ function fileEntry(ref: EntryRef, file: z.infer<typeof fileSchema>, isRoot: bool
         kind === 'file' && !file.mimeType.startsWith('application/vnd.google-apps.')
           ? supported
           : unsupported,
-      read:
-        kind !== 'file' ||
-        file.mimeType.startsWith('application/vnd.google-apps.') ||
-        file.capabilities?.canDownload === false
-          ? unsupported
-          : file.capabilities?.canDownload
-            ? supported
-            : unknown,
-      rename:
-        isRoot || file.capabilities?.canRename === false
-          ? unsupported
-          : file.capabilities?.canRename
-            ? supported
-            : unknown,
-      remove:
-        isRoot || kind === 'directory' || file.capabilities?.canTrash === false
-          ? unsupported
-          : file.capabilities?.canTrash
-            ? supported
-            : unknown,
+      read: grantedCapability(
+        kind !== 'file' || file.mimeType.startsWith('application/vnd.google-apps.'),
+        file.capabilities?.canDownload,
+      ),
+      rename: grantedCapability(isRoot, file.capabilities?.canRename),
+      remove: grantedCapability(isRoot || kind === 'directory', file.capabilities?.canTrash),
     },
   };
+}
+
+function grantedCapability(excluded: boolean, granted: boolean | undefined) {
+  if (excluded || granted === false) return unsupported;
+  return granted ? supported : unknown;
 }

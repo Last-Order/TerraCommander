@@ -14,7 +14,11 @@
     "typescript/no-floating-promises": "error",
     "typescript/no-misused-promises": "error",
     "react-hooks/rules-of-hooks": "error",
-    "react-hooks/exhaustive-deps": "warn"
+    "react-hooks/exhaustive-deps": "warn",
+    "eslint/no-nested-ternary": "error",
+    "eslint/max-depth": ["error", { "max": 4 }],
+    "eslint/no-lonely-if": "error",
+    "eslint/no-else-return": ["error", { "allowElseIf": false }]
   },
   "ignorePatterns": ["node_modules", "out", "dist", "coverage"]
 }

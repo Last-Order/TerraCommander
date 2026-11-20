@@ -106,15 +106,16 @@ it('aggregates skipped, failed and successful outcomes and retries a single memb
   let failed = true;
   const onSettled = vi.fn(async () => {});
   const { queue } = setup({
-    execute: async ({ name }) =>
-      name === 'skip'
-        ? { status: 'skipped' }
-        : name === 'fail' && failed
-          ? {
-              status: 'failed',
-              failure: { code: 'failed', message: { key: 'tasks:unknownError' } },
-            }
-          : completed,
+    execute: async ({ name }) => {
+      if (name === 'skip') return { status: 'skipped' };
+      if (name === 'fail' && failed) {
+        return {
+          status: 'failed',
+          failure: { code: 'failed', message: { key: 'tasks:unknownError' } },
+        };
+      }
+      return completed;
+    },
     retry: async () => {},
   });
   const groupId = queue.createGroup(groupRequest, { onSettled })!;

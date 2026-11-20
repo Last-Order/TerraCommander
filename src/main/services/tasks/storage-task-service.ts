@@ -61,6 +61,11 @@ type PendingConfirmation =
     };
 
 const queueOwnerId = 0;
+const fatalDirectoryErrorCodes: ReadonlySet<BrowserErrorCode> = new Set<BrowserErrorCode>([
+  'AuthRequired',
+  'InsufficientSpace',
+  'InvalidDownloadDirectory',
+]);
 
 function entryKey({ connectionId, spaceId, locator }: EntryRef): string {
   return JSON.stringify([connectionId, spaceId, locator]);
@@ -558,49 +563,46 @@ export class StorageTaskService {
         });
     };
     context.signal.addEventListener('abort', cancelDirectory, { once: true });
+    const discoverDirectory = async (item: DownloadPlanItem) => {
+      let offset: number | undefined = 0;
+      while (offset !== undefined && !context.signal.aborted) {
+        const page: DownloadPlanPage = await this.browser.downloads.discoverBatchDirectory(
+          queueOwnerId,
+          prepared.id,
+          item.id,
+          offset,
+        );
+        for (const child of page.items) {
+          if (context.signal.aborted) break;
+          if (child.entry.kind === 'directory') pending.push(child);
+          else await enqueueFile(child);
+        }
+        offset = page.nextOffset;
+      }
+    };
+    const prepareDirectory = async (item: DownloadPlanItem) => {
+      activeDirectory = item;
+      try {
+        await discoverDirectory(item);
+        preparedFolders++;
+      } catch (error) {
+        if (context.signal.aborted || fatalDirectoryErrorCodes.has(toBrowserErrorCode(error))) {
+          throw error;
+        }
+        context.reportIssue({ label: item.path, failure: toTaskFailure(error) });
+      } finally {
+        activeDirectory = undefined;
+        this.emitDirectoryChanged({
+          kind: 'invalidate-connection',
+          connectionId: localConnectionId,
+        });
+      }
+    };
     try {
       while (pending.length && !context.signal.aborted) {
         const item = pending.pop()!;
-        if (item.entry.kind !== 'directory') {
-          await enqueueFile(item);
-        } else {
-          activeDirectory = item;
-          try {
-            let offset: number | undefined = 0;
-            while (offset !== undefined && !context.signal.aborted) {
-              const page: DownloadPlanPage = await this.browser.downloads.discoverBatchDirectory(
-                queueOwnerId,
-                prepared.id,
-                item.id,
-                offset,
-              );
-              for (const child of page.items) {
-                if (context.signal.aborted) break;
-                if (child.entry.kind === 'directory') pending.push(child);
-                else await enqueueFile(child);
-              }
-              offset = page.nextOffset;
-            }
-            preparedFolders++;
-          } catch (error) {
-            const code = toBrowserErrorCode(error);
-            if (
-              context.signal.aborted ||
-              code === 'AuthRequired' ||
-              code === 'InsufficientSpace' ||
-              code === 'InvalidDownloadDirectory'
-            ) {
-              throw error;
-            }
-            context.reportIssue({ label: item.path, failure: toTaskFailure(error) });
-          } finally {
-            activeDirectory = undefined;
-            this.emitDirectoryChanged({
-              kind: 'invalidate-connection',
-              connectionId: localConnectionId,
-            });
-          }
-        }
+        if (item.entry.kind === 'directory') await prepareDirectory(item);
+        else await enqueueFile(item);
         context.reportProgress({
           kind: 'indeterminate',
           stage: { key: 'storage:downloadScanning' },
