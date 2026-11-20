@@ -383,3 +383,67 @@ it('ignores a late directory page after reauthorizing the active connection', as
     vi.unstubAllGlobals();
   }
 });
+
+it('shows a skeleton while initially loading connections and avoids revalidation jitter', async () => {
+  const user = userEvent.setup();
+  const space = {
+    id: 'my-drive',
+    connectionId: 'studio',
+    name: '云端盘',
+    root: { connectionId: 'studio', spaceId: 'my-drive', locator: 'root' },
+  } satisfies Space;
+  const connection: StorageConnectionSummary = {
+    id: 'studio',
+    provider: 'google-drive',
+    name: '工作室',
+    needsAuthorization: false,
+    spaces: [space],
+  };
+  const initialLoad = pausePage<BrowserResult<StorageConnectionSummary[]>>();
+  const revalidation = pausePage<BrowserResult<StorageConnectionSummary[]>>();
+  const listConnections = vi
+    .fn<StorageBrowserApi['listConnections']>()
+    .mockReturnValueOnce(initialLoad.promise)
+    .mockReturnValueOnce(revalidation.promise);
+
+  vi.stubGlobal('desktop', {
+    storage: {
+      listConnections,
+      listSpaces: async () => success([{ space, available: true }]),
+      saveSpaces: async () => success(undefined),
+    },
+  });
+  try {
+    await renderWorkspace();
+    const navigation = screen.getByRole('navigation', { name: '存储' });
+    expect(navigation).toHaveAttribute('aria-busy', 'true');
+    expect(within(navigation).getByRole('status', { name: '正在加载存储' })).toBeInTheDocument();
+
+    await act(async () => {
+      initialLoad.resolve(success([connection]));
+      await initialLoad.promise;
+    });
+
+    expect(navigation).not.toHaveAttribute('aria-busy');
+    expect(within(navigation).queryByRole('status')).not.toBeInTheDocument();
+    expect(await within(navigation).findByRole('button', { name: space.name })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '管理 工作室 显示的空间' }));
+    const picker = within(screen.getByRole('dialog'));
+    await user.click(await picker.findByRole('button', { name: '保存' }));
+
+    expect(listConnections).toHaveBeenCalledTimes(2);
+    expect(navigation).not.toHaveAttribute('aria-busy');
+    expect(within(navigation).queryByRole('status')).not.toBeInTheDocument();
+    expect(within(navigation).getByRole('button', { name: space.name })).toBeInTheDocument();
+
+    await act(async () => {
+      revalidation.resolve(success([connection]));
+      await revalidation.promise;
+    });
+  } finally {
+    initialLoad.resolve(success([]));
+    revalidation.resolve(success([]));
+    vi.unstubAllGlobals();
+  }
+});

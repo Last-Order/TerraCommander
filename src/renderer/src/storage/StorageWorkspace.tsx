@@ -17,12 +17,10 @@ import { StorageTaskQueueContext } from './tasks/storage-task-queue-context';
 
 export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { t, i18n } = useTranslation('errors');
-  const {
-    data: connections = [],
-    isValidating,
-    error,
-    mutate,
-  } = useSWR('storage/connections', () => resultOf(window.desktop.storage.listConnections()));
+  const { data, isLoading, isValidating, error, mutate } = useSWR('storage/connections', () =>
+    resultOf(window.desktop.storage.listConnections()),
+  );
+  const connections = data ?? [];
   const [dialog, setDialog] = useState<SetupIntent | null>(null);
   const [location, setLocation] = useState<{ space: Space; generation: number } | null>(null);
   const [directoryCache] = useState(() => new DirectoryCache());
@@ -52,7 +50,7 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
         <StorageSidebar
           connections={connections}
           activeSpace={location?.space ?? null}
-          loading={isValidating}
+          loading={isLoading}
           error={!isValidating && error ? t(errorKey(error)) : null}
           onOpenSettings={onOpenSettings}
           onRetry={refresh}

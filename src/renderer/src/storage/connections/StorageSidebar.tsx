@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { ActionIcon, Button, Loader } from '@mantine/core';
+import { ActionIcon, Button, Skeleton } from '@mantine/core';
 import {
   ChevronDown,
   Cloud,
@@ -46,10 +46,15 @@ export function StorageSidebar({
   const sorted = connections.toSorted((a, b) =>
     compare(formatStorageLabel(a.name, t), formatStorageLabel(b.name, t)),
   );
+  const showSkeleton = loading && !error && connections.length === 0;
 
   return (
     <aside className={classes.sidebar}>
-      <nav className={classes.navigation} aria-label={t('title')}>
+      <nav
+        className={classes.navigation}
+        aria-label={t('title')}
+        aria-busy={showSkeleton || undefined}
+      >
         <div className={classes.sidebarHeading}>
           <h2>{t('title')}</h2>
           <ActionIcon
@@ -63,7 +68,7 @@ export function StorageSidebar({
             <Plus size={16} strokeWidth={1.5} aria-hidden="true" />
           </ActionIcon>
         </div>
-        {loading && <Loader size="sm" aria-label={t('loading')} />}
+        {showSkeleton && <SidebarSkeleton label={t('loading')} />}
         {error && (
           <div className={classes.sidebarStatus} role="alert">
             <p>{error}</p>
@@ -188,5 +193,36 @@ function ConnectionGroup({ connection, activeSpace, onManage, onReauthorize, onO
         })}
       </ul>
     </section>
+  );
+}
+
+const skeletonGroups = [
+  { titleWidth: '52%', detailWidth: '38%', spaceWidths: ['45%'] },
+  { titleWidth: '64%', detailWidth: '48%', spaceWidths: ['58%', '42%'] },
+] as const;
+
+function SidebarSkeleton({ label }: { label: string }) {
+  return (
+    <output className={classes.skeleton} aria-label={label}>
+      {skeletonGroups.map((group, groupIndex) => (
+        <div key={groupIndex} className={classes.connection} aria-hidden="true">
+          <div className={classes.skeletonConnectionRow}>
+            <Skeleton className={classes.skeletonIcon} />
+            <div className={classes.skeletonConnectionText}>
+              <Skeleton width={group.titleWidth} height="0.75rem" />
+              <Skeleton width={group.detailWidth} height="0.625rem" />
+            </div>
+          </div>
+          <ul className={classes.spaces}>
+            {group.spaceWidths.map((width, spaceIndex) => (
+              <li key={spaceIndex} className={classes.skeletonSpaceRow}>
+                <Skeleton className={classes.skeletonIcon} />
+                <Skeleton width={width} height="0.75rem" />
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </output>
   );
 }

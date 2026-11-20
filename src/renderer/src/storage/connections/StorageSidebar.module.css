@@ -147,3 +147,30 @@
 .sidebarStatus p {
   margin: 0 0 0.25rem;
 }
+
+.skeleton {
+  display: block;
+}
+
+.skeletonConnectionRow,
+.skeletonSpaceRow {
+  display: flex;
+  min-width: 0;
+  min-height: 2.25rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+}
+
+.skeletonIcon {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+
+.skeletonConnectionText {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 0.25rem;
+}
