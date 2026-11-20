@@ -1,9 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import type { Entry, EntryRef } from '@shared/storage';
+import type { Entry } from '@shared/storage';
 import { localConnectionId, type BrowserErrorCode } from '@shared/storage-browser';
 import type {
   DeleteTaskRequest,
-  DownloadTaskDisplayInput,
   PrepareDownloadRequest,
   PrepareDownloadResponse,
   RenameTaskRequest,
@@ -14,47 +13,41 @@ import type {
   StorageTaskItem,
   StorageTaskSnapshot,
   TaskControlAvailability,
-  TaskFailure,
   UploadFileRequest,
-  UploadTaskDisplayInput,
 } from '@shared/tasks';
-import { AccountError } from '@main/accounts/core/errors';
-import { StorageError, normalizeStorageError } from '@main/storage';
+import { StorageError } from '@main/storage';
 import { TaskQueue } from '@main/tasks/task-queue';
 import type {
   QueueTask,
   TaskGroup,
   TaskGroupHooks,
   TaskGroupPreparationContext,
+  TaskGroupRequest,
   TaskHandler,
 } from '@main/tasks/types';
 import { DownloadError } from '../downloads/download-paths';
 import type {
-  DownloadExecution,
   DownloadPlanItem,
-  DownloadPlanPage,
   DownloadWork,
-  DownloadWorkRef,
   PreparedDownloadBatch,
 } from '../downloads/download-types';
 import type { StorageBrowser } from '../storage/storage-browser';
-import type {
-  PreparedUploadBatch,
-  UploadPlanItem,
-  UploadPlanPage,
-  UploadWork,
-  UploadWorkRef,
-} from '../uploads/upload-types';
-import { UploadTransfer } from '../uploads/upload-transfer';
-
-interface InternalDownloadInput extends DownloadTaskDisplayInput {
-  workRef: DownloadWorkRef;
-}
-
-interface InternalUploadInput {
-  display: UploadTaskDisplayInput;
-  workRef: UploadWorkRef;
-}
+import type { PreparedUploadBatch, UploadPlanItem, UploadWork } from '../uploads/upload-types';
+import { prepareBatchGroup } from './batch-discovery';
+import {
+  entryKey,
+  queueOwnerId,
+  releaseQuietly,
+  toBrowserErrorCode,
+  toTaskFailure,
+} from './task-errors';
+import {
+  createDownloadTransferConfig,
+  createTransferHandler,
+  createUploadTransferConfig,
+  type InternalDownloadInput,
+  type InternalUploadInput,
+} from './transfer-handler';
 
 type InternalTaskDefinitions = {
   rename: { input: RenameTaskRequest; result: Entry };
@@ -79,7 +72,6 @@ type PendingConfirmation =
       prepared: PreparedDownloadBatch;
     };
 
-const queueOwnerId = 0;
 const fatalDirectoryErrorCodes: ReadonlySet<BrowserErrorCode> = new Set<BrowserErrorCode>([
   'AuthRequired',
   'InsufficientSpace',
@@ -91,32 +83,6 @@ const fatalUploadDirectoryErrorCodes: ReadonlySet<BrowserErrorCode> = new Set<Br
   'InsufficientSpace',
 ]);
 
-function entryKey({ connectionId, spaceId, locator }: EntryRef): string {
-  return JSON.stringify([connectionId, spaceId, locator]);
-}
-
-function workKey(ref: { planId: string; itemId: number }): string {
-  return `${ref.planId}:${ref.itemId}`;
-}
-
-function toBrowserErrorCode(error: unknown): BrowserErrorCode {
-  if (error instanceof AccountError || error instanceof DownloadError) return error.code;
-  return normalizeStorageError(error).code;
-}
-
-function toTaskFailure(error: unknown, options?: { invalidArgumentKey?: string }): TaskFailure {
-  const code = toBrowserErrorCode(error);
-  return {
-    code,
-    message: {
-      key:
-        code === 'InvalidArgument' && options?.invalidArgumentKey
-          ? options.invalidArgumentKey
-          : `errors:${code}`,
-    },
-  };
-}
-
 /** Owns session task scheduling, directory discovery, and download confirmation state. */
 export class StorageTaskService {
   private readonly queue: TaskQueue<
@@ -124,8 +90,6 @@ export class StorageTaskService {
     InternalGroupDefinitions,
     TaskCategory
   >;
-  private readonly downloadExecutions = new Map<string, DownloadExecution>();
-  private readonly uploadTransfers = new Map<string, UploadTransfer>();
   private readonly confirmations = new Map<string, PendingConfirmation>();
   private readonly ownerEpochs = new Map<number, number>();
   private readonly uploadPickers = new Set<number>();
@@ -135,12 +99,28 @@ export class StorageTaskService {
   private disposal: Promise<void> | undefined;
 
   constructor(private readonly browser: StorageBrowser) {
+    const callbacks = {
+      emitAuthRequired: (connectionId: string) => {
+        this.emit({ type: 'auth-required', connectionId });
+      },
+      emitDirectoryChanged: (change: StorageDirectoryChange) => {
+        this.emitDirectoryChanged(change);
+      },
+    };
     this.queue = new TaskQueue<InternalTaskDefinitions, InternalGroupDefinitions, TaskCategory>(
       {
         rename: this.createRenameHandler(),
         delete: this.createDeleteHandler(),
-        download: this.createDownloadHandler(),
-        upload: this.createUploadHandler(),
+        download: createTransferHandler(
+          'transfer',
+          createDownloadTransferConfig(this.browser.downloads, callbacks),
+          callbacks,
+        ),
+        upload: createTransferHandler(
+          'transfer',
+          createUploadTransferConfig(this.browser.uploads, callbacks),
+          callbacks,
+        ),
       },
       { concurrencyLimits: { operation: 16, transfer: 8 } },
     );
@@ -210,21 +190,31 @@ export class StorageTaskService {
         },
       });
       if (!active()) {
-        if (selection.kind === 'single') {
-          await this.releaseUploadWorkQuietly(selection.work.ref);
-        } else {
-          await this.releaseUploadBatchQuietly(selection.prepared.id);
-        }
+        await (selection.kind === 'single'
+          ? releaseQuietly(
+              () => this.browser.uploads.releaseWork(queueOwnerId, selection.work.ref),
+              'Upload work cleanup failed.',
+            )
+          : releaseQuietly(
+              () => this.browser.uploads.releaseBatch(queueOwnerId, selection.prepared.id),
+              'Upload batch cleanup failed.',
+            ));
         return;
       }
       if (selection.kind === 'single') {
         if (!this.enqueueStandaloneUpload(request, selection.work)) {
-          await this.releaseUploadWorkQuietly(selection.work.ref);
+          await releaseQuietly(
+            () => this.browser.uploads.releaseWork(queueOwnerId, selection.work.ref),
+            'Upload work cleanup failed.',
+          );
         }
         return;
       }
       if (!this.enqueueUploadGroup(request, selection.prepared)) {
-        await this.releaseUploadBatchQuietly(selection.prepared.id);
+        await releaseQuietly(
+          () => this.browser.uploads.releaseBatch(queueOwnerId, selection.prepared.id),
+          'Upload batch cleanup failed.',
+        );
       }
     } finally {
       this.uploadPickers.delete(owner);
@@ -269,11 +259,17 @@ export class StorageTaskService {
         throw error;
       }
       if (this.disposed || (this.ownerEpochs.get(owner) ?? 0) !== epoch) {
-        await this.releaseWorkQuietly(work.ref);
+        await releaseQuietly(
+          () => this.browser.downloads.releaseWork(queueOwnerId, work.ref),
+          'Download work cleanup failed.',
+        );
         throw new StorageError('Cancelled');
       }
       if (!this.enqueueStandaloneDownload(request, single, work)) {
-        await this.releaseWorkQuietly(work.ref);
+        await releaseQuietly(
+          () => this.browser.downloads.releaseWork(queueOwnerId, work.ref),
+          'Download work cleanup failed.',
+        );
         throw new DownloadError('DownloadTargetBusy');
       }
       return { status: 'started' };
@@ -284,7 +280,10 @@ export class StorageTaskService {
       directory: request.directory,
     });
     if (this.disposed || (this.ownerEpochs.get(owner) ?? 0) !== epoch) {
-      await this.releaseBatchQuietly(prepared.id);
+      await releaseQuietly(
+        () => this.browser.downloads.releaseBatch(queueOwnerId, prepared.id),
+        'Download batch cleanup failed.',
+      );
       throw new StorageError('Cancelled');
     }
     if (prepared.conflicts.length > 0) {
@@ -298,7 +297,10 @@ export class StorageTaskService {
       return { status: 'conflict', confirmationId, conflicts: prepared.conflicts };
     }
     if (!this.enqueueDownloadGroup(request, prepared)) {
-      await this.releaseBatchQuietly(prepared.id);
+      await releaseQuietly(
+        () => this.browser.downloads.releaseBatch(queueOwnerId, prepared.id),
+        'Download batch cleanup failed.',
+      );
       throw new DownloadError('DownloadTargetBusy');
     }
     return { status: 'started' };
@@ -319,11 +321,17 @@ export class StorageTaskService {
         replace: true,
       });
       if (this.disposed || (this.ownerEpochs.get(owner) ?? 0) !== epoch) {
-        await this.releaseWorkQuietly(work.ref);
+        await releaseQuietly(
+          () => this.browser.downloads.releaseWork(queueOwnerId, work.ref),
+          'Download work cleanup failed.',
+        );
         throw new StorageError('Cancelled');
       }
       if (!this.enqueueStandaloneDownload(confirmation.request, confirmation.entry, work)) {
-        await this.releaseWorkQuietly(work.ref);
+        await releaseQuietly(
+          () => this.browser.downloads.releaseWork(queueOwnerId, work.ref),
+          'Download work cleanup failed.',
+        );
         throw new DownloadError('DownloadTargetBusy');
       }
       return;
@@ -332,11 +340,17 @@ export class StorageTaskService {
     try {
       this.browser.downloads.confirmBatch(queueOwnerId, confirmation.prepared.id);
     } catch (error) {
-      await this.releaseBatchQuietly(confirmation.prepared.id);
+      await releaseQuietly(
+        () => this.browser.downloads.releaseBatch(queueOwnerId, confirmation.prepared.id),
+        'Download batch cleanup failed.',
+      );
       throw error;
     }
     if (!this.enqueueDownloadGroup(confirmation.request, confirmation.prepared)) {
-      await this.releaseBatchQuietly(confirmation.prepared.id);
+      await releaseQuietly(
+        () => this.browser.downloads.releaseBatch(queueOwnerId, confirmation.prepared.id),
+        'Download batch cleanup failed.',
+      );
       throw new DownloadError('DownloadTargetBusy');
     }
   }
@@ -356,7 +370,10 @@ export class StorageTaskService {
       if (confirmation.owner !== owner) continue;
       this.confirmations.delete(id);
       if (confirmation.kind === 'batch') {
-        void this.releaseBatchQuietly(confirmation.prepared.id);
+        void releaseQuietly(
+          () => this.browser.downloads.releaseBatch(queueOwnerId, confirmation.prepared.id),
+          'Download batch cleanup failed.',
+        );
       }
     }
   }
@@ -392,7 +409,12 @@ export class StorageTaskService {
     for (const [id, confirmation] of this.confirmations) {
       this.confirmations.delete(id);
       if (confirmation.kind === 'batch') {
-        pendingBatches.push(this.releaseBatchQuietly(confirmation.prepared.id));
+        pendingBatches.push(
+          releaseQuietly(
+            () => this.browser.downloads.releaseBatch(queueOwnerId, confirmation.prepared.id),
+            'Download batch cleanup failed.',
+          ),
+        );
       }
     }
     await Promise.allSettled([this.queue.dispose(), ...pendingBatches]);
@@ -446,206 +468,6 @@ export class StorageTaskService {
     };
   }
 
-  private createDownloadHandler(): TaskHandler<InternalDownloadInput, void, TaskCategory> {
-    return {
-      category: 'transfer',
-      conflictKeys: ({ entry }) => [entryKey(entry.ref)],
-      execute: async (
-        input,
-        context,
-      ): Promise<
-        Awaited<ReturnType<TaskHandler<InternalDownloadInput, void, TaskCategory>['execute']>>
-      > => {
-        if (
-          input.entry.kind !== 'file' ||
-          input.entry.capabilities.read?.support === 'unsupported'
-        ) {
-          return { status: 'skipped' };
-        }
-        const executionKey = workKey(input.workRef);
-        let paused = false;
-        try {
-          const execution =
-            this.downloadExecutions.get(executionKey) ??
-            (await this.browser.downloads.resolveWork(queueOwnerId, input.workRef));
-          this.downloadExecutions.set(executionKey, execution);
-          if (context.signal.aborted) {
-            await this.browser.downloads.cancelWork(queueOwnerId, input.workRef);
-            return { status: 'cancelled' };
-          }
-          const attempt = randomUUID();
-          const result = await this.browser.downloads.run(
-            queueOwnerId,
-            execution.id,
-            (progress) => {
-              if (progress.id !== execution.id || progress.attempt !== attempt) return;
-              const stage = {
-                key:
-                  progress.stage === 'saving'
-                    ? 'storage:downloadSaving'
-                    : 'storage:downloadReceiving',
-              } as const;
-              context.reportControls(progress.controls);
-              const rate =
-                progress.bytesPerSecond !== undefined
-                  ? { bytesPerSecond: progress.bytesPerSecond }
-                  : {};
-              context.reportProgress(
-                progress.totalBytes !== undefined && progress.totalBytes > 0
-                  ? {
-                      kind: 'determinate',
-                      completed: progress.completedBytes,
-                      total: progress.totalBytes,
-                      unit: 'bytes',
-                      stage,
-                      ...rate,
-                    }
-                  : {
-                      kind: 'indeterminate',
-                      stage,
-                      completedBytes: progress.completedBytes,
-                      ...rate,
-                    },
-              );
-            },
-            attempt,
-          );
-          if (result.status === 'paused') {
-            paused = true;
-            context.reportProgress(
-              result.totalBytes !== undefined && result.totalBytes > 0
-                ? {
-                    kind: 'determinate',
-                    completed: result.completedBytes,
-                    total: result.totalBytes,
-                    unit: 'bytes',
-                  }
-                : { kind: 'indeterminate', completedBytes: result.completedBytes },
-            );
-            return {
-              status: 'paused',
-              ...(result.error !== undefined ? { failure: toTaskFailure(result.error) } : {}),
-            };
-          }
-          return { status: 'completed', result: undefined };
-        } catch (error) {
-          if (toBrowserErrorCode(error) === 'Cancelled') return { status: 'cancelled' };
-          throw error;
-        } finally {
-          if (!paused) this.downloadExecutions.delete(executionKey);
-          this.emitDirectoryChanged({
-            kind: 'invalidate-connection',
-            connectionId: localConnectionId,
-          });
-        }
-      },
-      cancel: async (input) => {
-        try {
-          await this.browser.downloads.cancelWork(queueOwnerId, input.workRef);
-        } finally {
-          this.downloadExecutions.delete(workKey(input.workRef));
-        }
-      },
-      pause: async (input) => {
-        const execution = this.downloadExecutions.get(workKey(input.workRef));
-        if (execution) await this.browser.downloads.pause(queueOwnerId, execution.id);
-      },
-      retry: async () => {},
-      release: ({ workRef }) => this.browser.downloads.releaseWork(queueOwnerId, workRef),
-      toFailure: (error) => toTaskFailure(error),
-      onFailure: (input, failure) => {
-        if (failure.code === 'AuthRequired') {
-          this.emit({ type: 'auth-required', connectionId: input.entry.ref.connectionId });
-        }
-      },
-    };
-  }
-
-  private createUploadHandler(): TaskHandler<InternalUploadInput, Entry, TaskCategory> {
-    return {
-      category: 'transfer',
-      // Each creation has its own provider ID, even when the destination name is shared.
-      conflictKeys: () => [],
-      execute: async ({ workRef }, context) => {
-        const key = workKey(workRef);
-        let keepTransfer = false;
-        try {
-          let transfer = this.uploadTransfers.get(key);
-          if (!transfer) {
-            const work = await this.browser.uploads.resolveWork(queueOwnerId, workRef);
-            if (context.signal.aborted) {
-              await this.browser.uploads.cancelWork(queueOwnerId, workRef);
-              return { status: 'cancelled' };
-            }
-            transfer = new UploadTransfer(work.size, work.prepare);
-            this.uploadTransfers.set(key, transfer);
-          }
-          const result = await transfer.run({
-            signal: context.signal,
-            onProgress: (progress) => {
-              context.reportControls(progress.controls);
-              const stage = { key: 'storage:uploadSending' } as const;
-              const speed =
-                progress.bytesPerSecond !== undefined
-                  ? { bytesPerSecond: progress.bytesPerSecond }
-                  : {};
-              context.reportProgress(
-                progress.totalBytes === 0
-                  ? { kind: 'indeterminate', stage, ...speed }
-                  : {
-                      kind: 'determinate',
-                      completed: progress.confirmedBytes,
-                      total: progress.totalBytes,
-                      unit: 'bytes',
-                      stage,
-                      ...speed,
-                    },
-              );
-            },
-          });
-          if (result.status === 'completed') return { status: 'completed', result: result.entry };
-          if (result.status === 'cancelled') return { status: 'cancelled' };
-          keepTransfer = true;
-          return result.error !== undefined
-            ? { status: 'paused', failure: toTaskFailure(result.error) }
-            : { status: 'paused' };
-        } catch (error) {
-          if (toBrowserErrorCode(error) === 'Cancelled') return { status: 'cancelled' };
-          keepTransfer = this.uploadTransfers.has(key);
-          throw error;
-        } finally {
-          if (!keepTransfer) this.uploadTransfers.delete(key);
-        }
-      },
-      pause: ({ workRef }) => {
-        this.uploadTransfers.get(workKey(workRef))?.pause();
-      },
-      cancel: async ({ workRef }) => {
-        try {
-          await this.browser.uploads.cancelWork(queueOwnerId, workRef);
-          this.uploadTransfers.get(workKey(workRef))?.cancel();
-        } finally {
-          this.uploadTransfers.delete(workKey(workRef));
-        }
-      },
-      canRetry: ({ workRef }) => this.uploadTransfers.get(workKey(workRef))?.retryable ?? true,
-      retry: async () => {}, // The source revalidates the selected file when it opens.
-      onSuccess: ({ display }, entry) => {
-        this.emitDirectoryChanged({ kind: 'added', parent: display.parent, entry });
-      },
-      toFailure: (error) => toTaskFailure(error),
-      onFailure: ({ display }, failure) => {
-        if (failure.code === 'AuthRequired') {
-          this.emit({ type: 'auth-required', connectionId: display.parent.connectionId });
-        }
-      },
-      release: async ({ workRef }) => {
-        this.uploadTransfers.delete(workKey(workRef));
-        await this.browser.uploads.releaseWork(queueOwnerId, workRef);
-      },
-    };
-  }
-
   private enqueueStandaloneDownload(
     request: PrepareDownloadRequest,
     entry: Entry,
@@ -667,129 +489,74 @@ export class StorageTaskService {
     request: PrepareDownloadRequest,
     prepared: PreparedDownloadBatch,
   ): boolean {
-    const hooks: TaskGroupHooks<InternalTaskDefinitions> = {
-      prepare: (context) => this.prepareDownloadGroup(request, prepared, context),
-      toFailure: (error) => toTaskFailure(error),
-      onPreparationFailure: (failure) => {
-        if (failure.code === 'AuthRequired') {
-          this.emit({ type: 'auth-required', connectionId: request.parent.connectionId });
-        }
-      },
-      onSettled: async () => {
-        this.browser.downloads.finishBatch(queueOwnerId, prepared.id);
-      },
-      release: () => this.browser.downloads.releaseBatch(queueOwnerId, prepared.id),
-    };
-    return (
-      this.queue.createGroup(
-        {
-          kind: 'download',
-          input: {
-            names: request.entries.map((entry) => entry.name),
-            sourcePath: request.directoryPath,
-            destinationPath: prepared.path,
-            entries: request.entries.map((entry) => entry.ref),
-          },
-          resources: request.entries.map((entry) => entryKey(entry.ref)),
+    return this.createTransferGroup(
+      {
+        kind: 'download',
+        input: {
+          names: request.entries.map((entry) => entry.name),
+          sourcePath: request.directoryPath,
+          destinationPath: prepared.path,
+          entries: request.entries.map((entry) => entry.ref),
         },
-        hooks,
-      ) !== undefined
+        resources: request.entries.map((entry) => entryKey(entry.ref)),
+      },
+      request.parent.connectionId,
+      (context) => this.prepareDownloadGroup(request, prepared, context),
+      () => this.browser.downloads.finishBatch(queueOwnerId, prepared.id),
+      () => this.browser.downloads.releaseBatch(queueOwnerId, prepared.id),
     );
   }
 
-  private async prepareDownloadGroup(
+  private prepareDownloadGroup(
     request: PrepareDownloadRequest,
     prepared: PreparedDownloadBatch,
     context: TaskGroupPreparationContext<InternalTaskDefinitions>,
   ): Promise<void> {
-    const pending = [...prepared.items].reverse();
-    let activeDirectory: DownloadPlanItem | undefined;
-    let discoveredFiles = 0;
-    let preparedFolders = 0;
-    const enqueueFile = async (item: DownloadPlanItem) => {
-      discoveredFiles++;
-      const admitted = await context.enqueue(
-        {
-          type: 'download',
-          input: {
-            parent: item.parent ?? request.parent,
-            entry: item.entry,
-            directoryPath: request.directoryPath,
-            destinationPath: item.targetPath,
-            displayName: item.path,
-            workRef: { planId: prepared.id, itemId: item.id },
-          },
+    return prepareBatchGroup<DownloadPlanItem, InternalTaskDefinitions>(
+      {
+        initialItems: prepared.items,
+        getItemId: (item) => item.id,
+        getItemLabel: (item) => item.path,
+        isDirectory: (item) => item.entry.kind === 'directory',
+        discoverDirectory: (itemId, offset) =>
+          this.browser.downloads.discoverBatchDirectory(queueOwnerId, prepared.id, itemId, offset),
+        cancelDirectoryItem: (itemId) =>
+          this.browser.downloads.cancelBatchItem(queueOwnerId, prepared.id, itemId),
+        cancelErrorMessage: 'Download directory preparation cancellation failed.',
+        fatalErrorCodes: fatalDirectoryErrorCodes,
+        stageKey: 'storage:downloadScanning',
+        summaryKey: 'storage:downloadPreparationProgress',
+        enqueueFile: async (item, prepContext) => {
+          const admitted = await prepContext.enqueue(
+            {
+              type: 'download',
+              input: {
+                parent: item.parent ?? request.parent,
+                entry: item.entry,
+                directoryPath: request.directoryPath,
+                destinationPath: item.targetPath,
+                displayName: item.path,
+                workRef: { planId: prepared.id, itemId: item.id },
+              },
+            },
+            `${prepared.id}:${item.id}`,
+          );
+          if (!admitted && !prepContext.signal.aborted) {
+            prepContext.reportIssue({
+              label: item.path,
+              failure: toTaskFailure(new DownloadError('DownloadTargetBusy')),
+            });
+          }
         },
-        `${prepared.id}:${item.id}`,
-      );
-      if (!admitted && !context.signal.aborted) {
-        context.reportIssue({
-          label: item.path,
-          failure: toTaskFailure(new DownloadError('DownloadTargetBusy')),
-        });
-      }
-    };
-    const cancelDirectory = () => {
-      if (!activeDirectory) return;
-      void this.browser.downloads
-        .cancelBatchItem(queueOwnerId, prepared.id, activeDirectory.id)
-        .catch(() => {
-          console.error('Download directory preparation cancellation failed.');
-        });
-    };
-    context.signal.addEventListener('abort', cancelDirectory, { once: true });
-    const discoverDirectory = async (item: DownloadPlanItem) => {
-      let offset: number | undefined = 0;
-      while (offset !== undefined && !context.signal.aborted) {
-        const page: DownloadPlanPage = await this.browser.downloads.discoverBatchDirectory(
-          queueOwnerId,
-          prepared.id,
-          item.id,
-          offset,
-        );
-        for (const child of page.items) {
-          if (context.signal.aborted) break;
-          if (child.entry.kind === 'directory') pending.push(child);
-          else await enqueueFile(child);
-        }
-        offset = page.nextOffset;
-      }
-    };
-    const prepareDirectory = async (item: DownloadPlanItem) => {
-      activeDirectory = item;
-      try {
-        await discoverDirectory(item);
-        preparedFolders++;
-      } catch (error) {
-        if (context.signal.aborted || fatalDirectoryErrorCodes.has(toBrowserErrorCode(error))) {
-          throw error;
-        }
-        context.reportIssue({ label: item.path, failure: toTaskFailure(error) });
-      } finally {
-        activeDirectory = undefined;
-        this.emitDirectoryChanged({
-          kind: 'invalidate-connection',
-          connectionId: localConnectionId,
-        });
-      }
-    };
-    try {
-      while (pending.length && !context.signal.aborted) {
-        const item = pending.pop()!;
-        if (item.entry.kind === 'directory') await prepareDirectory(item);
-        else await enqueueFile(item);
-        context.reportProgress({
-          kind: 'indeterminate',
-          stage: { key: 'storage:downloadScanning' },
-          summary: {
-            key: 'storage:downloadPreparationProgress',
-            values: { discoveredFiles, preparedFolders },
-          },
-        });
-      }
-    } finally {
-      context.signal.removeEventListener('abort', cancelDirectory);
-    }
+        afterDirectory: () => {
+          this.emitDirectoryChanged({
+            kind: 'invalidate-connection',
+            connectionId: localConnectionId,
+          });
+        },
+      },
+      context,
+    );
   }
 
   private enqueueStandaloneUpload(request: UploadFileRequest, work: UploadWork): boolean {
@@ -803,135 +570,100 @@ export class StorageTaskService {
   }
 
   private enqueueUploadGroup(request: UploadFileRequest, prepared: PreparedUploadBatch): boolean {
-    const hooks: TaskGroupHooks<InternalTaskDefinitions> = {
-      prepare: (context) => this.prepareUploadGroup(request, prepared, context),
-      toFailure: (error) => toTaskFailure(error),
-      onPreparationFailure: (failure) => {
-        if (failure.code === 'AuthRequired') {
-          this.emit({ type: 'auth-required', connectionId: request.parent.connectionId });
-        }
-      },
-      onSettled: async () => {
-        this.browser.uploads.finishBatch(queueOwnerId, prepared.id);
-      },
-      release: () => this.browser.uploads.releaseBatch(queueOwnerId, prepared.id),
-    };
-    return (
-      this.queue.createGroup(
-        {
-          kind: 'upload',
-          input: {
-            names: prepared.items.map((item) => item.name),
-            sourcePath: prepared.sourcePath,
-            destinationPath: request.directoryPath,
-          },
+    return this.createTransferGroup(
+      {
+        kind: 'upload',
+        input: {
+          names: prepared.items.map((item) => item.name),
+          sourcePath: prepared.sourcePath,
+          destinationPath: request.directoryPath,
         },
-        hooks,
-      ) !== undefined
+      },
+      request.parent.connectionId,
+      (context) => this.prepareUploadGroup(request, prepared, context),
+      () => this.browser.uploads.finishBatch(queueOwnerId, prepared.id),
+      () => this.browser.uploads.releaseBatch(queueOwnerId, prepared.id),
     );
   }
 
-  private async prepareUploadGroup(
+  private prepareUploadGroup(
     request: UploadFileRequest,
     prepared: PreparedUploadBatch,
     context: TaskGroupPreparationContext<InternalTaskDefinitions>,
   ): Promise<void> {
-    const pending = [...prepared.items].reverse();
-    let activeDirectory: UploadPlanItem | undefined;
-    let discoveredFiles = 0;
-    let preparedFolders = 0;
-    const enqueueFile = async (item: UploadPlanItem) => {
-      if (item.code) {
-        context.reportIssue({
-          label: item.path,
-          failure: toTaskFailure(new StorageError(item.code)),
-        });
-        return;
-      }
-      discoveredFiles++;
-      await context.enqueue(
-        {
-          type: 'upload',
-          input: {
-            display: {
-              parent: item.parent,
-              directoryPath: request.directoryPath,
-              name: item.name,
-              displayName: item.path,
-            },
-            workRef: { planId: prepared.id, itemId: item.id },
-          },
+    return prepareBatchGroup<UploadPlanItem, InternalTaskDefinitions>(
+      {
+        initialItems: prepared.items,
+        getItemId: (item) => item.id,
+        getItemLabel: (item) => item.path,
+        isDirectory: (item) => item.kind === 'directory',
+        discoverDirectory: (itemId, offset) =>
+          this.browser.uploads.discoverBatchDirectory(queueOwnerId, prepared.id, itemId, offset),
+        cancelDirectoryItem: (itemId) =>
+          this.browser.uploads.cancelBatchItem(queueOwnerId, prepared.id, itemId),
+        cancelErrorMessage: 'Upload directory preparation cancellation failed.',
+        fatalErrorCodes: fatalUploadDirectoryErrorCodes,
+        stageKey: 'storage:uploadScanning',
+        summaryKey: 'storage:uploadPreparationProgress',
+        beforeDirectory: (item, prepContext) => {
+          if (!item.code) return true;
+          prepContext.reportIssue({
+            label: item.path,
+            failure: toTaskFailure(new StorageError(item.code)),
+          });
+          return false;
         },
-        `${prepared.id}:${item.id}`,
-      );
-    };
-    const cancelDirectory = () => {
-      if (!activeDirectory) return;
-      void this.browser.uploads
-        .cancelBatchItem(queueOwnerId, prepared.id, activeDirectory.id)
-        .catch(() => {
-          console.error('Upload directory preparation cancellation failed.');
-        });
-    };
-    context.signal.addEventListener('abort', cancelDirectory, { once: true });
-    const discoverDirectory = async (item: UploadPlanItem) => {
-      let offset: number | undefined = 0;
-      while (offset !== undefined && !context.signal.aborted) {
-        const page: UploadPlanPage = await this.browser.uploads.discoverBatchDirectory(
-          queueOwnerId,
-          prepared.id,
-          item.id,
-          offset,
-        );
-        for (const child of page.items) {
-          if (context.signal.aborted) break;
-          if (child.kind === 'directory') pending.push(child);
-          else await enqueueFile(child);
+        enqueueFile: async (item, prepContext) => {
+          if (item.code) {
+            prepContext.reportIssue({
+              label: item.path,
+              failure: toTaskFailure(new StorageError(item.code)),
+            });
+            return false;
+          }
+          await prepContext.enqueue(
+            {
+              type: 'upload',
+              input: {
+                display: {
+                  parent: item.parent,
+                  directoryPath: request.directoryPath,
+                  name: item.name,
+                  displayName: item.path,
+                },
+                workRef: { planId: prepared.id, itemId: item.id },
+              },
+            },
+            `${prepared.id}:${item.id}`,
+          );
+          return true;
+        },
+      },
+      context,
+    );
+  }
+
+  private createTransferGroup(
+    request: TaskGroupRequest<InternalGroupDefinitions>,
+    connectionId: string,
+    prepare: (context: TaskGroupPreparationContext<InternalTaskDefinitions>) => Promise<void>,
+    onFinish: () => void,
+    onRelease: () => Promise<void>,
+  ): boolean {
+    const hooks: TaskGroupHooks<InternalTaskDefinitions> = {
+      prepare,
+      toFailure: (error) => toTaskFailure(error),
+      onPreparationFailure: (failure) => {
+        if (failure.code === 'AuthRequired') {
+          this.emit({ type: 'auth-required', connectionId });
         }
-        offset = page.nextOffset;
-      }
+      },
+      onSettled: async () => {
+        onFinish();
+      },
+      release: onRelease,
     };
-    const prepareDirectory = async (item: UploadPlanItem) => {
-      if (item.code) {
-        context.reportIssue({
-          label: item.path,
-          failure: toTaskFailure(new StorageError(item.code)),
-        });
-        return;
-      }
-      activeDirectory = item;
-      try {
-        await discoverDirectory(item);
-        preparedFolders++;
-      } catch (error) {
-        if (
-          context.signal.aborted ||
-          fatalUploadDirectoryErrorCodes.has(toBrowserErrorCode(error))
-        ) {
-          throw error;
-        }
-        context.reportIssue({ label: item.path, failure: toTaskFailure(error) });
-      } finally {
-        activeDirectory = undefined;
-      }
-    };
-    try {
-      while (pending.length && !context.signal.aborted) {
-        const item = pending.pop()!;
-        if (item.kind === 'directory') await prepareDirectory(item);
-        else await enqueueFile(item);
-        context.reportProgress({
-          kind: 'indeterminate',
-          stage: { key: 'storage:uploadScanning' },
-          summary: {
-            key: 'storage:uploadPreparationProgress',
-            values: { discoveredFiles, preparedFolders },
-          },
-        });
-      }
-    } finally {
-      context.signal.removeEventListener('abort', cancelDirectory);
-    }
+    return this.queue.createGroup(request, hooks) !== undefined;
   }
 
   private projectTask(task: QueueTask<InternalTaskDefinitions>): StorageTaskItem {
@@ -992,38 +724,6 @@ export class StorageTaskService {
       } catch {
         console.error('Task event listener failed.');
       }
-    }
-  }
-
-  private async releaseWorkQuietly(ref: DownloadWorkRef): Promise<void> {
-    try {
-      await this.browser.downloads.releaseWork(queueOwnerId, ref);
-    } catch {
-      console.error('Download work cleanup failed.');
-    }
-  }
-
-  private async releaseBatchQuietly(id: string): Promise<void> {
-    try {
-      await this.browser.downloads.releaseBatch(queueOwnerId, id);
-    } catch {
-      console.error('Download batch cleanup failed.');
-    }
-  }
-
-  private async releaseUploadWorkQuietly(ref: UploadWorkRef): Promise<void> {
-    try {
-      await this.browser.uploads.releaseWork(queueOwnerId, ref);
-    } catch {
-      console.error('Upload work cleanup failed.');
-    }
-  }
-
-  private async releaseUploadBatchQuietly(id: string): Promise<void> {
-    try {
-      await this.browser.uploads.releaseBatch(queueOwnerId, id);
-    } catch {
-      console.error('Upload batch cleanup failed.');
     }
   }
 }

@@ -6,6 +6,7 @@ import type { EntryRef } from '@shared/storage';
 import { StorageError, throwIfAborted } from '@main/storage/core/errors';
 import { allocateUploadNames, commonLocalParent, uploadPathKey } from './upload-names';
 import { UploadPlan, type UploadPlanRoot } from './upload-plan';
+import { UploadTransfer, type UploadRunOptions } from './upload-transfer';
 import type {
   PreparedUploadBatch,
   ResolvedUploadWork,
@@ -13,6 +14,7 @@ import type {
   UploadDestination,
   UploadPlanPage,
   UploadRequest,
+  UploadRunResult,
   UploadWork,
   UploadWorkRef,
 } from './upload-types';
@@ -39,9 +41,14 @@ function rootIdentity(stat: BigIntStats, path: string): string {
   return stat.ino !== 0n ? `${stat.dev}:${stat.ino}` : uploadPathKey(path);
 }
 
+function transferKey(ref: UploadWorkRef): string {
+  return `${ref.planId}:${ref.itemId}`;
+}
+
 /** Owns local upload discovery plans and destination folder retention; scheduling remains in the session queue. */
 export class UploadService {
   private readonly plans = new Map<string, UploadPlanRecord>();
+  private readonly transfers = new Map<string, UploadTransfer>();
   private readonly preparations = new Set<
     Promise<
       | UploadWork
@@ -121,13 +128,61 @@ export class UploadService {
     return record.plan.prepareFile(ref.itemId);
   }
 
+  async runWork(
+    owner: number,
+    ref: UploadWorkRef,
+    options: UploadRunOptions,
+  ): Promise<UploadRunResult> {
+    const key = transferKey(ref);
+    let keepTransfer = false;
+    try {
+      let transfer = this.transfers.get(key);
+      if (!transfer) {
+        const work = await this.resolveWork(owner, ref);
+        if (options.signal.aborted) {
+          await this.cancelWork(owner, ref);
+          return { status: 'cancelled' };
+        }
+        transfer = new UploadTransfer(work.size, work.prepare);
+        this.transfers.set(key, transfer);
+      }
+      const result = await transfer.run(options);
+      if (result.status === 'paused') keepTransfer = true;
+      return result;
+    } catch (error) {
+      keepTransfer = this.transfers.has(key);
+      throw error;
+    } finally {
+      if (!keepTransfer) this.transfers.delete(key);
+    }
+  }
+
+  pauseWork(owner: number, ref: UploadWorkRef): void {
+    const record = this.plans.get(ref.planId);
+    if (!record || record.owner !== owner) return;
+    this.transfers.get(transferKey(ref))?.pause();
+  }
+
+  canRetryWork(owner: number, ref: UploadWorkRef): boolean {
+    const record = this.plans.get(ref.planId);
+    if (!record || record.owner !== owner) return false;
+    return this.transfers.get(transferKey(ref))?.retryable ?? true;
+  }
+
   async cancelWork(owner: number, ref: UploadWorkRef): Promise<void> {
     const record = this.plans.get(ref.planId);
     if (!record || record.owner !== owner) return;
-    record.plan.cancelItem(ref.itemId);
+    const key = transferKey(ref);
+    try {
+      record.plan.cancelItem(ref.itemId);
+      this.transfers.get(key)?.cancel();
+    } finally {
+      this.transfers.delete(key);
+    }
   }
 
   async releaseWork(owner: number, ref: UploadWorkRef): Promise<void> {
+    this.transfers.delete(transferKey(ref));
     const record = this.plans.get(ref.planId);
     if (!record || record.owner !== owner || !record.standalone) return;
     this.plans.delete(ref.planId);
@@ -147,6 +202,7 @@ export class UploadService {
   }
 
   async releaseBatch(owner: number, id: string): Promise<void> {
+    this.deletePlanTransfers(id);
     const record = this.plans.get(id);
     if (!record || record.owner !== owner) return;
     this.plans.delete(id);
@@ -157,6 +213,7 @@ export class UploadService {
     this.ownerEpochs.set(owner, (this.ownerEpochs.get(owner) ?? 0) + 1);
     for (const [id, record] of this.plans) {
       if (record.owner !== owner) continue;
+      this.deletePlanTransfers(id);
       this.plans.delete(id);
       void record.plan.release();
     }
@@ -166,10 +223,18 @@ export class UploadService {
     this.lifetime.abort();
     const plans = [...this.plans.values()];
     this.plans.clear();
+    this.transfers.clear();
     await Promise.allSettled([
       ...this.preparations,
       ...plans.map((record) => record.plan.release()),
     ]);
+  }
+
+  private deletePlanTransfers(planId: string): void {
+    const prefix = `${planId}:`;
+    for (const key of this.transfers.keys()) {
+      if (key.startsWith(prefix)) this.transfers.delete(key);
+    }
   }
 
   async validateDestination(parent: EntryRef, requireCreateDirectory = false): Promise<void> {
