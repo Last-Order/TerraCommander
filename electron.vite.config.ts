@@ -1,6 +1,10 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'electron-vite';
 
+// Electron 45.1.0 ships these runtimes. Update the targets when upgrading Electron.
+const electronNodeTarget = 'node24.22.1';
+const electronChromiumTarget = 'chrome156';
+
 export default defineConfig(({ command }) => {
   const development = command === 'serve';
   const csp = [
@@ -18,10 +22,12 @@ export default defineConfig(({ command }) => {
   return {
     main: {
       resolve: { tsconfigPaths: true },
+      build: { target: electronNodeTarget },
     },
     preload: {
       resolve: { tsconfigPaths: true },
       build: {
+        target: electronNodeTarget,
         externalizeDeps: false,
         isolatedEntries: true,
         rollupOptions: {
@@ -30,7 +36,7 @@ export default defineConfig(({ command }) => {
       },
     },
     renderer: {
-      build: { minify: 'oxc' },
+      build: { target: electronChromiumTarget, minify: 'oxc' },
       resolve: { tsconfigPaths: true },
       plugins: [
         react(),
