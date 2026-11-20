@@ -45,6 +45,7 @@ interface ListingProps {
   canUploadFolder: boolean;
   onOpen: (entry: Entry) => void;
   onAuthRequired: () => void;
+  onReauthorize: () => void;
   children: ReactNode;
 }
 
@@ -58,6 +59,7 @@ export function DirectoryListing({
   canUploadFolder,
   onOpen,
   onAuthRequired,
+  onReauthorize,
   children,
 }: ListingProps) {
   const { t, i18n } = useTranslation(['storage', 'common', 'errors']);
@@ -302,9 +304,10 @@ export function DirectoryListing({
                 variant="subtle"
                 size="compact-sm"
                 leftSection={<RefreshCw size={16} strokeWidth={1.5} aria-hidden="true" />}
-                onClick={reload}
+                aria-haspopup={error === 'AuthRequired' ? 'dialog' : undefined}
+                onClick={error === 'AuthRequired' ? onReauthorize : reload}
               >
-                {t('common:retry')}
+                {error === 'AuthRequired' ? t('reauthorize') : t('common:retry')}
               </Button>
             </div>
           )}

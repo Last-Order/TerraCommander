@@ -28,6 +28,10 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
   const refresh = useCallback(() => {
     void mutate();
   }, [mutate]);
+  const reauthorizeConnection = (connectionId: string) => {
+    const connection = connections.find(({ id }) => id === connectionId);
+    if (connection) setDialog({ kind: 'reauthorize', connection });
+  };
   const [queue] = useState(
     () => new StorageTaskClient({ directoryCache, onAuthRequired: refresh }),
   );
@@ -73,6 +77,7 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
               space={location.space}
               cache={directoryCache}
               onAuthRequired={refresh}
+              onReauthorize={() => reauthorizeConnection(location.space.connectionId)}
             />
           ) : (
             <EmptyDirectoryPane />

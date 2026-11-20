@@ -18,9 +18,10 @@ interface DirectoryProps {
   space: Space;
   cache: DirectoryCache;
   onAuthRequired: () => void;
+  onReauthorize: () => void;
 }
 
-export function DirectoryPane({ space, cache, onAuthRequired }: DirectoryProps) {
+export function DirectoryPane({ space, cache, onAuthRequired, onReauthorize }: DirectoryProps) {
   const { t } = useTranslation('storage');
   const [trail, setTrail] = useState<Location[]>([{ ref: space.root, name: space.name }]);
   const current = trail.at(-1) ?? { ref: space.root, name: space.name };
@@ -63,6 +64,7 @@ export function DirectoryPane({ space, cache, onAuthRequired }: DirectoryProps) 
         }
         onOpen={(entry) => setTrail([...trail, entry])}
         onAuthRequired={onAuthRequired}
+        onReauthorize={onReauthorize}
       >
         <nav className={classes.breadcrumbs} aria-label={t('currentDirectory')}>
           {trail.map((location, index) => {

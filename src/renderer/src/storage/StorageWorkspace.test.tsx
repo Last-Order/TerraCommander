@@ -261,7 +261,13 @@ it('invalidates the authorized connection cache while another storage space is o
     const localLink = screen.getByRole('button', { name: local.name });
     await user.click(cloudLink);
     await user.dblClick(await screen.findByRole('button', { name: folderName }));
-    const authorizeLink = await screen.findByRole('button', { name: '重新授权' });
+    const directoryAlert = await screen.findByRole('alert');
+    expect(within(directoryAlert).getByRole('button', { name: '重新授权' })).toBeInTheDocument();
+    expect(within(directoryAlert).queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
+    const authorizeLink = await within(screen.getByRole('region', { name: '工作室' })).findByRole(
+      'button',
+      { name: '重新授权' },
+    );
     expect(cloudLink).toBeDisabled();
     expect(localLink).toBeEnabled();
     expect(
@@ -444,6 +450,68 @@ it('shows a skeleton while initially loading connections and avoids revalidation
   } finally {
     initialLoad.resolve(success([]));
     revalidation.resolve(success([]));
+    vi.unstubAllGlobals();
+  }
+});
+
+it('reauthorizes the active connection from the directory error alert', async () => {
+  const user = userEvent.setup();
+  const drive = {
+    id: 'my-drive',
+    connectionId: 'studio',
+    name: '云端盘',
+    root: { connectionId: 'studio', spaceId: 'my-drive', locator: 'root' },
+  } satisfies Space;
+  let needsAuthorization = false;
+  const listDirectory = vi.fn<StorageBrowserApi['listDirectory']>(async () => {
+    if (needsAuthorization) {
+      return success({
+        entries: [
+          {
+            ref: { ...drive.root, locator: 'restored' },
+            name: '恢复的资料',
+            kind: 'directory',
+            capabilities: {},
+          },
+        ],
+      });
+    }
+    needsAuthorization = true;
+    return { ok: false, code: 'AuthRequired' };
+  });
+  const reauthorize = vi.fn<StorageBrowserApi['reauthorize']>(async () => success(undefined));
+  vi.stubGlobal('desktop', {
+    storage: {
+      listConnections: async () =>
+        success([
+          emptyLocalConnection,
+          {
+            id: drive.connectionId,
+            provider: 'google-drive',
+            name: '工作室',
+            needsAuthorization,
+            spaces: [drive],
+          },
+        ]),
+      listDirectory,
+      reauthorize,
+    },
+  });
+  try {
+    await renderWorkspace();
+    await user.click(await screen.findByRole('button', { name: drive.name }));
+    const directoryAlert = await screen.findByRole('alert');
+    expect(directoryAlert).toHaveTextContent('请重新授权这个账号。');
+
+    await user.click(within(directoryAlert).getByRole('button', { name: '重新授权' }));
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByText('“工作室” 的授权已失效，是否重新授权？')).toBeInTheDocument();
+    await user.click(dialog.getByRole('button', { name: '重新授权' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(reauthorize).toHaveBeenCalledExactlyOnceWith(drive.connectionId);
+    expect(await screen.findByRole('button', { name: '恢复的资料' })).toBeInTheDocument();
+  } finally {
     vi.unstubAllGlobals();
   }
 });
