@@ -9,6 +9,7 @@ import type {
   RenameTaskRequest,
   StorageDirectoryChange,
   StorageTaskEvent,
+  StorageTaskGroupItem,
   StorageTaskGroupRequest,
   StorageTaskItem,
   StorageTaskSnapshot,
@@ -22,6 +23,7 @@ import { StorageError, normalizeStorageError } from '@main/storage';
 import { TaskQueue } from '@main/tasks/task-queue';
 import type {
   QueueTask,
+  TaskGroup,
   TaskGroupHooks,
   TaskGroupPreparationContext,
   TaskHandler,
@@ -151,7 +153,7 @@ export class StorageTaskService {
     const state = this.queue.store.getState();
     return {
       tasks: state.tasks.map((task) => this.projectTask(task)),
-      groups: state.groups.map((group) => ({ ...group })),
+      groups: state.groups.map((group) => this.projectGroup(group)),
     };
   }
 
@@ -575,12 +577,38 @@ export class StorageTaskService {
               await this.browser.uploads.cancelWork(queueOwnerId, workRef);
               return { status: 'cancelled' };
             }
-            transfer = new UploadTransfer(work.size, work.prepare, toTaskFailure);
+            transfer = new UploadTransfer(work.size, work.prepare);
             this.uploadTransfers.set(key, transfer);
           }
-          const outcome = await transfer.run(context);
-          if (outcome.status === 'paused') keepTransfer = true;
-          return outcome;
+          const result = await transfer.run({
+            signal: context.signal,
+            onProgress: (progress) => {
+              context.reportControls(progress.controls);
+              const stage = { key: 'storage:uploadSending' } as const;
+              const speed =
+                progress.bytesPerSecond !== undefined
+                  ? { bytesPerSecond: progress.bytesPerSecond }
+                  : {};
+              context.reportProgress(
+                progress.totalBytes === 0
+                  ? { kind: 'indeterminate', stage, ...speed }
+                  : {
+                      kind: 'determinate',
+                      completed: progress.confirmedBytes,
+                      total: progress.totalBytes,
+                      unit: 'bytes',
+                      stage,
+                      ...speed,
+                    },
+              );
+            },
+          });
+          if (result.status === 'completed') return { status: 'completed', result: result.entry };
+          if (result.status === 'cancelled') return { status: 'cancelled' };
+          keepTransfer = true;
+          return result.error !== undefined
+            ? { status: 'paused', failure: toTaskFailure(result.error) }
+            : { status: 'paused' };
         } catch (error) {
           if (toBrowserErrorCode(error) === 'Cancelled') return { status: 'cancelled' };
           keepTransfer = this.uploadTransfers.has(key);
@@ -660,6 +688,7 @@ export class StorageTaskService {
             names: request.entries.map((entry) => entry.name),
             sourcePath: request.directoryPath,
             destinationPath: prepared.path,
+            entries: request.entries.map((entry) => entry.ref),
           },
           resources: request.entries.map((entry) => entryKey(entry.ref)),
         },
@@ -925,7 +954,6 @@ export class StorageTaskService {
         : {}),
       ...(task.status === 'completed' ? { result: task.result } : {}),
       ...(task.groupId !== undefined ? { groupId: task.groupId } : {}),
-      ...(task.memberKey !== undefined ? { memberKey: task.memberKey } : {}),
     };
     if (task.request.type === 'download') {
       const { workRef: _workRef, ...displayInput } = task.request.input;
@@ -935,6 +963,22 @@ export class StorageTaskService {
       return { ...common, request: { type: 'upload', input: task.request.input.display } };
     }
     return { ...common, request: task.request };
+  }
+
+  private projectGroup(group: TaskGroup<InternalGroupDefinitions>): StorageTaskGroupItem {
+    const request: StorageTaskGroupRequest =
+      group.request.kind === 'download'
+        ? { kind: 'download', input: group.request.input }
+        : { kind: 'upload', input: group.request.input };
+    return {
+      id: group.id,
+      request,
+      sealed: group.sealed,
+      state: group.state,
+      summary: group.summary,
+      progress: group.progress,
+      preparation: group.preparation,
+    };
   }
 
   private emitDirectoryChanged(change: StorageDirectoryChange): void {

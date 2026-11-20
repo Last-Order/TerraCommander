@@ -1,8 +1,12 @@
-import type { Entry } from '@shared/storage';
 import { AccountError } from '@main/accounts/core/errors';
 import { normalizeStorageError, type WriteExecution } from '@main/storage';
-import type { TaskContext, TaskExecutionOutcome, TaskFailure } from '@main/tasks/types';
 import { TransferRateReporter } from '../transfer-rate-reporter';
+import type { UploadProgress, UploadRunResult } from './upload-types';
+
+export interface UploadRunOptions {
+  signal: AbortSignal;
+  onProgress: (progress: UploadProgress) => void;
+}
 
 export class UploadTransfer {
   private execution: WriteExecution | undefined;
@@ -13,31 +17,24 @@ export class UploadTransfer {
   constructor(
     private readonly total: number,
     private readonly prepare: () => WriteExecution,
-    private readonly toFailure: (error: unknown) => TaskFailure,
   ) {}
 
-  async run(context: TaskContext): Promise<TaskExecutionOutcome<Entry>> {
+  async run({ signal, onProgress }: UploadRunOptions): Promise<UploadRunResult> {
     const pause = new AbortController();
     this.pauseController = pause;
     this.retryable = false;
     let sent = 0;
     let rate = 0;
     let paused = false;
+    const controls = { cancellable: true, pausable: true };
     const report = (bytesPerSecond?: number) => {
-      const stage = { key: 'storage:uploadSending' };
-      const speed = bytesPerSecond === undefined ? {} : { bytesPerSecond };
-      context.reportProgress(
-        this.total === 0
-          ? { kind: 'indeterminate', stage, ...speed }
-          : {
-              kind: 'determinate',
-              completed: this.confirmed,
-              total: this.total,
-              unit: 'bytes',
-              stage,
-              ...speed,
-            },
-      );
+      onProgress({
+        controls,
+        stage: 'sending',
+        confirmedBytes: this.confirmed,
+        totalBytes: this.total,
+        ...(bytesPerSecond !== undefined ? { bytesPerSecond } : {}),
+      });
     };
     const reporter = new TransferRateReporter(
       () => sent,
@@ -49,9 +46,9 @@ export class UploadTransfer {
 
     try {
       this.execution ??= this.prepare();
-      context.reportControls({ cancellable: true, pausable: true });
-      const result = await this.execution.run({
-        signal: context.signal,
+      report();
+      const entry = await this.execution.run({
+        signal,
         pauseSignal: pause.signal,
         onBytesSent: (count) => {
           sent += count;
@@ -61,22 +58,22 @@ export class UploadTransfer {
           report(rate);
         },
       });
-      return { status: 'completed', result };
+      return { status: 'completed', entry };
     } catch (error) {
       const failure = normalizeStorageError(error);
       const code = error instanceof AccountError ? error.code : failure.code;
       if (code === 'Cancelled') {
-        paused = pause.signal.aborted && !context.signal.aborted;
+        paused = pause.signal.aborted && !signal.aborted;
         if (!paused) return { status: 'cancelled' };
         report();
-        return { status: 'paused' };
+        return { status: 'paused', confirmedBytes: this.confirmed, totalBytes: this.total };
       }
       const retryable =
         failure.retryHint === 'safe' || (error instanceof AccountError && code === 'AuthRequired');
       if (retryable && this.execution) {
         paused = true;
         report();
-        return { status: 'paused', failure: this.toFailure(error) };
+        return { status: 'paused', confirmedBytes: this.confirmed, totalBytes: this.total, error };
       }
       this.retryable = retryable;
       throw error;

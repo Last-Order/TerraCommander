@@ -91,7 +91,6 @@ export interface TaskViewItem<Request = unknown, Result = unknown> {
   failure?: TaskFailure | undefined;
   result?: Result | undefined;
   groupId?: number | undefined;
-  memberKey?: string | undefined;
 }
 
 export interface TaskGroupViewItem<Request = unknown> {
@@ -148,8 +147,8 @@ export type StorageTaskGroupRequest =
         names: readonly string[];
         sourcePath: string;
         destinationPath: string;
+        entries?: readonly EntryRef[] | undefined;
       };
-      resources?: readonly string[] | undefined;
     }
   | {
       kind: 'upload';
@@ -158,7 +157,6 @@ export type StorageTaskGroupRequest =
         sourcePath: string;
         destinationPath: string;
       };
-      resources?: readonly string[] | undefined;
     };
 
 export type StorageTaskItem = TaskViewItem<StorageTaskRequest>;

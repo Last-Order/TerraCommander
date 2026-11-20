@@ -1,6 +1,5 @@
 import { expect, it } from 'vitest';
 import type { Entry, EntryRef } from '@shared/storage';
-import { directoryKey } from '../directory/directory-cache';
 import { selectPendingEntryEffects } from './pending-entry-effects';
 import type { StorageTaskGroupItem, StorageTaskItem } from './storage-task-types';
 
@@ -28,14 +27,18 @@ function makeEntry(locator: string, name: string): Entry {
 function makeGroup(
   id: number,
   phase: 'active' | 'settling' | 'settled',
-  resources: readonly string[],
+  affectedEntries: readonly EntryRef[],
 ): StorageTaskGroupItem {
   return {
     id,
     request: {
       kind: 'download',
-      input: { names: ['a'], sourcePath: '/', destinationPath: 'D:\\' },
-      resources,
+      input: {
+        names: ['a'],
+        sourcePath: '/',
+        destinationPath: 'D:\\',
+        entries: affectedEntries,
+      },
     },
     sealed: true,
     state: phase === 'settled' ? { phase: 'settled', outcome: 'completed' } : { phase },
@@ -131,8 +134,8 @@ it('projects active group resource locks without marking settled groups or disca
     },
   ];
   const groups: StorageTaskGroupItem[] = [
-    makeGroup(10, 'active', [directoryKey(folder.ref), directoryKey(renamed.ref)]),
-    makeGroup(11, 'settled', [directoryKey(settledTarget.ref)]),
+    makeGroup(10, 'active', [folder.ref, renamed.ref]),
+    makeGroup(11, 'settled', [settledTarget.ref]),
   ];
 
   const effects = selectPendingEntryEffects(tasks, groups, entries, parent);

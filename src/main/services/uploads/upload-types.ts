@@ -71,3 +71,24 @@ export interface ResolvedUploadWork {
   size: number;
   prepare: () => WriteExecution;
 }
+
+export interface UploadProgress {
+  controls: {
+    cancellable: boolean;
+    pausable: boolean;
+  };
+  stage: 'sending';
+  confirmedBytes: number;
+  totalBytes: number;
+  bytesPerSecond?: number;
+}
+
+export type UploadRunResult =
+  | { status: 'completed'; entry: Entry }
+  | { status: 'cancelled' }
+  | {
+      status: 'paused';
+      confirmedBytes: number;
+      totalBytes: number;
+      error?: unknown;
+    };

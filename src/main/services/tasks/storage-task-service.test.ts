@@ -225,10 +225,21 @@ it('runs in-process DFS batch discovery, handles non-fatal issues, and releases 
   expect(started).toEqual({ status: 'started' });
 
   await vi.waitFor(() => {
-    const group = service.getSnapshot().groups[0];
+    const snapshot = service.getSnapshot();
+    const group = snapshot.groups[0];
     expect(group?.sealed).toBe(true);
     expect(group?.preparation.issues).toHaveLength(1);
     expect(group?.preparation.issues[0]?.failure.code).toBe('PermissionDenied');
+    expect(group?.request).toEqual({
+      kind: 'download',
+      input: {
+        names: [folderEntry.name],
+        sourcePath: '/docs',
+        destinationPath: 'D:\\Downloads',
+        entries: [folderEntry.ref],
+      },
+    });
+    expect(snapshot.tasks[0]).not.toHaveProperty('memberKey');
   });
 
   // Uncommitted confirmation from owner 1 should be released on owner reset without touching active task.

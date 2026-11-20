@@ -34,17 +34,19 @@ export function selectPendingEntryEffects(
       }
     }
   }
-  const resources = new Set<string>();
   for (const group of groups) {
-    if (group.state.phase === 'settled') continue;
-    for (const resource of group.request.resources ?? []) resources.add(resource);
-  }
-  if (resources.size > 0) {
-    for (const entry of entries.values()) {
-      if (!resources.has(directoryKey(entry.ref))) continue;
-      const existing = effects.get(entry.ref.locator);
+    if (group.state.phase === 'settled' || group.request.kind !== 'download') continue;
+    for (const ref of group.request.input.entries ?? []) {
+      if (
+        ref.connectionId !== parent.connectionId ||
+        ref.spaceId !== parent.spaceId ||
+        !entries.has(ref.locator)
+      ) {
+        continue;
+      }
+      const existing = effects.get(ref.locator);
       effects.set(
-        entry.ref.locator,
+        ref.locator,
         existing?.optimisticName !== undefined
           ? { busy: true, optimisticName: existing.optimisticName }
           : { busy: true },
