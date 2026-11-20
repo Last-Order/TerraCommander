@@ -18,7 +18,6 @@ const api: DesktopApi = {
     listConnections: () => ipcRenderer.invoke(channels.listConnections),
     listSpaces: (id, refresh) => ipcRenderer.invoke(channels.listSpaces, id, refresh),
     saveSpaces: (id, spaces) => ipcRenderer.invoke(channels.saveSpaces, id, spaces),
-    chooseFolder: () => ipcRenderer.invoke(channels.chooseFolder),
     addConnection: (provider) => ipcRenderer.invoke(channels.addConnection, provider),
     reauthorize: (id) => ipcRenderer.invoke(channels.reauthorize, id),
     cancelAuthorization: () => ipcRenderer.invoke(channels.cancelAuthorization),

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ActionIcon, Alert, Button, Checkbox, Group, Loader, Stack, Text } from '@mantine/core';
-import { FolderPlus, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import useSWR from 'swr';
 import type { StorageConnectionSummary } from '@shared/storage-browser';
@@ -32,7 +32,7 @@ export function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }
     },
   );
   const [selected, setSelected] = useState(() => new Set(connection.spaces.map(({ id }) => id)));
-  const [action, setAction] = useState<'folder' | 'refresh' | 'save' | null>(null);
+  const [action, setAction] = useState<'refresh' | 'save' | null>(null);
   const [actionError, setActionError] = useState<StorageErrorKey | null>(null);
   const pickerError = actionError ?? (!loading && error ? errorKey(error) : null);
 
@@ -58,30 +58,6 @@ export function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }
       setActionError(errorKey(failure));
     } finally {
       onChanged();
-      setAction(null);
-      onBusy(false);
-    }
-  }
-
-  async function chooseFolder() {
-    setAction('folder');
-    onBusy(true);
-    setActionError(null);
-    try {
-      const space = await resultOf(window.desktop.storage.chooseFolder());
-      if (space) {
-        await mutate(
-          (previous = choices) => [
-            ...previous.filter((choice) => choice.space.id !== space.id),
-            { space, available: true },
-          ],
-          { revalidate: false },
-        );
-        toggle(space.id, true);
-      }
-    } catch (failure) {
-      setActionError(errorKey(failure));
-    } finally {
       setAction(null);
       onBusy(false);
     }
@@ -147,17 +123,6 @@ export function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }
           />
         ))}
       </div>
-      {connection.provider === 'local' && (
-        <Button
-          variant="light"
-          leftSection={<FolderPlus size={16} strokeWidth={1.5} aria-hidden="true" />}
-          loading={action === 'folder'}
-          disabled={loading || action !== null}
-          onClick={() => void chooseFolder()}
-        >
-          {t('chooseFolder')}
-        </Button>
-      )}
       <Group justify="flex-end">
         <Button variant="default" disabled={action !== null} onClick={onCancel}>
           {t('common:cancel')}

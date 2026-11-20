@@ -1,5 +1,8 @@
-import { ActionIcon, Button, Modal, createTheme } from '@mantine/core';
+import { ActionIcon, Button, Modal, createTheme, localStorageColorSchemeManager } from '@mantine/core';
 import classes from './theme.module.css';
+
+export const defaultColorScheme = 'auto';
+export const colorSchemeManager = localStorageColorSchemeManager();
 
 export const theme = createTheme({
   primaryColor: 'teal',

@@ -1,10 +1,9 @@
-import { app, dialog, type BrowserWindow } from 'electron';
+import { app, type BrowserWindow } from 'electron';
 import { z } from 'zod';
 import { channels, type AppInfo } from '@shared/contracts';
 import { localConnectionId } from '@shared/storage-browser';
 import { registerDownloadIpc } from './downloads';
 import { createTrustedIpc } from './helpers';
-import { nativeMessages } from '../native-messages';
 import { isTrustedRenderer } from '../security';
 import type { ApplicationServices } from '../services/application-services';
 import {
@@ -96,14 +95,6 @@ export function registerIpcHandlers(
     z.tuple([connectionId, z.array(spaceId).refine((ids) => new Set(ids).size === ids.length)]),
     (browser, _window, id, spaces) => browser.saveSpaces(id, spaces),
   );
-  handleStorage(channels.chooseFolder, noArguments, async (browser, window) => {
-    const result = await dialog.showOpenDialog(window, {
-      title: nativeMessages[language.get().language].chooseFolder,
-      properties: ['openDirectory'],
-    });
-    const folder = result.filePaths[0];
-    return result.canceled || !folder ? null : browser.addLocalFolder(folder);
-  });
   handleStorage(
     channels.addConnection,
     z.tuple([z.enum(['google-drive'])]),

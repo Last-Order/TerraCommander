@@ -34,7 +34,6 @@ export interface StorageBrowserApi {
   listConnections(): Promise<BrowserResult<StorageConnectionSummary[]>>;
   listSpaces(connectionId: string, refresh?: boolean): Promise<BrowserResult<SpaceChoice[]>>;
   saveSpaces(connectionId: string, spaceIds: string[]): Promise<BrowserResult<void>>;
-  chooseFolder(): Promise<BrowserResult<Space | null>>;
   addConnection(
     provider: Exclude<StorageProvider, 'local'>,
   ): Promise<BrowserResult<StorageConnectionSummary>>;

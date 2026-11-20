@@ -1,5 +1,12 @@
 import { useState } from 'react';
-import { Modal, NativeSelect, Stack, Tabs } from '@mantine/core';
+import {
+  Modal,
+  NativeSelect,
+  Stack,
+  Tabs,
+  isMantineColorScheme,
+  useMantineColorScheme,
+} from '@mantine/core';
 import { ArrowDownUp, SlidersHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { languagePreferences, type LanguagePreference } from '@shared/language';
@@ -16,6 +23,7 @@ interface SettingsDialogProps {
 
 export function SettingsDialog({ opened, onClose, initialPreference }: SettingsDialogProps) {
   const { t, i18n } = useTranslation(['settings', 'common']);
+  const { colorScheme, setColorScheme } = useMantineColorScheme();
   const [preference, setPreference] = useState(initialPreference);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -81,19 +89,35 @@ export function SettingsDialog({ opened, onClose, initialPreference }: SettingsD
           </Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel className={classes.panel} value="general">
-          <NativeSelect
-            classNames={{ root: classes.setting, error: classes.settingError }}
-            label={t('language')}
-            value={preference}
-            disabled={saving}
-            error={failed && <span role="alert">{t('languageSaveFailed')}</span>}
-            onChange={(event) => void changeLanguage(event.currentTarget.value)}
-            data={[
-              { value: 'system', label: t('systemLanguage') },
-              { value: 'zh-CN', label: '简体中文' },
-              { value: 'en', label: 'English' },
-            ]}
-          />
+          <Stack gap="md">
+            <NativeSelect
+              classNames={{ root: classes.setting, error: classes.settingError }}
+              label={t('language')}
+              value={preference}
+              disabled={saving}
+              error={failed && <span role="alert">{t('languageSaveFailed')}</span>}
+              onChange={(event) => void changeLanguage(event.currentTarget.value)}
+              data={[
+                { value: 'system', label: t('followSystem') },
+                { value: 'zh-CN', label: '简体中文' },
+                { value: 'en', label: 'English' },
+              ]}
+            />
+            <NativeSelect
+              classNames={{ root: classes.setting }}
+              label={t('appearance')}
+              value={colorScheme}
+              onChange={(event) => {
+                const { value } = event.currentTarget;
+                if (isMantineColorScheme(value)) setColorScheme(value);
+              }}
+              data={[
+                { value: 'auto', label: t('followSystem') },
+                { value: 'light', label: t('lightTheme') },
+                { value: 'dark', label: t('darkTheme') },
+              ]}
+            />
+          </Stack>
         </Tabs.Panel>
         <Tabs.Panel className={classes.panel} value="transfers">
           <Stack gap="lg">

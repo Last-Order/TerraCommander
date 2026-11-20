@@ -5,7 +5,7 @@ import { SWRConfig } from 'swr';
 import type { LanguagePreference } from '@shared/language';
 import { SettingsDialog } from '../settings/SettingsDialog';
 import { StorageWorkspace } from '../storage/StorageWorkspace';
-import { theme } from './theme';
+import { colorSchemeManager, defaultColorScheme, theme } from './theme';
 
 export function App({ languagePreference }: { languagePreference: LanguagePreference }) {
   const [settingsOpened, settings] = useDisclosure();
@@ -18,7 +18,11 @@ export function App({ languagePreference }: { languagePreference: LanguagePrefer
         shouldRetryOnError: false,
       }}
     >
-      <MantineProvider theme={theme} defaultColorScheme="auto">
+      <MantineProvider
+        theme={theme}
+        defaultColorScheme={defaultColorScheme}
+        colorSchemeManager={colorSchemeManager}
+      >
         <Notifications position="top-right" />
         <StorageWorkspace onOpenSettings={settings.open} />
         <SettingsDialog

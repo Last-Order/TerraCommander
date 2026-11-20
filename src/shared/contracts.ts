@@ -11,7 +11,6 @@ export const channels = {
   listConnections: 'storage:list-connections',
   listSpaces: 'storage:list-spaces',
   saveSpaces: 'storage:save-spaces',
-  chooseFolder: 'storage:choose-folder',
   addConnection: 'storage:add-connection',
   reauthorize: 'storage:reauthorize',
   cancelAuthorization: 'storage:cancel-authorization',

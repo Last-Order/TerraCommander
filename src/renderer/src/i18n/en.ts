@@ -13,8 +13,11 @@ export const en = {
     general: 'General',
     transfers: 'Transfers',
     language: 'Language',
-    systemLanguage: 'Follow system',
+    followSystem: 'Follow system',
     languageSaveFailed: 'Could not save the language. Try again.',
+    appearance: 'Appearance',
+    lightTheme: 'Light',
+    darkTheme: 'Dark',
     downloadDirectory: 'Default download directory',
     downloadDirectoryHint:
       'Used when opening a new download. Each download can use a different directory.',
@@ -103,7 +106,6 @@ export const en = {
     discoveringSpaces: 'Finding storage locations',
     noAvailableSpaces: 'No storage locations found',
     spaceUnavailable: 'Currently unavailable',
-    chooseFolder: 'Choose folder',
   },
   tasks: {
     statusBar: 'Status bar',
