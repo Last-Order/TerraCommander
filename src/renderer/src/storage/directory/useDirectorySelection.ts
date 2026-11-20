@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import type { EntryRef } from '@shared/storage';
 import { directoryKey, type DirectoryCache, type DirectoryEntries } from './directory-cache';
 import type { DirectoryRow, DirectorySelectionModifiers } from './directory-types';
@@ -13,9 +13,16 @@ interface SelectionOptions {
   completedEntries: DirectoryEntries | undefined;
   cache: DirectoryCache;
   parent: EntryRef;
+  scrollElement: HTMLDivElement | null;
 }
 
-export function useDirectorySelection({ rows, completedEntries, cache, parent }: SelectionOptions) {
+export function useDirectorySelection({
+  rows,
+  completedEntries,
+  cache,
+  parent,
+  scrollElement,
+}: SelectionOptions) {
   const [selection, setSelection] = useState<SelectionState>(() => ({
     locators: new Set(),
     anchor: null,
@@ -92,6 +99,19 @@ export function useDirectorySelection({ rows, completedEntries, cache, parent }:
   const selectOnly = useCallback((locator: string | null) => {
     setSelection({ locators: new Set(locator === null ? [] : [locator]), anchor: locator });
   }, []);
+
+  useEffect(() => {
+    if (!scrollElement) return;
+    const clearOnBlankClick = (event: MouseEvent) => {
+      if (event.ctrlKey || event.shiftKey || event.metaKey) return;
+      const { target } = event;
+      if (!(target instanceof Element)) return;
+      if (target.closest('tr[data-index], thead, [data-directory-search]')) return;
+      selectOnly(null);
+    };
+    scrollElement.addEventListener('click', clearOnBlankClick);
+    return () => scrollElement.removeEventListener('click', clearOnBlankClick);
+  }, [scrollElement, selectOnly]);
   const selectForContextMenu = useCallback((locator: string) => {
     setSelection((current) => ({
       locators: current.locators.has(locator) ? current.locators : new Set([locator]),

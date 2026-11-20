@@ -42,11 +42,11 @@ export function useDirectoryEntryActions({
     const entry = entries.get(locator);
     return entry ? [entry] : [];
   });
-  const canDelete =
-    selectedEntries.length > 0 && selectedEntries.every((entry) => canDeleteEntry(entry));
-  const deletePending = selectedEntries.some(
+  const selectionBusy = selectedEntries.some(
     (entry) => pendingEntries.get(entry.ref.locator)?.busy === true,
   );
+  const canDelete =
+    selectedEntries.length > 0 && selectedEntries.every((entry) => canDeleteEntry(entry));
   const canDownload =
     selectedEntries.length > 0 &&
     selectedEntries.every(
@@ -56,9 +56,6 @@ export function useDirectoryEntryActions({
           ? entry.capabilities.read?.support !== 'unsupported'
           : entry.kind === 'directory' && entry.capabilities.list?.support !== 'unsupported'),
     );
-  const downloadPending = selectedEntries.some(
-    (entry) => pendingEntries.get(entry.ref.locator)?.busy === true,
-  );
 
   const closeMenu = useCallback(() => {
     setMenuLocator(null);
@@ -89,13 +86,13 @@ export function useDirectoryEntryActions({
   };
 
   const showDelete = () => {
-    if (!canDelete || deletePending) return;
+    if (!canDelete || selectionBusy) return;
     setMenuLocator(null);
     setDeleteEntries(selectedEntries);
   };
 
   const showDownload = () => {
-    if (!canDownload || downloadPending) return;
+    if (!canDownload || selectionBusy) return;
     setMenuLocator(null);
     setDownloadEntries(selectedEntries);
   };
@@ -109,11 +106,11 @@ export function useDirectoryEntryActions({
     showDelete,
     showDownload,
     canDownload,
-    downloadPending,
+    downloadPending: selectionBusy,
     canRename: renamableEntry !== undefined,
     renamePending,
     canDelete,
-    deletePending,
+    deletePending: selectionBusy,
     renameEntry,
     closeRename: () => setRenameEntry(null),
     deleteEntries,
