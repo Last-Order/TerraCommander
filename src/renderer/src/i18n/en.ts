@@ -48,6 +48,7 @@ export const en = {
     searchMatchPosition: 'Match {{current}} of {{total}}',
     noSearchResults: 'No results',
     loadingDirectory: 'Loading directory',
+    selectAllWhileLoading: 'Wait for the directory to finish loading before selecting all items',
     emptyDirectory: 'This folder is empty',
     filesAndFolders: 'Files and folders',
     entryName: 'Name',

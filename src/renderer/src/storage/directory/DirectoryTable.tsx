@@ -59,7 +59,6 @@ interface DirectoryTableProps {
   sizeFormatter: Intl.NumberFormat;
   onSort: (field: DirectorySort['field']) => void;
   onSelect: (locator: string, modifiers: DirectorySelectionModifiers) => void;
-  onSelectAll: () => void;
   onContextMenu: (entry: Entry) => void;
   onOpen: (entry: Entry) => void;
 }
@@ -76,7 +75,6 @@ export function DirectoryTable({
   sizeFormatter,
   onSort,
   onSelect,
-  onSelectAll,
   onContextMenu,
   onOpen,
 }: DirectoryTableProps) {
@@ -130,14 +128,7 @@ export function DirectoryTable({
       aria-rowcount={rows.length + 1}
       onFocusCapture={onFocus}
       onBlurCapture={onBlur}
-      onKeyDownCapture={(event) => {
-        if (event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'a') {
-          event.preventDefault();
-          onSelectAll();
-          return;
-        }
-        onKeyDown(event);
-      }}
+      onKeyDownCapture={onKeyDown}
     >
       <thead>
         <tr>

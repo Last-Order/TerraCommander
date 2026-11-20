@@ -1,5 +1,6 @@
 import { MantineProvider } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { Notifications } from '@mantine/notifications';
 import { SWRConfig } from 'swr';
 import type { LanguagePreference } from '@shared/language';
 import { SettingsDialog } from '../settings/SettingsDialog';
@@ -18,6 +19,7 @@ export function App({ languagePreference }: { languagePreference: LanguagePrefer
       }}
     >
       <MantineProvider theme={theme} defaultColorScheme="auto">
+        <Notifications />
         <StorageWorkspace onOpenSettings={settings.open} />
         <SettingsDialog
           opened={settingsOpened}

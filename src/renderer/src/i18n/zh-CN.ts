@@ -45,6 +45,7 @@ export const zhCN = {
     searchMatchPosition: '第 {{current}} 个匹配项，共 {{total}} 个',
     noSearchResults: '无结果',
     loadingDirectory: '正在加载目录',
+    selectAllWhileLoading: '请等待目录加载完毕后再全选',
     emptyDirectory: '此文件夹为空',
     filesAndFolders: '文件和文件夹',
     entryName: '名称',

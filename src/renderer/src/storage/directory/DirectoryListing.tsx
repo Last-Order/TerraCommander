@@ -1,6 +1,15 @@
-import { useCallback, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type ReactNode,
+} from 'react';
 import { ActionIcon, Button, Menu, Transition, VisuallyHidden } from '@mantine/core';
 import { useReducedMotion } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
 import { CircleAlert, FileUp, FolderUp, RefreshCw, Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
@@ -20,6 +29,8 @@ import { useDirectoryEntryActions } from './useDirectoryEntryActions';
 import { useDirectoryListing } from './useDirectoryListing';
 import { useDirectorySearch } from './useDirectorySearch';
 import { useDirectorySelection } from './useDirectorySelection';
+
+const selectAllLoadingNotification = 'directory-select-all-loading';
 
 function sortRows(rows: DirectoryRow[], { field, direction }: DirectorySort, locale?: string) {
   const { compare } = new Intl.Collator(locale, { numeric: true, sensitivity: 'base' });
@@ -189,6 +200,21 @@ export function DirectoryListing({
     search.close();
     refreshButton.current?.focus();
   };
+  const selectAllEntries = () => {
+    if (phase === 'ready') {
+      actions.closeMenu();
+      selectAll();
+    } else if (loading) {
+      notifications.show({
+        id: selectAllLoadingNotification,
+        color: 'yellow',
+        message: t('selectAllWhileLoading'),
+      });
+    }
+  };
+  useEffect(() => {
+    if (phase === 'ready') notifications.hide(selectAllLoadingNotification);
+  }, [phase]);
   useKeyboardShortcuts([
     {
       key: 'F2',
@@ -197,6 +223,7 @@ export function DirectoryListing({
     },
     { key: 'F5', onTrigger: reload, enabled: !loading, allowInEditable: true },
     { key: 'f', ctrlKey: true, onTrigger: openSearch, allowInEditable: true },
+    { key: 'a', ctrlKey: true, onTrigger: selectAllEntries, enabled: phase !== 'error' },
     ...(search.opened ? [{ key: 'Escape', onTrigger: closeSearch, allowInEditable: true }] : []),
   ]);
   const changeSort = (field: DirectorySort['field']) =>
@@ -384,7 +411,6 @@ export function DirectoryListing({
                 sizeFormatter={sizeFormatter}
                 onSort={changeSort}
                 onSelect={selectEntry}
-                onSelectAll={selectAll}
                 onContextMenu={actions.showEntryMenu}
                 onOpen={onOpen}
               />
