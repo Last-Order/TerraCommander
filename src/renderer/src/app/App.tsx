@@ -19,7 +19,7 @@ export function App({ languagePreference }: { languagePreference: LanguagePrefer
       }}
     >
       <MantineProvider theme={theme} defaultColorScheme="auto">
-        <Notifications />
+        <Notifications position="top-right" />
         <StorageWorkspace onOpenSettings={settings.open} />
         <SettingsDialog
           opened={settingsOpened}
