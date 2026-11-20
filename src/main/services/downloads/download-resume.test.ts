@@ -167,7 +167,9 @@ it.each([false, true])(
         code: 'InvalidArgument',
       });
       const first = await f.start('first');
-      expect(() => f.service.pause(2, f.prepared.id)).toThrow();
+      await expect(f.service.pause(2, f.prepared.id)).rejects.toMatchObject({
+        code: 'InvalidArgument',
+      });
       await f.writePrefix(first.stream, f.content.subarray(0, 4), '0123');
       await f.service.pause(1, f.prepared.id);
       expect(await first.running).toEqual({ status: 'paused', completedBytes: 4, totalBytes: 16 });

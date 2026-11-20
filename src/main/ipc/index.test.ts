@@ -214,9 +214,6 @@ it('uploads the selected file with speed reporting, pause and resume in the task
   await writeFile(path, 'content');
   picker.mockResolvedValueOnce({ canceled: false, filePaths: [path] });
   expect(await upload(event, request)).toEqual({ ok: true, value: undefined });
-  expect(picker).toHaveBeenLastCalledWith(expect.anything(), {
-    properties: ['openFile', 'multiSelections'],
-  });
   expect(target).toHaveBeenLastCalledWith(remoteParent, undefined);
   await vi.waitFor(async () =>
     expect(await snapshot()).toMatchObject({
@@ -473,7 +470,7 @@ it('pauses an upload on retryable failure and resumes the existing write session
   await taskService.dispose();
 });
 
-it('opens a multi-directory picker for folder upload requests', async () => {
+it('requires folder creation support for a folder upload destination', async () => {
   const { event, browser, parent } = setup();
   const uploadFolder = handlers.get(channels.uploadFolderTask)!;
   const remoteParent = { ...parent, connectionId: '5e45885a-89f0-462e-9821-7195cba174e5' };
@@ -483,9 +480,6 @@ it('opens a multi-directory picker for folder upload requests', async () => {
   expect(await uploadFolder(event, { parent: remoteParent, directoryPath: '/Drive' })).toEqual({
     ok: true,
     value: undefined,
-  });
-  expect(picker).toHaveBeenLastCalledWith(expect.anything(), {
-    properties: ['openDirectory', 'multiSelections'],
   });
   expect(target).toHaveBeenLastCalledWith(remoteParent, true);
 });

@@ -4,7 +4,7 @@
     "composite": true,
     "lib": ["ES2025", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
-    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"],
+    "types": ["vite/client"],
     "tsBuildInfoFile": "./node_modules/.cache/tsconfig.web.tsbuildinfo",
     "paths": {
       "@renderer/*": ["./src/renderer/src/*"],

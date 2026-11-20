@@ -15,6 +15,10 @@ Use [package.json](package.json) and [package-lock.json](package-lock.json) as t
 - Use the existing validation, persistence, logging, state, and testing libraries when applicable. Installed dependencies do not imply that a feature should be implemented.
 - Use the repository's Oxlint and Oxfmt configuration for linting and formatting.
 
+## Testing
+
+Do not write UI unit tests. This applies to component rendering, DOM interactions, UI hooks, and native UI behavior. Unit tests may cover logic and data that can be exercised independently of the UI.
+
 ## Module Boundaries
 
 - `src/main/`: Electron lifecycle, window security, menus, and entry wiring.

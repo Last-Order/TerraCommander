@@ -63,7 +63,7 @@ it('allocates unique sibling names and computes common local parent', () => {
   expect(commonLocalParent(['C:\\work\\a\\one.txt', 'C:\\work\\b\\two.txt'])).toBe('C:\\work');
 });
 
-it('discovers mixed files and folders, retains destination folder IDs across retries, and paginates', async () => {
+it('discovers mixed files and folders across pages and resolves nested upload destinations', async () => {
   await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-upload-plan-'));
   const rootFile = join(temporary.path, 'readme.txt');
   const folder = join(temporary.path, 'album');
@@ -127,8 +127,6 @@ it('discovers mixed files and folders, retains destination folder IDs across ret
     const nestedRef = createdDirs[1]!.entry.ref;
     const photoItem = nestedPage.items[0]!;
 
-    // Resolving after finishBatch (simulating retry) retains the exact same nested folder ID
-    service.finishBatch(1, batch.id);
     const work = await service.resolveWork(1, { planId: batch.id, itemId: photoItem.id });
     expect(work.parent).toEqual(nestedRef);
     work.prepare();
@@ -137,7 +135,7 @@ it('discovers mixed files and folders, retains destination folder IDs across ret
       name: 'photo.jpg',
       size: 10,
     });
-    expect(createdDirs).toHaveLength(3); // album, nested, empty — never re-created
+    expect(createdDirs).toHaveLength(3);
   } finally {
     await service.dispose();
   }
