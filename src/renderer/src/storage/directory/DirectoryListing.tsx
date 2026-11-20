@@ -200,6 +200,18 @@ export function DirectoryListing({
     search.close();
     refreshButton.current?.focus();
   };
+  useEffect(() => {
+    if (!scrollElement) return;
+    const clearSelectionOnBlankClick = (event: MouseEvent) => {
+      if (event.ctrlKey || event.shiftKey || event.metaKey) return;
+      const { target } = event;
+      if (!(target instanceof Element)) return;
+      if (target.closest('tr[data-index], thead, [data-directory-search]')) return;
+      selectOnly(null);
+    };
+    scrollElement.addEventListener('click', clearSelectionOnBlankClick);
+    return () => scrollElement.removeEventListener('click', clearSelectionOnBlankClick);
+  }, [scrollElement, selectOnly]);
   const selectAllEntries = () => {
     if (phase === 'ready') {
       actions.closeMenu();
@@ -353,6 +365,7 @@ export function DirectoryListing({
             {(styles) => (
               <div
                 className={classes.searchOverlay}
+                data-directory-search
                 style={styles}
                 inert={!search.opened}
                 aria-hidden={!search.opened || undefined}
