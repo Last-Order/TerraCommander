@@ -1,4 +1,4 @@
-import { mkdtempDisposable, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtempDisposable, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { BrowserWindow, OpenDialogReturnValue } from 'electron';
@@ -521,4 +521,82 @@ it('requires folder creation support for a folder upload destination', async () 
     value: undefined,
   });
   expect(target).toHaveBeenLastCalledWith(remoteParent, true);
+});
+
+it('validates and uploads dropped files, folders, and mixed selections without opening a picker', async () => {
+  const { event, browser, parent } = setup();
+  const uploadPaths = handlers.get(channels.uploadPathsTask)!;
+  const remoteParent = { ...parent, connectionId: '5e45885a-89f0-462e-9821-7195cba174e5' };
+  const target = vi.spyOn(browser.uploads, 'validateDestination').mockResolvedValue(undefined);
+  const destination = (
+    browser.uploads as unknown as {
+      destination: {
+        createDirectory: (request: { parent: typeof remoteParent; name: string }) => Promise<Entry>;
+      };
+    }
+  ).destination;
+  const createDirectory = vi.spyOn(destination, 'createDirectory').mockResolvedValue({
+    ref: { ...remoteParent, locator: 'created-dir' },
+    name: 'docs',
+    kind: 'directory',
+    capabilities: { write: { support: 'supported' }, createDirectory: { support: 'supported' } },
+  });
+  const write = vi.spyOn(browser, 'prepareUpload').mockImplementation((targetParent, name) => ({
+    run: vi.fn<WriteExecution['run']>(async () => ({
+      ref: { ...targetParent, locator: `uploaded-${name}` },
+      name,
+      kind: 'file',
+      capabilities: {},
+    })),
+  }));
+  const snapshot = () => handlers.get(channels.getTaskSnapshot)!(event);
+
+  expect(
+    await uploadPaths(event, { parent: remoteParent, directoryPath: '/Drive', paths: [] }),
+  ).toEqual({
+    ok: false,
+    code: 'InvalidArgument',
+  });
+  await expect(
+    uploadPaths(
+      { ...event, sender: {} },
+      { parent: remoteParent, directoryPath: '/Drive', paths: ['D:\\a.txt'] },
+    ),
+  ).rejects.toThrow('Untrusted IPC sender');
+
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-drop-ipc-'));
+  const singleFile = join(temporary.path, 'cover.txt');
+  const folder = join(temporary.path, 'docs');
+  await writeFile(singleFile, 'cover');
+  await mkdir(folder, { recursive: true });
+  await writeFile(join(folder, 'guide.txt'), 'guide');
+
+  expect(
+    await uploadPaths(event, {
+      parent: remoteParent,
+      directoryPath: '/Drive',
+      paths: [singleFile],
+    }),
+  ).toEqual({ ok: true, value: undefined });
+  expect(target).toHaveBeenLastCalledWith(remoteParent, false);
+
+  expect(
+    await uploadPaths(event, {
+      parent: remoteParent,
+      directoryPath: '/Drive',
+      paths: [singleFile, folder],
+    }),
+  ).toEqual({ ok: true, value: undefined });
+  expect(target).toHaveBeenLastCalledWith(remoteParent, true);
+  expect(picker).not.toHaveBeenCalled();
+
+  await vi.waitFor(async () =>
+    expect(await snapshot()).toMatchObject({
+      value: {
+        groups: [{ state: { phase: 'settled', outcome: 'completed' } }],
+      },
+    }),
+  );
+  expect(createDirectory).toHaveBeenCalledTimes(1);
+  expect(write).toHaveBeenCalledTimes(3);
 });

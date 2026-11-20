@@ -56,6 +56,7 @@ export const zhCN = {
     upload: '上传…',
     uploadFile: '上传文件…',
     uploadFolder: '上传文件夹…',
+    dropToUpload: '松开即可上传',
     uploadTask: '上传',
     uploadSending: '上传中',
     uploadScanning: '正在扫描文件夹',

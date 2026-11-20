@@ -5,6 +5,7 @@ import type {
   PrepareDownloadResponse,
   StorageDirectoryChange,
   UploadFileRequest,
+  UploadPathsRequest,
 } from '@shared/tasks';
 import { StorageError } from '@main/storage';
 import { DownloadError } from '../downloads/download-paths';
@@ -70,43 +71,59 @@ export class TransferSessionCoordinator {
       if (!active()) return;
       const paths = await pickPaths();
       if (paths.length === 0 || !active()) return;
-      const selection = await this.host.uploads.prepareSelection(queueOwnerId, {
-        parent: request.parent,
-        paths,
-        validated: true,
-        onDirectoryCreated: (parent, entry) => {
-          this.host.emitDirectoryChanged({ kind: 'added', parent, entry });
-        },
-      });
-      if (!active()) {
-        await (selection.kind === 'single'
-          ? releaseQuietly(
-              () => this.host.uploads.releaseWork(queueOwnerId, selection.work.ref),
-              'Upload work cleanup failed.',
-            )
-          : releaseQuietly(
-              () => this.host.uploads.releaseBatch(queueOwnerId, selection.prepared.id),
-              'Upload batch cleanup failed.',
-            ));
-        return;
-      }
-      if (selection.kind === 'single') {
-        if (!this.host.enqueueUpload(request, selection.work)) {
-          await releaseQuietly(
-            () => this.host.uploads.releaseWork(queueOwnerId, selection.work.ref),
-            'Upload work cleanup failed.',
-          );
-        }
-        return;
-      }
-      if (!this.host.enqueueUploadGroup(request, selection.prepared)) {
-        await releaseQuietly(
-          () => this.host.uploads.releaseBatch(queueOwnerId, selection.prepared.id),
-          'Upload batch cleanup failed.',
-        );
-      }
+      await this.prepareAndEnqueueUpload(owner, request, paths, true);
     } finally {
       this.uploadPickers.delete(owner);
+    }
+  }
+
+  async uploadSelectedPaths(owner: number, request: UploadPathsRequest): Promise<void> {
+    if (this.disposed || request.paths.length === 0) return;
+    await this.prepareAndEnqueueUpload(owner, request, request.paths, false);
+  }
+
+  private async prepareAndEnqueueUpload(
+    owner: number,
+    request: UploadFileRequest,
+    paths: readonly string[],
+    validated: boolean,
+  ): Promise<void> {
+    const epoch = this.ownerEpochs.get(owner) ?? 0;
+    const active = () => !this.disposed && (this.ownerEpochs.get(owner) ?? 0) === epoch;
+    const selection = await this.host.uploads.prepareSelection(queueOwnerId, {
+      parent: request.parent,
+      paths,
+      validated,
+      onDirectoryCreated: (parent, entry) => {
+        this.host.emitDirectoryChanged({ kind: 'added', parent, entry });
+      },
+    });
+    if (!active()) {
+      await (selection.kind === 'single'
+        ? releaseQuietly(
+            () => this.host.uploads.releaseWork(queueOwnerId, selection.work.ref),
+            'Upload work cleanup failed.',
+          )
+        : releaseQuietly(
+            () => this.host.uploads.releaseBatch(queueOwnerId, selection.prepared.id),
+            'Upload batch cleanup failed.',
+          ));
+      return;
+    }
+    if (selection.kind === 'single') {
+      if (!this.host.enqueueUpload(request, selection.work)) {
+        await releaseQuietly(
+          () => this.host.uploads.releaseWork(queueOwnerId, selection.work.ref),
+          'Upload work cleanup failed.',
+        );
+      }
+      return;
+    }
+    if (!this.host.enqueueUploadGroup(request, selection.prepared)) {
+      await releaseQuietly(
+        () => this.host.uploads.releaseBatch(queueOwnerId, selection.prepared.id),
+        'Upload batch cleanup failed.',
+      );
     }
   }
 

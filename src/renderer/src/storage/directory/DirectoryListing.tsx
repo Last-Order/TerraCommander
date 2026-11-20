@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { ActionIcon, Button, Menu, Transition, VisuallyHidden } from '@mantine/core';
 import { useReducedMotion } from '@mantine/hooks';
 import { CircleAlert, FileUp, FolderUp, RefreshCw, Upload } from 'lucide-react';
@@ -68,6 +68,7 @@ export function DirectoryListing({
   const [sort, setSort] = useState<DirectorySort | null>(null);
   const [uploadPending, setUploadPending] = useState(false);
   const [uploadError, setUploadError] = useState<StorageErrorKey | null>(null);
+  const [dragActive, setDragActive] = useState(false);
   const searchInput = useRef<HTMLInputElement>(null);
   const refreshButton = useRef<HTMLButtonElement>(null);
   const { entries, phase, snapshot, error, refresh } = useDirectoryListing({
@@ -146,6 +147,38 @@ export function DirectoryListing({
   };
   const uploadFile = () => startUpload(() => queue.uploadFile({ parent, directoryPath }));
   const uploadFolder = () => startUpload(() => queue.uploadFolder({ parent, directoryPath }));
+  const canDropUpload = canUpload && !loading && !uploadPending && error === null;
+  const hasDroppedFiles = (dataTransfer: DataTransfer | null) =>
+    Array.from(dataTransfer?.types ?? []).includes('Files');
+  const handleDragEnter = (event: DragEvent<HTMLDivElement>) => {
+    if (!canDropUpload || !hasDroppedFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    setDragActive(true);
+  };
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!hasDroppedFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = canDropUpload ? 'copy' : 'none';
+    if (canDropUpload !== dragActive) setDragActive(canDropUpload);
+  };
+  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    const { currentTarget, relatedTarget } = event;
+    if (!(relatedTarget instanceof Node && currentTarget.contains(relatedTarget))) {
+      setDragActive(false);
+    }
+  };
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (!hasDroppedFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setDragActive(false);
+    if (!canDropUpload) return;
+    const paths = Array.from(event.dataTransfer.files)
+      .map((file) => queue.getPathForFile(file))
+      .filter((path) => path.length > 0);
+    if (paths.length === 0) return;
+    void startUpload(() => queue.uploadPaths({ parent, directoryPath, paths }));
+  };
   const openSearch = () => {
     actions.closeMenu();
     search.open();
@@ -255,7 +288,21 @@ export function DirectoryListing({
           <output>{t('loadingDirectory')}</output>
         </VisuallyHidden>
       )}
-      <div className={classes.directoryBody}>
+      <div
+        className={classes.directoryBody}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {dragActive && canDropUpload && (
+          <div className={classes.dropOverlay} aria-hidden="true">
+            <div className={classes.dropPrompt}>
+              <Upload size={16} strokeWidth={1.5} />
+              <span>{t('dropToUpload')}</span>
+            </div>
+          </div>
+        )}
         <div
           ref={setScrollElement}
           className={

@@ -16,6 +16,7 @@ import type {
   StorageTaskSnapshot,
   TaskControlAvailability,
   UploadFileRequest,
+  UploadPathsRequest,
 } from '@shared/tasks';
 import { StorageError } from '@main/storage';
 import { TaskQueue } from '@main/tasks/task-queue';
@@ -258,6 +259,10 @@ export class StorageTaskService {
     options?: { requireCreateDirectory?: boolean },
   ): Promise<void> {
     return this.session.uploadPaths(owner, request, pickPaths, options);
+  }
+
+  uploadSelectedPaths(owner: number, request: UploadPathsRequest): Promise<void> {
+    return this.session.uploadSelectedPaths(owner, request);
   }
 
   prepareDownload(

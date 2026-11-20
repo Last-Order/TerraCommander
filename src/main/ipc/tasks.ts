@@ -46,6 +46,12 @@ const deleteRequestSchema = z.strictObject({
 
 const uploadFileSchema = z.strictObject({ parent: remoteRefSchema, directoryPath: pathSchema });
 
+const uploadPathsSchema = z.strictObject({
+  parent: remoteRefSchema,
+  directoryPath: pathSchema,
+  paths: z.array(pathSchema.min(1)).min(1),
+});
+
 const prepareDownloadSchema = z.strictObject({
   parent: remoteRefSchema,
   entries: z.array(downloadEntrySchema).min(1),
@@ -138,6 +144,9 @@ export function registerTaskIpc(
       },
       { requireCreateDirectory: true },
     ),
+  );
+  handleTask(channels.uploadPathsTask, z.tuple([uploadPathsSchema]), (tasks, window, request) =>
+    tasks.uploadSelectedPaths(window.webContents.id, request),
   );
   handleTask(
     channels.prepareDownloadTask,

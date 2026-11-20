@@ -49,6 +49,7 @@ export function TaskQueueDock<TTask extends TaskViewItem, TGroup extends TaskGro
         style={
           {
             '--task-panel-resized-height': height === undefined ? undefined : `${height}px`,
+            '--task-panel-visible-height': opened ? 'var(--task-panel-height)' : '0px',
           } as CSSProperties
         }
       >

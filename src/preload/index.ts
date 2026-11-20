@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { channels, type DesktopApi } from '@shared/contracts';
 
 const api: DesktopApi = {
@@ -33,6 +33,8 @@ const api: DesktopApi = {
     enqueueDelete: (request) => ipcRenderer.invoke(channels.enqueueDeleteTask, request),
     uploadFile: (request) => ipcRenderer.invoke(channels.uploadFileTask, request),
     uploadFolder: (request) => ipcRenderer.invoke(channels.uploadFolderTask, request),
+    getPathForFile: (file) => webUtils.getPathForFile(file),
+    uploadPaths: (request) => ipcRenderer.invoke(channels.uploadPathsTask, request),
     prepareDownload: (request) => ipcRenderer.invoke(channels.prepareDownloadTask, request),
     confirmDownload: (confirmationId) =>
       ipcRenderer.invoke(channels.confirmDownloadTask, confirmationId),

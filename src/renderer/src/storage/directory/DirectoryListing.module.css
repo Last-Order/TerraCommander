@@ -91,3 +91,45 @@
   inset-inline-start: 0;
   height: 0;
 }
+
+.dropOverlay {
+  position: absolute;
+  inset: 0;
+  inset-block-end: var(--task-panel-visible-height, 0px);
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--storage-accent);
+  background: color-mix(in srgb, var(--storage-accent) 5%, transparent);
+  pointer-events: none;
+}
+
+.dropPrompt {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid var(--storage-border);
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-body);
+  color: var(--storage-accent);
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.dropPrompt svg {
+  flex: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dropPrompt {
+    animation: dropPromptIn 120ms ease-out;
+  }
+}
+
+@keyframes dropPromptIn {
+  from {
+    opacity: 0;
+  }
+}

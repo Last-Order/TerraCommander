@@ -135,6 +135,10 @@ export interface UploadFileRequest {
   directoryPath: string;
 }
 
+export interface UploadPathsRequest extends UploadFileRequest {
+  paths: readonly string[];
+}
+
 export interface UploadTaskDisplayInput extends UploadFileRequest {
   name: string;
   displayName?: string | undefined;
@@ -217,6 +221,8 @@ export interface TasksApi {
   enqueueDelete(request: DeleteEntriesRequest): Promise<BrowserResult<boolean>>;
   uploadFile(request: UploadFileRequest): Promise<BrowserResult<void>>;
   uploadFolder(request: UploadFileRequest): Promise<BrowserResult<void>>;
+  getPathForFile(file: File): string;
+  uploadPaths(request: UploadPathsRequest): Promise<BrowserResult<void>>;
   prepareDownload(request: PrepareDownloadRequest): Promise<BrowserResult<PrepareDownloadResponse>>;
   confirmDownload(confirmationId: string): Promise<BrowserResult<void>>;
   cancelDownloadConfirmation(confirmationId: string): Promise<BrowserResult<void>>;

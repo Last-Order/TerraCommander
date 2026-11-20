@@ -59,6 +59,7 @@ export const en = {
     upload: 'Upload…',
     uploadFile: 'Upload file…',
     uploadFolder: 'Upload folder…',
+    dropToUpload: 'Release to upload',
     uploadTask: 'Upload',
     uploadSending: 'Uploading',
     uploadScanning: 'Scanning folders',
