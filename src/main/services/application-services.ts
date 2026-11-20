@@ -3,6 +3,7 @@ import { LazyService } from './lazy-service';
 import type { StorageBrowser } from './storage/storage-browser';
 import type { DownloadPreferences } from './downloads/download-preferences';
 import type { StorageTaskService } from './tasks/storage-task-service';
+import type { TransferPreferences } from './tasks/transfer-preferences';
 
 type AccountModule = typeof import('../accounts/runtime/desktop-accounts');
 export type AccountRuntime = ReturnType<AccountModule['createDesktopAccountServices']>;
@@ -18,7 +19,9 @@ export class ApplicationServices {
   readonly accounts: LazyService<AccountRuntime>;
   readonly storageBrowser: LazyService<StorageBrowser>;
   readonly downloadPreferences: LazyService<DownloadPreferences>;
+  readonly transferPreferences: LazyService<TransferPreferences>;
   readonly tasks: LazyService<StorageTaskService>;
+  private readonly taskPreferenceSubscriptions = new WeakMap<StorageTaskService, () => void>();
   private disposal: Promise<void> | undefined;
 
   constructor(options: ApplicationServicesOptions) {
@@ -30,6 +33,17 @@ export class ApplicationServices {
           await import('./downloads/desktop-download-preferences');
         signal.throwIfAborted();
         return createDesktopDownloadPreferences();
+      },
+      dispose: async () => {},
+    });
+    this.transferPreferences = new LazyService({
+      create: async (signal) => {
+        await options.whenReady();
+        signal.throwIfAborted();
+        const { createDesktopTransferPreferences } =
+          await import('./tasks/desktop-transfer-preferences');
+        signal.throwIfAborted();
+        return createDesktopTransferPreferences();
       },
       dispose: async () => {},
     });
@@ -57,13 +71,27 @@ export class ApplicationServices {
     });
     this.tasks = new LazyService({
       create: async (signal) => {
-        const browser = await this.storageBrowser.get(signal);
+        const [browser, transferPreferences] = await Promise.all([
+          this.storageBrowser.get(signal),
+          this.transferPreferences.get(signal),
+        ]);
         signal.throwIfAborted();
         const { StorageTaskService } = await import('./tasks/storage-task-service');
         signal.throwIfAborted();
-        return new StorageTaskService(browser);
+        const service = new StorageTaskService(browser, {
+          transferConcurrency: transferPreferences.get().concurrencyLimit,
+        });
+        const unsubscribe = transferPreferences.subscribe((settings) => {
+          service.setTransferConcurrency(settings.concurrencyLimit);
+        });
+        this.taskPreferenceSubscriptions.set(service, unsubscribe);
+        return service;
       },
-      dispose: (tasks) => tasks.dispose(),
+      dispose: (tasks) => {
+        this.taskPreferenceSubscriptions.get(tasks)?.();
+        this.taskPreferenceSubscriptions.delete(tasks);
+        return tasks.dispose();
+      },
     });
   }
 
@@ -85,6 +113,7 @@ export class ApplicationServices {
         this.storageBrowser.dispose(),
         this.accounts.dispose(),
         this.downloadPreferences.dispose(),
+        this.transferPreferences.dispose(),
       );
     }
     return this.disposal;

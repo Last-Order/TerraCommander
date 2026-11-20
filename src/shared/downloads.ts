@@ -11,7 +11,5 @@ export interface DownloadSettings {
 }
 
 export interface DownloadsApi {
-  getSettings(): Promise<BrowserResult<DownloadSettings>>;
-  setDirectory(directory: string): Promise<BrowserResult<DownloadSettings>>;
   chooseDirectory(initialPath: string): Promise<BrowserResult<string | null>>;
 }

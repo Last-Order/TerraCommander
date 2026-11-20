@@ -18,6 +18,9 @@ export const en = {
     downloadDirectory: 'Default download directory',
     downloadDirectoryHint:
       'Used when opening a new download. Each download can use a different directory.',
+    transferConcurrency: 'Concurrent transfers',
+    transferConcurrencyHint:
+      'Maximum number of uploads and downloads that can run at the same time ({{min}}–{{max}}).',
   },
   storage: {
     title: 'Storage',

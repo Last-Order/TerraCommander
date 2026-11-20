@@ -15,6 +15,7 @@ import { createDefaultStorageProviders } from '../services/storage/providers/def
 import { StorageBrowser } from '../services/storage/storage-browser';
 import { StoragePreferences } from '../services/storage/storage-preferences';
 import { StorageTaskService } from '../services/tasks/storage-task-service';
+import { TransferPreferences } from '../services/tasks/transfer-preferences';
 
 const handlers = vi.hoisted(() => new Map<string, (...args: unknown[]) => Promise<unknown>>());
 const picker = vi.hoisted(() => vi.fn<() => Promise<OpenDialogReturnValue>>());
@@ -68,6 +69,8 @@ function setup() {
   });
   const services = new ApplicationServices({ whenReady: async () => {} });
   activeServices.push(services);
+  const transferPreferences = new TransferPreferences({ read: () => undefined, write() {} });
+  vi.spyOn(services.transferPreferences, 'get').mockResolvedValue(transferPreferences);
   const getBrowser = vi.spyOn(services.storageBrowser, 'get').mockResolvedValue(browser);
   const deleteEntry = vi.spyOn(browser, 'deleteEntry').mockResolvedValue(undefined);
   const setLanguage = vi.fn((preference: LanguagePreference) => ({
@@ -96,11 +99,41 @@ function setup() {
     getBrowser,
     deleteEntry,
     services,
+    transferPreferences,
     setLanguage,
     send,
     emitWebContents,
   };
 }
+
+it('reads and updates settings via the generic settings IPC without loading storage or tasks', async () => {
+  const { event, services, getBrowser } = setup();
+  const getTasks = vi.spyOn(services.tasks, 'get');
+  const getSetting = handlers.get(channels.getSetting)!;
+  const setSetting = handlers.get(channels.setSetting)!;
+
+  expect(await getSetting(event, 'unknown.key')).toEqual({ ok: false, code: 'InvalidArgument' });
+  expect(await getSetting(event, 'transfers.concurrencyLimit')).toEqual({ ok: true, value: 8 });
+  expect(await setSetting(event, 'transfers.concurrencyLimit', 0)).toEqual({
+    ok: false,
+    code: 'InvalidArgument',
+  });
+  expect(await setSetting(event, 'transfers.concurrencyLimit', 33)).toEqual({
+    ok: false,
+    code: 'InvalidArgument',
+  });
+  expect(await setSetting(event, 'transfers.concurrencyLimit', '12')).toEqual({
+    ok: false,
+    code: 'InvalidArgument',
+  });
+  expect(await setSetting(event, 'transfers.concurrencyLimit', 12)).toEqual({
+    ok: true,
+    value: 12,
+  });
+  expect(await getSetting(event, 'transfers.concurrencyLimit')).toEqual({ ok: true, value: 12 });
+  expect(getBrowser).not.toHaveBeenCalled();
+  expect(getTasks).not.toHaveBeenCalled();
+});
 
 it('validates task delete and rename requests strictly before initializing task services', async () => {
   const { event, parent, entry, services, getBrowser, deleteEntry, send } = setup();
@@ -165,15 +198,20 @@ it('reads download settings without loading storage or accounts', async () => {
   const getPreferences = vi
     .spyOn(services.downloadPreferences, 'get')
     .mockResolvedValue(preferences);
-  const get = handlers.get(channels.getDownloadSettings)!;
-  expect(await get(event, 'unexpected')).toEqual({ ok: false, code: 'InvalidArgument' });
+  const get = handlers.get(channels.getSetting)!;
+  expect(await get(event, 'downloads.directory', 'unexpected')).toEqual({
+    ok: false,
+    code: 'InvalidArgument',
+  });
   expect(getPreferences).not.toHaveBeenCalled();
-  expect(await get(event)).toEqual({
+  expect(await get(event, 'downloads.directory')).toEqual({
     ok: true,
-    value: { directory: 'system-downloads' },
+    value: 'system-downloads',
   });
   expect(getBrowser).not.toHaveBeenCalled();
-  await expect(get({ ...event, sender: {} })).rejects.toThrow('Untrusted IPC sender');
+  await expect(get({ ...event, sender: {} }, 'downloads.directory')).rejects.toThrow(
+    'Untrusted IPC sender',
+  );
 });
 
 it('uploads the selected file with speed reporting, pause and resume in the task queue', async () => {

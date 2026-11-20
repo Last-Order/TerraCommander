@@ -13,6 +13,7 @@ import {
 } from '../services/preferences/language-preferences';
 import type { StorageBrowser } from '../services/storage/storage-browser';
 import { entryRefSchema } from '../storage/core/validation';
+import { registerSettingsIpc } from './settings';
 import { registerTaskIpc } from './tasks';
 
 const connectionId = z.union([z.literal(localConnectionId), z.uuid()]);
@@ -65,7 +66,8 @@ export function registerIpcHandlers(
     },
   }));
 
-  registerDownloadIpc(ipc, services);
+  registerSettingsIpc(ipc, services);
+  registerDownloadIpc(ipc);
   registerTaskIpc(ipc, entryUrl, services);
 
   ipc.handle(channels.getLanguage, noArguments, () => language.get());

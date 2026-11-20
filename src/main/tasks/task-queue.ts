@@ -44,7 +44,7 @@ export class TaskQueue<
 
   private nextId = 0;
   private draining = false;
-  private readonly concurrencyLimits: Readonly<Record<Category, number>>;
+  private readonly concurrencyLimits: Record<Category, number>;
   private readonly running: Record<string, number> = {};
   private readonly conflicts = new TaskConflictLedger();
   private readonly executions = new Map<number, symbol>();
@@ -62,7 +62,7 @@ export class TaskQueue<
     private readonly handlers: TaskHandlers<Definitions, Category>,
     options: TaskQueueOptions<Category>,
   ) {
-    this.concurrencyLimits = options.concurrencyLimits;
+    this.concurrencyLimits = { ...options.concurrencyLimits };
     for (const category of Object.keys(options.concurrencyLimits)) this.running[category] = 0;
     this.groupCoordinator = new TaskGroupCoordinator({
       conflicts: this.conflicts,
@@ -94,6 +94,16 @@ export class TaskQueue<
 
   waitForGroupCapacity(groupId: number, signal: AbortSignal, limit = 64): Promise<void> {
     return this.groupCoordinator.waitForCapacity(groupId, signal, limit);
+  }
+
+  /** Updates a category's concurrency limit and drains queued tasks if capacity increased. */
+  setConcurrencyLimit(category: Category, limit: number): void {
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw new RangeError(`Concurrency limit for ${category} must be a positive integer.`);
+    }
+    if (this.concurrencyLimits[category] === limit) return;
+    this.concurrencyLimits[category] = limit;
+    this.drain();
   }
 
   enqueue<Type extends TaskType<Definitions>>(

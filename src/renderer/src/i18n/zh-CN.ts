@@ -17,6 +17,8 @@ export const zhCN = {
     languageSaveFailed: '无法保存语言设置，请重试。',
     downloadDirectory: '默认下载目录',
     downloadDirectoryHint: '新建下载时使用此目录，每次下载也可单独修改。',
+    transferConcurrency: '并发传输任务数',
+    transferConcurrencyHint: '同时执行的上传和下载任务数量上限（{{min}}–{{max}}）。',
   },
   storage: {
     title: '存储',

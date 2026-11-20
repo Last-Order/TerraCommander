@@ -1,5 +1,6 @@
 import type { DownloadsApi } from './downloads';
 import type { LanguagePreference, LanguageSettings } from './language';
+import type { SettingsApi } from './settings';
 import type { BrowserResult, StorageBrowserApi } from './storage-browser';
 import type { TasksApi } from './tasks';
 
@@ -17,8 +18,8 @@ export const channels = {
   listDirectory: 'storage:list-directory',
   measureDirectorySize: 'storage:measure-directory-size',
   cancelDirectoryMeasurement: 'storage:cancel-directory-measurement',
-  getDownloadSettings: 'downloads:get-settings',
-  setDownloadDirectory: 'downloads:set-directory',
+  getSetting: 'settings:get',
+  setSetting: 'settings:set',
   chooseDownloadDirectory: 'downloads:choose-directory',
   getTaskSnapshot: 'tasks:snapshot',
   enqueueRenameTask: 'tasks:enqueue-rename',
@@ -50,6 +51,7 @@ export interface DesktopApi {
     set(preference: LanguagePreference): Promise<BrowserResult<LanguageSettings>>;
   };
   storage: StorageBrowserApi;
+  settings: SettingsApi;
   downloads: DownloadsApi;
   tasks: TasksApi;
 }

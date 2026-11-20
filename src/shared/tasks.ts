@@ -203,6 +203,14 @@ export type PrepareDownloadResponse =
   | { status: 'started' }
   | { status: 'conflict'; confirmationId: string; conflicts?: readonly string[] | undefined };
 
+export const defaultTransferConcurrency = 8;
+export const minTransferConcurrency = 1;
+export const maxTransferConcurrency = 32;
+
+export interface TransferSettings {
+  concurrencyLimit: number;
+}
+
 export interface TasksApi {
   getSnapshot(): Promise<BrowserResult<StorageTaskSnapshot>>;
   enqueueRename(request: RenameTaskRequest): Promise<BrowserResult<boolean>>;

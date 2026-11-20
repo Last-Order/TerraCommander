@@ -1,5 +1,6 @@
 import type { Entry } from '@shared/storage';
 import { localConnectionId, type BrowserErrorCode } from '@shared/storage-browser';
+import { defaultTransferConcurrency } from '@shared/tasks';
 import type {
   DeleteEntriesRequest,
   DeleteTaskRequest,
@@ -106,6 +107,10 @@ function projectGroupRequest<K extends keyof InternalGroupDefinitions>(request: 
   return groupRequestProjectors[request.kind](request.input);
 }
 
+export interface StorageTaskServiceOptions {
+  transferConcurrency?: number | undefined;
+}
+
 /** Owns session task scheduling, directory discovery, and snapshot projection. */
 export class StorageTaskService {
   private readonly queue: TaskQueue<
@@ -118,7 +123,10 @@ export class StorageTaskService {
   private readonly unsubscribeQueue: () => void;
   private disposal: Promise<void> | undefined;
 
-  constructor(private readonly browser: StorageBrowser) {
+  constructor(
+    private readonly browser: StorageBrowser,
+    options: StorageTaskServiceOptions = {},
+  ) {
     const callbacks = {
       emitAuthRequired: (connectionId: string) => {
         this.emit({ type: 'auth-required', connectionId });
@@ -142,7 +150,12 @@ export class StorageTaskService {
           callbacks,
         ),
       },
-      { concurrencyLimits: { operation: 16, transfer: 8 } },
+      {
+        concurrencyLimits: {
+          operation: 16,
+          transfer: options.transferConcurrency ?? defaultTransferConcurrency,
+        },
+      },
     );
     this.session = new TransferSessionCoordinator({
       downloads: this.browser.downloads,
@@ -165,6 +178,10 @@ export class StorageTaskService {
       tasks: state.tasks.map((task) => this.projectTask(task)),
       groups: state.groups.map((group) => this.projectGroup(group)),
     };
+  }
+
+  setTransferConcurrency(limit: number): void {
+    this.queue.setConcurrencyLimit('transfer', limit);
   }
 
   subscribe(listener: (event: StorageTaskEvent) => void): () => void {

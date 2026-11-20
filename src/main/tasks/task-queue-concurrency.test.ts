@@ -124,3 +124,30 @@ it.each([false, true])(
     );
   },
 );
+
+it('updates category concurrency limits dynamically and drains queued tasks when increased', async () => {
+  const { queue, execute, enqueue } = setup();
+  queue.setConcurrencyLimit('transfer', 2);
+
+  const transfers = Array.from({ length: 5 }, (_, index) =>
+    enqueue('transfer', `transfer-${index}`),
+  );
+  expect(execute).toHaveBeenCalledTimes(2);
+
+  queue.setConcurrencyLimit('transfer', 4);
+  await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(4));
+
+  queue.setConcurrencyLimit('transfer', 1);
+  transfers[0]?.resolve();
+  await vi.waitFor(() =>
+    expect(
+      queue.store.getState().tasks.filter(({ status }) => status === 'completed'),
+    ).toHaveLength(1),
+  );
+  expect(execute).toHaveBeenCalledTimes(4);
+
+  for (const transfer of transfers) transfer.resolve();
+  await vi.waitFor(() =>
+    expect(queue.store.getState().tasks.every(({ status }) => status === 'completed')).toBe(true),
+  );
+});

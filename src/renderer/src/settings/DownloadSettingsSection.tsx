@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Stack, Text } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
-import type { DownloadSettings } from '@shared/downloads';
 import { DownloadDirectoryInput } from '../downloads/DownloadDirectoryInput';
 import { errorKey, resultOf, type StorageErrorKey } from '../storage/storage-client';
 
 export function DownloadSettingsSection() {
   const { t } = useTranslation(['settings', 'common', 'errors']);
-  const [settings, setSettings] = useState<DownloadSettings>();
+  const [loaded, setLoaded] = useState(false);
   const [directory, setDirectory] = useState('');
   const [error, setError] = useState<StorageErrorKey>();
   const [attempt, setAttempt] = useState(0);
@@ -23,13 +22,13 @@ export function DownloadSettingsSection() {
     requests.current.add(version);
     void (async () => {
       try {
-        const saved = await resultOf(window.desktop.downloads.setDirectory(value));
+        const saved = await resultOf(window.desktop.settings.set('downloads.directory', value));
         if (version !== revision.current) return;
-        draft.current = saved.directory;
+        draft.current = saved;
         dirty.current = false;
         if (active.current) {
-          setSettings(saved);
-          setDirectory(saved.directory);
+          setLoaded(true);
+          setDirectory(saved);
           setError(undefined);
         }
       } catch (error) {
@@ -58,11 +57,11 @@ export function DownloadSettingsSection() {
     let current = true;
     void (async () => {
       try {
-        const value = await resultOf(window.desktop.downloads.getSettings());
+        const value = await resultOf(window.desktop.settings.get('downloads.directory'));
         if (current) {
-          setSettings(value);
-          setDirectory(value.directory);
-          draft.current = value.directory;
+          setLoaded(true);
+          setDirectory(value);
+          draft.current = value;
         }
       } catch (error) {
         if (current) setError(errorKey(error));
@@ -91,7 +90,7 @@ export function DownloadSettingsSection() {
       <DownloadDirectoryInput
         label={t('downloadDirectory')}
         value={directory}
-        disabled={!settings}
+        disabled={!loaded}
         onChange={(value) => changeDirectory(value)}
         onDirectorySelected={(value) => changeDirectory(value, true)}
         onBlur={flush}
@@ -104,7 +103,7 @@ export function DownloadSettingsSection() {
           {t(`errors:${error}`)}
         </Text>
       )}
-      {error && !settings && (
+      {error && !loaded && (
         <Button
           variant="subtle"
           onClick={() => {

@@ -2,9 +2,11 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { channels, type DesktopApi } from '@shared/contracts';
 
 const api: DesktopApi = {
+  settings: {
+    get: (key) => ipcRenderer.invoke(channels.getSetting, key),
+    set: (key, value) => ipcRenderer.invoke(channels.setSetting, key, value),
+  },
   downloads: {
-    getSettings: () => ipcRenderer.invoke(channels.getDownloadSettings),
-    setDirectory: (path) => ipcRenderer.invoke(channels.setDownloadDirectory, path),
     chooseDirectory: (path) => ipcRenderer.invoke(channels.chooseDownloadDirectory, path),
   },
   getAppInfo: () => ipcRenderer.invoke(channels.getAppInfo),

@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Modal, NativeSelect, Tabs } from '@mantine/core';
+import { Modal, NativeSelect, Stack, Tabs } from '@mantine/core';
 import { ArrowDownUp, SlidersHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { languagePreferences, type LanguagePreference } from '@shared/language';
 import { resultOf } from '../storage/storage-client';
 import classes from './SettingsDialog.module.css';
 import { DownloadSettingsSection } from './DownloadSettingsSection';
+import { TransferConcurrencySection } from './TransferConcurrencySection';
 
 interface SettingsDialogProps {
   opened: boolean;
@@ -95,7 +96,10 @@ export function SettingsDialog({ opened, onClose, initialPreference }: SettingsD
           />
         </Tabs.Panel>
         <Tabs.Panel className={classes.panel} value="transfers">
-          <DownloadSettingsSection />
+          <Stack gap="lg">
+            <DownloadSettingsSection />
+            <TransferConcurrencySection />
+          </Stack>
         </Tabs.Panel>
       </Tabs>
     </Modal>

@@ -42,9 +42,9 @@ export function EntryDownloadModal({
     active.current = true;
     void (async () => {
       try {
-        const settings = await resultOf(window.desktop.downloads.getSettings());
+        const directorySetting = await resultOf(window.desktop.settings.get('downloads.directory'));
         if (!cancelled) {
-          if (!directoryEdited.current) setDirectory(settings.directory);
+          if (!directoryEdited.current) setDirectory(directorySetting);
           setReady(true);
         }
       } catch (error) {
