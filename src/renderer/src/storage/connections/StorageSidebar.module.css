@@ -27,7 +27,7 @@
 
 .sidebarHeading {
   justify-content: space-between;
-  padding-inline: 0.25rem;
+  padding-inline-start: 0.25rem;
   margin-bottom: 1rem;
 }
 
