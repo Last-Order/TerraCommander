@@ -365,6 +365,11 @@ export function DirectoryListing({
       onTrigger: actions.showRename,
       enabled: actions.canRename && !actions.renamePending,
     },
+    {
+      key: 'Delete',
+      onTrigger: actions.showDelete,
+      enabled: actions.canDelete && !actions.deletePending,
+    },
     { key: 'F5', onTrigger: reload, enabled: !loading, allowInEditable: true },
     { key: 'f', ctrlKey: true, onTrigger: openSearch, allowInEditable: true },
     { key: 'a', ctrlKey: true, onTrigger: selectAllEntries, enabled: phase !== 'error' },

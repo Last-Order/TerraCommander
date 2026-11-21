@@ -90,6 +90,7 @@ export function DirectoryEntryMenu({
           <Menu.Item
             color="red"
             disabled={deletePending}
+            aria-keyshortcuts="Delete"
             leftSection={<Trash2 size={16} strokeWidth={1.5} aria-hidden="true" />}
             onClick={onDelete}
           >
