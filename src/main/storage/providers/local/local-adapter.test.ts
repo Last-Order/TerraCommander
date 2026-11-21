@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { AdapterRegistry, StorageAccess } from '../..';
-import { localAdapterFactory, localSpace } from './local-adapter';
+import { localAdapterFactory, localFailure, localSpace } from './local-adapter';
+import { createLocalPlatform } from './local-platform';
 
 async function setup(path: string) {
   const registry = new AdapterRegistry({
@@ -41,11 +42,11 @@ it('renames local files and folders and returns their new references', async () 
     await expect(storage.stat(before)).rejects.toMatchObject({ code: 'NotFound' });
     const folder = await storage.rename({ ...root, locator: 'folder' }, 'renamed-folder');
     expect(folder.kind).toBe('directory');
-    expect((await storage.list(folder.ref)).entries).toMatchObject([{ name: 'child.txt' }]);
-    if (process.platform === 'win32') {
-      await storage.rename(renamed.ref, '重命名.TXT');
-      expect(await readdir(temporary.path)).toContain('重命名.TXT');
-    }
+    expect((await storage.list(folder.ref)).entries).toMatchObject([
+      { name: 'child.txt', ref: { ...root, locator: 'renamed-folder/child.txt' } },
+    ]);
+    await storage.rename(renamed.ref, '重命名.TXT');
+    expect(await readdir(temporary.path)).toContain('重命名.TXT');
   } finally {
     await registry.dispose();
   }
@@ -81,9 +82,9 @@ it('deletes a single file while protecting roots, folders and paths through link
     await expect(storage.stat({ ...root, locator: 'folder' })).rejects.toMatchObject({
       code: 'NotFound',
     });
-    await expect(
-      storage.remove({ ...root, locator: join('redirect', 'secret.txt') }),
-    ).rejects.toMatchObject({ code: 'NotFound' });
+    await expect(storage.remove({ ...root, locator: 'redirect/secret.txt' })).rejects.toMatchObject(
+      { code: 'NotFound' },
+    );
     await storage.remove({ ...root, locator: 'redirect' });
     expect(await readdir(saved)).toEqual(['keep.txt']);
     expect(await readFile(join(saved, 'keep.txt'), 'utf8')).toBe('keep me');
@@ -120,7 +121,7 @@ it('rejects conflicting names, invalid names, root renames and traversal through
     }
     await expect(storage.rename(root, 'moved')).rejects.toMatchObject({ code: 'InvalidArgument' });
     await expect(
-      storage.rename({ ...root, locator: join('redirect', 'secret.txt') }, 'changed.txt'),
+      storage.rename({ ...root, locator: 'redirect/secret.txt' }, 'changed.txt'),
     ).rejects.toMatchObject({ code: 'NotFound' });
     expect(await readFile(join(saved, 'source.txt'), 'utf8')).toBe('source');
     expect(await readFile(join(saved, 'existing.txt'), 'utf8')).toBe('existing');
@@ -185,5 +186,45 @@ it('reports scope-accurate capabilities and honors pre-aborted signals', async (
     ).rejects.toMatchObject({ code: 'Cancelled' });
   } finally {
     await registry.dispose();
+  }
+});
+
+it('validates entry names and locator segments per platform', () => {
+  const win = createLocalPlatform('win32');
+  const posixPlatform = createLocalPlatform('darwin');
+
+  for (const name of ['', ' ', '.', '..', 'a/b', 'bad\0name']) {
+    expect(win.isValidEntryName(name)).toBe(false);
+    expect(posixPlatform.isValidEntryName(name)).toBe(false);
+  }
+
+  for (const name of ['CON.txt', 'bad:name', 'bad\\name', 'bad.', 'bad ', 'a\x01b']) {
+    expect(win.isValidEntryName(name)).toBe(false);
+    expect(posixPlatform.isValidEntryName(name)).toBe(true);
+  }
+
+  expect(win.isValidLocatorSegment('a\\b')).toBe(false);
+  expect(win.isValidLocatorSegment('bad:name')).toBe(false);
+  expect(posixPlatform.isValidLocatorSegment('a\\b')).toBe(true);
+  expect(posixPlatform.isValidLocatorSegment('bad:name')).toBe(true);
+});
+
+it('maps cross-platform filesystem errors to normalized storage errors', () => {
+  const cases = [
+    ['EROFS', 'PermissionDenied'],
+    ['ENOSPC', 'InsufficientSpace'],
+    ['EDQUOT', 'InsufficientSpace'],
+    ['EISDIR', 'InvalidArgument'],
+    ['EXDEV', 'Unsupported'],
+  ] as const;
+
+  for (const [errno, expected] of cases) {
+    let thrown: unknown;
+    try {
+      localFailure(Object.assign(new Error(errno), { code: errno }));
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toMatchObject({ code: expected, providerCode: errno });
   }
 });

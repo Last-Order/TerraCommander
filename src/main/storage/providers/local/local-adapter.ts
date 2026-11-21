@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Dirent, Stats } from 'node:fs';
 import { constants, copyFile, lstat, mkdir, readdir, rename, rm, unlink } from 'node:fs/promises';
-import { basename, dirname, join, normalize, parse, sep } from 'node:path';
+import { basename, dirname, join, normalize, parse } from 'node:path';
 import type {
   Capabilities,
   CapabilityScope,
@@ -15,6 +15,13 @@ import type {
 import type { OperationContext } from '@main/storage/core/contracts';
 import { StorageError, throwIfAborted } from '@main/storage/core/errors';
 import type { AdapterFactory, StorageAdapter } from '@main/storage/ports/adapter';
+import {
+  defaultLocalPlatform,
+  joinLocalLocator,
+  parentLocalLocator,
+  splitLocalLocator,
+  type LocalPlatform,
+} from './local-platform';
 import { listLocalVolumes } from './local-volumes';
 
 const supported = { support: 'supported' } as const;
@@ -49,26 +56,39 @@ export function localSpace(connectionId: string, directory: string): Space {
 
 export function localFailure(error: unknown, signal?: AbortSignal): never {
   throwIfAborted(signal);
-  const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : null;
-  if (code === 'ENOENT' || code === 'ENOTDIR') throw new StorageError('NotFound', { cause: error });
-  if (code === 'EACCES' || code === 'EPERM') {
-    throw new StorageError('PermissionDenied', { cause: error });
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+      ? error.code
+      : undefined;
+  const options = code ? { cause: error, providerCode: code } : { cause: error };
+  if (code === 'ENOENT' || code === 'ENOTDIR') throw new StorageError('NotFound', options);
+  if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS') {
+    throw new StorageError('PermissionDenied', options);
   }
-  if (code === 'EEXIST' || code === 'ENOTEMPTY')
-    throw new StorageError('AlreadyExists', { cause: error });
-  if (code === 'EINVAL' || code === 'ENAMETOOLONG')
-    throw new StorageError('InvalidArgument', { cause: error });
+  if (code === 'EEXIST' || code === 'ENOTEMPTY') {
+    throw new StorageError('AlreadyExists', options);
+  }
+  if (code === 'EINVAL' || code === 'ENAMETOOLONG' || code === 'EISDIR') {
+    throw new StorageError('InvalidArgument', options);
+  }
+  if (code === 'ENOSPC' || code === 'EDQUOT') {
+    throw new StorageError('InsufficientSpace', options);
+  }
+  if (code === 'EXDEV') {
+    throw new StorageError('Unsupported', options);
+  }
   throw error;
 }
 
 export function localAdapterFactory(
   folders: () => readonly string[],
   volumes: typeof listLocalVolumes = listLocalVolumes,
+  platform: LocalPlatform = defaultLocalPlatform,
 ): AdapterFactory {
   return {
     provider: 'local',
     async create(connection) {
-      return new LocalAdapter(connection.id, folders, volumes);
+      return new LocalAdapter(connection.id, folders, volumes, platform);
     },
   };
 }
@@ -79,19 +99,11 @@ export async function locateLocalEntry(
   volumes: typeof listLocalVolumes = listLocalVolumes,
   cachedVolumes?: Map<string, string>,
   signal?: AbortSignal,
+  platform: LocalPlatform = defaultLocalPlatform,
 ): Promise<{ path: string; info: Stats; kind: Entry['kind'] }> {
   throwIfAborted(signal);
-  const names = ref.locator === '.' ? [] : ref.locator.split(sep);
-  if (
-    names.some(
-      (name) =>
-        !name ||
-        name === '.' ||
-        name === '..' ||
-        name.includes('\0') ||
-        (sep === '\\' && /[/:]|[. ]$/.test(name)),
-    )
-  ) {
+  const names = splitLocalLocator(ref.locator);
+  if (names.some((name) => !platform.isValidLocatorSegment(name))) {
     throw new StorageError('InvalidArgument');
   }
 
@@ -137,6 +149,7 @@ class LocalAdapter implements StorageAdapter {
     readonly connectionId: string,
     private readonly folders: () => readonly string[],
     private readonly volumes: typeof listLocalVolumes,
+    private readonly platform: LocalPlatform,
   ) {}
 
   async listSpaces({ signal }: OperationContext): Promise<Space[]> {
@@ -182,7 +195,7 @@ class LocalAdapter implements StorageAdapter {
       for (let offset = 0; offset < items.length; offset += metadataBatchSize) {
         const batch = await Promise.all(
           items.slice(offset, offset + metadataBatchSize).map(async (item) => {
-            const ref = { ...parent, locator: join(parent.locator, item.name) };
+            const ref = { ...parent, locator: joinLocalLocator(parent.locator, item.name) };
             const displayPath = join(path, item.name);
             // A listed item can disappear or become inaccessible before metadata is read.
             const info = await lstat(displayPath).catch(() => undefined);
@@ -199,7 +212,7 @@ class LocalAdapter implements StorageAdapter {
   }
 
   async rename(ref: EntryRef, name: string, { signal }: OperationContext): Promise<Entry> {
-    if (ref.locator === '.' || !isValidLocalEntryName(name)) {
+    if (ref.locator === '.' || !this.platform.isValidEntryName(name)) {
       throw new StorageError('InvalidArgument');
     }
     const { path, info } = await this.locate(ref, signal);
@@ -211,15 +224,22 @@ class LocalAdapter implements StorageAdapter {
           return undefined;
         throw error;
       });
-      const caseOnly =
-        sep === '\\' &&
+      let caseOnly =
+        existing !== undefined &&
         basename(path).toLowerCase() === name.toLowerCase() &&
-        existing?.dev === info.dev &&
-        existing?.ino === info.ino;
+        existing.dev === info.dev &&
+        existing.ino === info.ino;
+      if (caseOnly && existing && existing.nlink > 1) {
+        const siblings = await readdir(dirname(path));
+        caseOnly = !siblings.includes(name);
+      }
       if (existing && !caseOnly) throw new StorageError('AlreadyExists');
       throwIfAborted(signal);
       await rename(path, target);
-      return await this.stat({ ...ref, locator: join(dirname(ref.locator), name) }, {});
+      return await this.stat(
+        { ...ref, locator: joinLocalLocator(parentLocalLocator(ref.locator), name) },
+        {},
+      );
     } catch (error) {
       localFailure(error, signal);
     }
@@ -229,7 +249,7 @@ class LocalAdapter implements StorageAdapter {
     { parent, name }: CreateTarget,
     { signal }: OperationContext,
   ): Promise<Entry> {
-    if (!isValidLocalEntryName(name)) throw new StorageError('InvalidArgument');
+    if (!this.platform.isValidEntryName(name)) throw new StorageError('InvalidArgument');
     const { path: parentPath, info } = await this.locate(parent, signal);
     if (!info.isDirectory()) throw new StorageError('InvalidArgument');
     const targetPath = join(parentPath, name);
@@ -237,7 +257,7 @@ class LocalAdapter implements StorageAdapter {
       throwIfAborted(signal);
       await mkdir(targetPath);
       return await this.stat(
-        { ...parent, locator: join(parent.locator, name) },
+        { ...parent, locator: joinLocalLocator(parent.locator, name) },
         signal ? { signal } : {},
       );
     } catch (error) {
@@ -250,7 +270,7 @@ class LocalAdapter implements StorageAdapter {
     { parent, name }: CreateTarget,
     { signal }: OperationContext,
   ): Promise<Entry> {
-    if (ref.locator === '.' || !isValidLocalEntryName(name)) {
+    if (ref.locator === '.' || !this.platform.isValidEntryName(name)) {
       throw new StorageError('InvalidArgument');
     }
     const { path: sourcePath, info: sourceInfo } = await this.locate(ref, signal);
@@ -262,7 +282,7 @@ class LocalAdapter implements StorageAdapter {
       throwIfAborted(signal);
       await copyFile(sourcePath, targetPath, constants.COPYFILE_EXCL);
       return await this.stat(
-        { ...parent, locator: join(parent.locator, name) },
+        { ...parent, locator: joinLocalLocator(parent.locator, name) },
         signal ? { signal } : {},
       );
     } catch (error) {
@@ -288,7 +308,14 @@ class LocalAdapter implements StorageAdapter {
   async dispose() {}
 
   private locate(ref: EntryRef, signal?: AbortSignal) {
-    return locateLocalEntry(ref, this.folders, this.volumes, this.volumePaths, signal);
+    return locateLocalEntry(
+      ref,
+      this.folders,
+      this.volumes,
+      this.volumePaths,
+      signal,
+      this.platform,
+    );
   }
 }
 
@@ -297,20 +324,6 @@ function entryKind(info: Dirent | Stats): Entry['kind'] {
   if (info.isSymbolicLink()) return 'link';
   if (info.isFile()) return 'file';
   return 'other';
-}
-
-function isValidLocalEntryName(name: string): boolean {
-  return !(
-    !name.trim() ||
-    name === '.' ||
-    name === '..' ||
-    name.includes('/') ||
-    name.includes('\0') ||
-    (sep === '\\' &&
-      (/[<>:"\\|?*]|[. ]$/.test(name) ||
-        Array.from(name).some((character) => character.charCodeAt(0) < 32) ||
-        /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)))
-  );
 }
 
 function localEntry(ref: EntryRef, name: string, displayPath: string, info: Dirent | Stats): Entry {
