@@ -58,6 +58,9 @@ export function DirectoryPane({ space }: DirectoryProps) {
     [current.ref, current.capabilities, trail, t],
   );
 
+  const navigateUp =
+    trail.length > 1 ? () => setTrail((locations) => locations.slice(0, -1)) : undefined;
+
   return (
     <main className={classes.directory}>
       <CurrentDirectoryContext.Provider value={currentDirectory}>
@@ -66,6 +69,7 @@ export function DirectoryPane({ space }: DirectoryProps) {
           cacheable={trail.length === 1}
           version={version}
           onOpen={(entry) => setTrail([...trail, entry])}
+          onNavigateUp={navigateUp}
         >
           <nav className={classes.breadcrumbs} aria-label={t('currentDirectory')}>
             {trail.map((location, index) => {

@@ -11,7 +11,7 @@ import { selectPendingEntryEffects } from '../tasks/pending-entry-effects';
 import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
 import { useCurrentDirectory } from './current-directory-context';
 import { buildDirectoryRows } from './directory-rows';
-import type { DirectorySort } from './directory-types';
+import { useDirectorySortStore } from './directory-sort';
 import { DirectoryEntryMenu } from './DirectoryEntryMenu';
 import classes from './DirectoryListing.module.css';
 import { DirectorySearch } from './DirectorySearch';
@@ -33,15 +33,23 @@ interface ListingProps {
   cacheable: boolean;
   version: number;
   onOpen: (entry: Entry) => void;
+  onNavigateUp?: (() => void) | undefined;
   children: ReactNode;
 }
 
-export function DirectoryListing({ cacheable, version, onOpen, children }: ListingProps) {
+export function DirectoryListing({
+  cacheable,
+  version,
+  onOpen,
+  onNavigateUp,
+  children,
+}: ListingProps) {
   const { t, i18n } = useTranslation(['storage', 'errors']);
   const { directoryCache: cache, onAuthRequired, reauthorize } = useStorageWorkspace();
   const { ref: parent, canCreateDirectory } = useCurrentDirectory();
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
-  const [sort, setSort] = useState<DirectorySort | null>(null);
+  const sort = useDirectorySortStore((state) => state.sort);
+  const changeSort = useDirectorySortStore((state) => state.toggleSort);
   const [blankMenuPosition, setBlankMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const refreshButton = useRef<HTMLButtonElement>(null);
@@ -168,7 +176,27 @@ export function DirectoryListing({ cacheable, version, onOpen, children }: Listi
     void clipboard.paste();
   };
 
+  const navigateUp = () => {
+    if (!onNavigateUp) return;
+    actions.closeMenu();
+    setBlankMenuPosition(null);
+    onNavigateUp();
+  };
+  const canNavigateUp =
+    onNavigateUp !== undefined && !actions.menuOpened && blankMenuPosition === null;
+
   useKeyboardShortcuts([
+    {
+      key: 'Backspace',
+      onTrigger: navigateUp,
+      enabled: canNavigateUp,
+    },
+    {
+      key: 'ArrowUp',
+      altKey: true,
+      onTrigger: navigateUp,
+      enabled: canNavigateUp,
+    },
     {
       key: 'n',
       ctrlKey: true,
@@ -212,15 +240,6 @@ export function DirectoryListing({ cacheable, version, onOpen, children }: Listi
       ? [{ key: 'Escape', onTrigger: clipboard.clear }]
       : []),
   ]);
-
-  const changeSort = (field: DirectorySort['field']) =>
-    setSort((previous) => ({
-      field,
-      direction:
-        previous?.field === field && previous.direction === 'ascending'
-          ? 'descending'
-          : 'ascending',
-    }));
 
   const centeredState = (error && entries.size === 0) || (!error && snapshot?.size === 0);
 
@@ -309,6 +328,7 @@ export function DirectoryListing({ cacheable, version, onOpen, children }: Listi
                 sort={sort}
                 canSort={snapshot !== undefined && !loading}
                 loadingWithoutEntries={loadingWithoutEntries}
+                navigationBlocked={actions.menuOpened || blankMenuPosition !== null}
                 selectedLocators={selectedLocators}
                 cutLocators={clipboard.cutLocators}
                 dateFormatter={dateFormatter}

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import type { Entry } from '@shared/storage';
 import classes from './DirectoryTable.module.css';
 import { DirectoryEntryRow } from './DirectoryEntryRow';
+import { isDirectoryNavigationKey } from './directory-navigation';
 import { useDirectoryVirtualizer } from './useDirectoryVirtualizer';
 import type {
   DirectoryRevealTarget,
@@ -54,6 +55,7 @@ interface DirectoryTableProps {
   sort: DirectorySort | null;
   canSort: boolean;
   loadingWithoutEntries: boolean;
+  navigationBlocked?: boolean | undefined;
   selectedLocators: ReadonlySet<string>;
   cutLocators?: ReadonlySet<string> | undefined;
   dateFormatter: Intl.DateTimeFormat;
@@ -71,6 +73,7 @@ export function DirectoryTable({
   sort,
   canSort,
   loadingWithoutEntries,
+  navigationBlocked = false,
   selectedLocators,
   cutLocators,
   dateFormatter,
@@ -83,14 +86,26 @@ export function DirectoryTable({
   const { t } = useTranslation('storage');
   const [tabNavigation, setTabNavigation] = useState(false);
   const { tableRef, enabled, scrollMargin, virtualizer, onFocus, onBlur, onKeyDown } =
-    useDirectoryVirtualizer(rows, scrollElement, canSort, revealTarget);
+    useDirectoryVirtualizer({
+      rows,
+      scrollElement,
+      canSort,
+      revealTarget,
+      selectedLocators,
+      navigationBlocked: navigationBlocked || loadingWithoutEntries,
+      onSelect,
+    });
 
   useEffect(() => {
     const document = tableRef.current?.ownerDocument;
     if (!document) return;
 
     const showTabFocus = (event: KeyboardEvent) => {
-      if (event.key === 'Tab' && !event.altKey && !event.ctrlKey && !event.metaKey) {
+      if (
+        !event.altKey &&
+        !event.metaKey &&
+        ((event.key === 'Tab' && !event.ctrlKey) || isDirectoryNavigationKey(event.key))
+      ) {
         setTabNavigation(true);
       }
     };

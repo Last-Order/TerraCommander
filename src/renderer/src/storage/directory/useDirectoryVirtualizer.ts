@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -8,19 +9,43 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import type { DirectoryRevealTarget, DirectoryRow } from './directory-types';
+import {
+  isDirectoryNavigationKey,
+  resolveDirectoryNavigationIndex,
+  resolveSpaceSelectionModifiers,
+} from './directory-navigation';
+import type {
+  DirectoryRevealTarget,
+  DirectoryRow,
+  DirectorySelectionModifiers,
+} from './directory-types';
 
-export function useDirectoryVirtualizer(
-  rows: readonly DirectoryRow[],
-  scrollElement: HTMLDivElement | null,
-  canSort: boolean,
-  revealTarget: DirectoryRevealTarget | null = null,
-) {
+const estimatedRowHeight = 36;
+
+interface UseDirectoryVirtualizerOptions {
+  rows: readonly DirectoryRow[];
+  scrollElement: HTMLDivElement | null;
+  canSort: boolean;
+  revealTarget?: DirectoryRevealTarget | null | undefined;
+  selectedLocators: ReadonlySet<string>;
+  navigationBlocked: boolean;
+  onSelect: (locator: string, modifiers: DirectorySelectionModifiers) => void;
+}
+
+export function useDirectoryVirtualizer({
+  rows,
+  scrollElement,
+  canSort,
+  revealTarget = null,
+  selectedLocators,
+  navigationBlocked,
+  onSelect,
+}: UseDirectoryVirtualizerOptions) {
   const tableRef = useRef<HTMLTableElement>(null);
   const enabled = rows.length > 100;
   const [scrollMargin, setScrollMargin] = useState(0);
   const [focusedLocator, setFocusedLocator] = useState<string | null>(null);
-  const [focusTarget, setFocusTarget] = useState<string | null>(null);
+  const [focusTarget, setFocusTarget] = useState<{ locator: string } | null>(null);
   const focusedIndex = useMemo(
     () =>
       focusedLocator === null
@@ -30,7 +55,9 @@ export function useDirectoryVirtualizer(
   );
   const targetIndex = useMemo(
     () =>
-      focusTarget === null ? -1 : rows.findIndex(({ entry }) => entry.ref.locator === focusTarget),
+      focusTarget === null
+        ? -1
+        : rows.findIndex(({ entry }) => entry.ref.locator === focusTarget.locator),
     [rows, focusTarget],
   );
   const revealIndex = useMemo(
@@ -56,7 +83,7 @@ export function useDirectoryVirtualizer(
     count: rows.length,
     getScrollElement: () => scrollElement,
     getItemKey: useCallback((index) => rows[index]?.entry.ref.locator ?? index, [rows]),
-    estimateSize: () => 36,
+    estimateSize: () => estimatedRowHeight,
     overscan: 8,
     enabled,
     scrollMargin,
@@ -100,18 +127,82 @@ export function useDirectoryVirtualizer(
 
   useLayoutEffect(() => {
     if (focusTarget === null) return;
-    const button = tableRef.current?.querySelector<HTMLButtonElement>(
-      `tr[data-index="${targetIndex}"] button`,
-    );
-    if (button) {
-      virtualizer.scrollToIndex(targetIndex, { align: 'auto' });
-      button.focus({ preventScroll: true });
+    if (targetIndex < 0) {
+      setFocusTarget(null);
+      return;
     }
+    if (enabled) {
+      virtualizer.scrollToIndex(targetIndex, { align: 'auto' });
+    }
+    const row = tableRef.current?.querySelector<HTMLTableRowElement>(
+      `tr[data-index="${targetIndex}"]`,
+    );
+    if (!enabled) {
+      row?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+    row?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
     setFocusTarget(null);
-  }, [focusTarget, targetIndex, virtualizer]);
+  }, [focusTarget, targetIndex, enabled, virtualizer]);
+
+  const getPageStep = useCallback(() => {
+    if (!scrollElement) return 10;
+    const headerHeight = tableRef.current?.tHead?.offsetHeight ?? 0;
+    const visibleHeight = Math.max(0, scrollElement.clientHeight - headerHeight);
+    return Math.max(1, Math.floor(visibleHeight / estimatedRowHeight));
+  }, [scrollElement]);
+
+  const navigateTo = useCallback(
+    (nextIndex: number, modifiers: { ctrlKey: boolean; shiftKey: boolean }) => {
+      const next = rows[nextIndex];
+      if (!next) return;
+      const { locator } = next.entry.ref;
+      if (!modifiers.ctrlKey) {
+        onSelect(locator, { toggle: false, range: modifiers.shiftKey });
+      }
+      setFocusTarget({ locator });
+    },
+    [rows, onSelect],
+  );
+
+  useEffect(() => {
+    const doc = tableRef.current?.ownerDocument;
+    if (!doc) return;
+
+    const onDocumentKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        navigationBlocked ||
+        event.altKey ||
+        event.metaKey ||
+        !isDirectoryNavigationKey(event.key) ||
+        rows.length === 0
+      ) {
+        return;
+      }
+      if (doc.querySelector('[aria-modal="true"], dialog[open]')) return;
+      const active = doc.activeElement;
+      if (active instanceof Element && active.closest('tr[data-index]')) return;
+      if (active !== doc.body && active !== scrollElement) return;
+
+      const fallbackIndex = rows.findIndex(({ entry }) => selectedLocators.has(entry.ref.locator));
+      const nextIndex = resolveDirectoryNavigationIndex(
+        rows.length,
+        fallbackIndex,
+        event.key,
+        getPageStep(),
+      );
+      if (nextIndex < 0) return;
+
+      event.preventDefault();
+      navigateTo(nextIndex, event);
+    };
+
+    doc.addEventListener('keydown', onDocumentKeyDown);
+    return () => doc.removeEventListener('keydown', onDocumentKeyDown);
+  }, [rows, scrollElement, selectedLocators, navigationBlocked, getPageStep, navigateTo]);
 
   const onFocus = (event: FocusEvent<HTMLTableElement>) => {
-    if (!enabled) return;
     const row = event.target.closest<HTMLTableRowElement>('tr[data-index]');
     const entry = rows[Number(row?.dataset.index)];
     setFocusedLocator(entry?.entry.ref.locator ?? null);
@@ -120,14 +211,40 @@ export function useDirectoryVirtualizer(
     if (!event.currentTarget.contains(event.relatedTarget)) setFocusedLocator(null);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTableElement>) => {
-    if (!enabled || event.key !== 'Tab' || !(event.target instanceof HTMLButtonElement)) return;
+    if (event.defaultPrevented || event.nativeEvent.isComposing || navigationBlocked) return;
+    if (!(event.target instanceof HTMLButtonElement)) return;
     const row = event.target.closest<HTMLTableRowElement>('tr[data-index]');
     if (!row) return;
-    const nextIndex = Number(row.dataset.index) + (event.shiftKey ? -1 : 1);
-    const next = rows[nextIndex];
-    if (!next) return;
-    event.preventDefault();
-    setFocusTarget(next.entry.ref.locator);
+    const currentIndex = Number(row.dataset.index);
+
+    if (event.key === 'Tab' && enabled && !event.altKey && !event.ctrlKey && !event.metaKey) {
+      const nextIndex = currentIndex + (event.shiftKey ? -1 : 1);
+      const next = rows[nextIndex];
+      if (!next) return;
+      event.preventDefault();
+      setFocusTarget({ locator: next.entry.ref.locator });
+      return;
+    }
+
+    if (event.key === ' ' && !event.altKey && !event.metaKey) {
+      const current = rows[currentIndex];
+      if (!current) return;
+      event.preventDefault();
+      onSelect(current.entry.ref.locator, resolveSpaceSelectionModifiers(event));
+      return;
+    }
+
+    if (isDirectoryNavigationKey(event.key) && !event.altKey && !event.metaKey) {
+      const nextIndex = resolveDirectoryNavigationIndex(
+        rows.length,
+        currentIndex,
+        event.key,
+        getPageStep(),
+      );
+      if (nextIndex < 0) return;
+      event.preventDefault();
+      navigateTo(nextIndex, event);
+    }
   };
 
   return { tableRef, enabled, scrollMargin, virtualizer, onFocus, onBlur, onKeyDown };
