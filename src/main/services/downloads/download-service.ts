@@ -62,7 +62,8 @@ export class DownloadService {
     throwIfAborted(this.lifetime.signal);
     const epoch = this.ownerEpochs.get(owner);
     const directory = await downloadDirectory(request.directory);
-    const entry = await this.source.stat(request.ref, { signal: this.lifetime.signal });
+    const entry =
+      request.entry ?? (await this.source.stat(request.ref, { signal: this.lifetime.signal }));
     if (entry.kind !== 'file' || entry.capabilities.read?.support === 'unsupported')
       throw new StorageError('Unsupported');
     if (entry.name !== request.expectedName) throw new StorageError('PreconditionFailed');
@@ -115,7 +116,8 @@ export class DownloadService {
       const key = JSON.stringify([connectionId, spaceId, locator]);
       if (seen.has(key)) continue;
       seen.add(key);
-      const entry = await this.source.stat(selected.ref, { signal: this.lifetime.signal });
+      const entry =
+        selected.entry ?? (await this.source.stat(selected.ref, { signal: this.lifetime.signal }));
       if (entry.name !== selected.expectedName) throw new StorageError('PreconditionFailed');
       if (
         (entry.kind !== 'file' && entry.kind !== 'directory') ||

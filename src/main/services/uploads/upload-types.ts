@@ -40,6 +40,7 @@ export interface UploadBatchRequest {
   paths: readonly string[];
   policy?: SameNameFolderPolicy;
   validated?: boolean;
+  deferValidation?: boolean;
   onDirectoryCreated?: (parent: EntryRef, entry: Entry) => void;
 }
 
@@ -63,6 +64,7 @@ export interface PreparedUploadBatch {
   id: string;
   sourcePath: string;
   items: UploadPlanItem[];
+  needsValidation?: { requireCreateDirectory: boolean };
 }
 
 export interface ResolvedUploadWork {

@@ -172,7 +172,7 @@ it('maps cloud-to-local paste to a download task targeting the local directory',
   await service.dispose();
 });
 
-it('maps same-connection single file copy to a copy task and auto-renames in same directory', async () => {
+it('enqueues same-directory single file copy immediately as a group and auto-renames during preparation', async () => {
   const { browser, listDirectory, copyWithin } = createMockBrowser();
   const service = new StorageTaskService(browser);
   const parent: EntryRef = {
@@ -186,7 +186,13 @@ it('maps same-connection single file copy to a copy task and auto-renames in sam
     kind: 'file',
     capabilities: { copyWithin: { support: 'supported' } },
   };
-  listDirectory.mockResolvedValueOnce({ entries: [file] } satisfies EntryPage);
+  let resolveListing!: (page: EntryPage) => void;
+  listDirectory.mockImplementationOnce(
+    () =>
+      new Promise<EntryPage>((resolve) => {
+        resolveListing = resolve;
+      }),
+  );
   copyWithin.mockResolvedValueOnce({
     ...file,
     ref: { ...file.ref, locator: 'file-2' },
@@ -202,6 +208,11 @@ it('maps same-connection single file copy to a copy task and auto-renames in sam
   });
 
   expect(response).toEqual({ status: 'started' });
+  expect(service.getSnapshot().groups).toHaveLength(1);
+  expect(service.getSnapshot().groups[0]?.request.kind).toBe('copy');
+  expect(copyWithin).not.toHaveBeenCalled();
+
+  resolveListing({ entries: [file] });
   await vi.waitFor(() => {
     expect(copyWithin).toHaveBeenCalledWith(file.ref, {
       parent,
@@ -209,7 +220,100 @@ it('maps same-connection single file copy to a copy task and auto-renames in sam
     });
   });
   expect(service.getSnapshot().tasks[0]?.request.type).toBe('copy');
+
+  await service.dispose();
+});
+
+it('allocates distinct copy names for concurrent same-directory paste requests', async () => {
+  const { browser, listDirectory, copyWithin } = createMockBrowser();
+  const service = new StorageTaskService(browser);
+  const parent: EntryRef = {
+    connectionId: cloudConnectionA,
+    spaceId: 'drive',
+    locator: 'folder-1',
+  };
+  const file: Entry = {
+    ref: { connectionId: cloudConnectionA, spaceId: 'drive', locator: 'file-1' },
+    name: 'report.txt',
+    kind: 'file',
+    capabilities: { copyWithin: { support: 'supported' } },
+  };
+  listDirectory.mockResolvedValue({ entries: [file] } satisfies EntryPage);
+  let copyCount = 0;
+  copyWithin.mockImplementation(async (_ref, target) => ({
+    ...file,
+    ref: { ...file.ref, locator: `file-copy-${++copyCount}` },
+    name: target.name,
+  }));
+
+  await Promise.all([
+    service.pasteEntries(1, {
+      sourceParent: parent,
+      sourceDirectoryPath: 'My Drive / Folder',
+      entries: [file],
+      targetParent: parent,
+      targetDirectoryPath: 'My Drive / Folder',
+    }),
+    service.pasteEntries(1, {
+      sourceParent: parent,
+      sourceDirectoryPath: 'My Drive / Folder',
+      entries: [file],
+      targetParent: parent,
+      targetDirectoryPath: 'My Drive / Folder',
+    }),
+  ]);
+
+  await vi.waitFor(() => {
+    expect(copyWithin).toHaveBeenCalledTimes(2);
+  });
+  const names = copyWithin.mock.calls.map(([, target]) => target.name).sort();
+  expect(names).toEqual(['report - Copy (2).txt', 'report - Copy.txt']);
+
+  await service.dispose();
+});
+
+it('maps cross-directory single file copy directly to a standalone copy task without listing', async () => {
+  const { browser, listDirectory, copyWithin } = createMockBrowser();
+  const service = new StorageTaskService(browser);
+  const sourceParent: EntryRef = {
+    connectionId: cloudConnectionA,
+    spaceId: 'drive',
+    locator: 'folder-1',
+  };
+  const targetParent: EntryRef = {
+    connectionId: cloudConnectionA,
+    spaceId: 'drive',
+    locator: 'folder-2',
+  };
+  const file: Entry = {
+    ref: { connectionId: cloudConnectionA, spaceId: 'drive', locator: 'file-1' },
+    name: 'report.txt',
+    kind: 'file',
+    capabilities: { copyWithin: { support: 'supported' } },
+  };
+  copyWithin.mockResolvedValueOnce({
+    ...file,
+    ref: { ...file.ref, locator: 'file-2' },
+  });
+
+  const response = await service.pasteEntries(1, {
+    sourceParent,
+    sourceDirectoryPath: 'My Drive / Source',
+    entries: [file],
+    targetParent,
+    targetDirectoryPath: 'My Drive / Target',
+  });
+
+  expect(response).toEqual({ status: 'started' });
+  expect(listDirectory).not.toHaveBeenCalled();
   expect(service.getSnapshot().groups).toHaveLength(0);
+  expect(service.getSnapshot().tasks[0]?.request.type).toBe('copy');
+  await vi.waitFor(() => {
+    expect(copyWithin).toHaveBeenCalledWith(file.ref, {
+      parent: targetParent,
+      name: 'report.txt',
+    });
+  });
 
   await service.dispose();
 });

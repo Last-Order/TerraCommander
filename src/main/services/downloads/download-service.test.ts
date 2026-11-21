@@ -250,6 +250,35 @@ it('uses the provider name and refuses a different name even when replacement is
   await service.dispose();
 });
 
+it('skips pre-enqueue remote stat when a known entry snapshot is supplied and verifies on resolve', async () => {
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-download-defer-'));
+  const read = vi.fn();
+  const stat = vi.fn(async () => entry);
+  const service = new DownloadService({ stat, read });
+
+  const work = await service.prepare(1, {
+    ref: entry.ref,
+    directory: temporary.path,
+    expectedName: entry.name,
+    replace: false,
+    entry,
+  });
+  expect(stat).not.toHaveBeenCalled();
+
+  const execution = await service.resolveWork(1, work.ref);
+  expect(stat).toHaveBeenCalledTimes(1);
+  await service.cancel(1, execution.id);
+
+  await writeFile(join(temporary.path, entry.name), 'existing');
+  const batch = await service.prepareBatch(1, {
+    entries: [{ ref: entry.ref, expectedName: entry.name, entry }],
+    directory: temporary.path,
+  });
+  expect(stat).toHaveBeenCalledTimes(1);
+  expect(batch.conflicts).toEqual([entry.name]);
+  await service.dispose();
+});
+
 async function prepareExecution(
   service: DownloadService,
   owner: number,

@@ -109,7 +109,7 @@ export class TransferSessionCoordinator {
     sourceCleanup?: TransferSourceCleanup,
   ): Promise<void> {
     if (this.disposed || request.paths.length === 0) return;
-    await this.prepareAndEnqueueUpload(owner, request, request.paths, false, sourceCleanup);
+    await this.prepareAndEnqueueUpload(owner, request, request.paths, false, sourceCleanup, true);
   }
 
   private async prepareAndEnqueueUpload(
@@ -118,6 +118,7 @@ export class TransferSessionCoordinator {
     paths: readonly string[],
     validated: boolean,
     sourceCleanup?: TransferSourceCleanup,
+    deferValidation = false,
   ): Promise<void> {
     const epoch = this.ownerEpochs.get(owner) ?? 0;
     const active = () => !this.disposed && (this.ownerEpochs.get(owner) ?? 0) === epoch;
@@ -125,6 +126,7 @@ export class TransferSessionCoordinator {
       parent: request.parent,
       paths,
       validated,
+      ...(deferValidation ? { deferValidation: true } : {}),
       onDirectoryCreated: (parent, entry) => {
         this.host.emitDirectoryChanged({ kind: 'added', parent, entry });
       },
@@ -178,6 +180,7 @@ export class TransferSessionCoordinator {
           directory: request.directory,
           expectedName: single.name,
           replace: false,
+          entry: single,
         });
       } catch (error) {
         if (
@@ -215,7 +218,11 @@ export class TransferSessionCoordinator {
     }
 
     const prepared = await this.host.downloads.prepareBatch(queueOwnerId, {
-      entries: request.entries.map((entry) => ({ ref: entry.ref, expectedName: entry.name })),
+      entries: request.entries.map((entry) => ({
+        ref: entry.ref,
+        expectedName: entry.name,
+        entry,
+      })),
       directory: request.directory,
     });
     if (this.disposed || (this.ownerEpochs.get(owner) ?? 0) !== epoch) {
@@ -259,6 +266,7 @@ export class TransferSessionCoordinator {
         directory: confirmation.request.directory,
         expectedName: confirmation.entry.name,
         replace: true,
+        entry: confirmation.entry,
       });
       if (this.disposed || (this.ownerEpochs.get(owner) ?? 0) !== epoch) {
         await releaseQuietly(

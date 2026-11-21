@@ -7,6 +7,8 @@ export interface DownloadRequest {
   /** Source-name snapshot; the backend verifies it and uses the provider's actual name. */
   expectedName: string;
   replace: boolean;
+  /** Optional known entry snapshot to defer remote stat until execution. */
+  entry?: Entry | undefined;
 }
 
 export interface DownloadExecution {
@@ -25,7 +27,7 @@ export interface DownloadWork {
 }
 
 export interface DownloadBatchRequest {
-  entries: { ref: EntryRef; expectedName: string }[];
+  entries: { ref: EntryRef; expectedName: string; entry?: Entry | undefined }[];
   directory: string;
 }
 

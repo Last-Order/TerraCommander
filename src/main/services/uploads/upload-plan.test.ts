@@ -27,8 +27,9 @@ function createDestination() {
   let nextId = 1;
   const createdDirs: { parent: EntryRef; name: string; entry: Entry }[] = [];
   const preparedUploads: { parent: EntryRef; name: string; size: number }[] = [];
+  const stat = vi.fn(async (ref: EntryRef) => directoryEntry(ref, ref.locator, 'Root'));
   const destination: UploadDestination = {
-    stat: vi.fn(async (ref) => directoryEntry(ref, ref.locator, 'Root')),
+    stat,
     createDirectory: vi.fn(async ({ parent, name }) => {
       const entry = directoryEntry(parent, `dir-${nextId++}`, name);
       createdDirs.push({ parent, name, entry });
@@ -47,7 +48,7 @@ function createDestination() {
       };
     }),
   };
-  return { destination, createdDirs, preparedUploads };
+  return { destination, stat, createdDirs, preparedUploads };
 }
 
 it('allocates unique sibling names and computes common local parent', () => {
@@ -136,6 +137,45 @@ it('discovers mixed files and folders across pages and resolves nested upload de
       size: 10,
     });
     expect(createdDirs).toHaveLength(3);
+  } finally {
+    await service.dispose();
+  }
+});
+
+it('defers remote destination validation when deferValidation is enabled', async () => {
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-upload-defer-'));
+  const singleFile = join(temporary.path, 'single.txt');
+  const folder = join(temporary.path, 'folder');
+  await writeFile(singleFile, 'abc');
+  await mkdir(folder, { recursive: true });
+
+  const { destination, stat } = createDestination();
+  const service = new UploadService(destination);
+
+  try {
+    const singleSelection = await service.prepareSelection(1, {
+      parent: rootParent,
+      paths: [singleFile],
+      deferValidation: true,
+    });
+    expect(singleSelection.kind).toBe('single');
+    expect(stat).not.toHaveBeenCalled();
+
+    if (singleSelection.kind === 'single') {
+      await service.resolveWork(1, singleSelection.work.ref);
+      expect(stat).toHaveBeenCalledTimes(1);
+    }
+
+    const batchSelection = await service.prepareSelection(1, {
+      parent: rootParent,
+      paths: [singleFile, folder],
+      deferValidation: true,
+    });
+    expect(batchSelection.kind).toBe('batch');
+    expect(stat).toHaveBeenCalledTimes(1);
+    if (batchSelection.kind === 'batch') {
+      expect(batchSelection.prepared.needsValidation).toEqual({ requireCreateDirectory: true });
+    }
   } finally {
     await service.dispose();
   }

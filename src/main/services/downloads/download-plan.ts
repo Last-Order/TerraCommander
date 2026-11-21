@@ -86,6 +86,8 @@ export class DownloadPlan {
       const current = await this.source.stat(node.entry.ref, { signal: controller.signal });
       throwIfAborted(controller.signal);
       this.node(itemId);
+      if (current.kind === 'file' && current.capabilities.read?.support === 'unsupported')
+        throw new StorageError('Unsupported');
       if (
         current.kind !== 'file' ||
         current.name !== node.entry.name ||
@@ -93,20 +95,21 @@ export class DownloadPlan {
         (node.entry.revision !== undefined && current.revision !== node.entry.revision)
       )
         throw new StorageError('SourceChanged');
+      const authoritative = structuredClone(current);
       return {
         path: node.target,
-        entry: node.entry,
+        entry: authoritative,
         transfer: new DownloadTransfer(
           this.source,
           {
-            ref: node.entry.ref,
-            expectedName: node.entry.name,
+            ref: authoritative.ref,
+            expectedName: authoritative.name,
             directory: dirname(node.target),
             replace: node.replace,
           },
           dirname(node.target),
           node.target,
-          node.entry,
+          authoritative,
           () => this.directories.assert(dirname(node.target)),
         ),
       };

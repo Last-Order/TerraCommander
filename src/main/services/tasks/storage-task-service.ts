@@ -168,6 +168,7 @@ export class StorageTaskService {
   >;
   private readonly session: TransferSessionCoordinator;
   private readonly listeners = new Set<(event: StorageTaskEvent) => void>();
+  private readonly activeCopyNames = new Map<string, Set<string>>();
   private readonly unsubscribeQueue: () => void;
   private disposal: Promise<void> | undefined;
 
@@ -364,7 +365,13 @@ export class StorageTaskService {
     if (plan.kind === 'move') {
       return this.enqueueMovePlan(request, plan.items, plan.entries);
     }
-    return this.enqueueCopyPlan(request, plan.items, plan.entries, plan.removeSources);
+    return this.enqueueCopyPlan(
+      request,
+      plan.items,
+      plan.entries,
+      plan.sameDirectory,
+      plan.removeSources,
+    );
   }
 
   private enqueueMovePlan(
@@ -429,9 +436,15 @@ export class StorageTaskService {
     request: PasteEntriesRequest,
     items: readonly CopyDiscoveryItem[],
     entries: readonly Entry[],
+    sameDirectory?: boolean,
     removeSources?: readonly Entry[],
   ): PasteEntriesResponse {
-    if (!removeSources && items.length === 1 && items[0]!.sourceEntry.kind === 'file') {
+    if (
+      !sameDirectory &&
+      !removeSources &&
+      items.length === 1 &&
+      items[0]!.sourceEntry.kind === 'file'
+    ) {
       const [item] = items;
       const enqueued = this.queue.enqueue({
         type: 'copy',
@@ -447,6 +460,21 @@ export class StorageTaskService {
       if (!enqueued) throw new StorageError('AlreadyExists');
       return { status: 'started' };
     }
+
+    const targetDirKey = sameDirectory ? entryKey(request.targetParent) : undefined;
+    const reservedForGroup: string[] = [];
+    const releaseReservedNames = () => {
+      if (!targetDirKey || reservedForGroup.length === 0) return;
+      const active = this.activeCopyNames.get(targetDirKey);
+      if (!active) return;
+      for (const name of reservedForGroup) {
+        active.delete(name);
+      }
+      if (active.size === 0) {
+        this.activeCopyNames.delete(targetDirKey);
+      }
+      reservedForGroup.length = 0;
+    };
 
     let groupId: number | undefined;
     groupId = this.queue.createGroup(
@@ -468,6 +496,21 @@ export class StorageTaskService {
             items,
             (change) => this.emitDirectoryChanged(change),
             context,
+            sameDirectory && targetDirKey
+              ? {
+                  sameDirectory: true,
+                  getReservedNames: () => this.activeCopyNames.get(targetDirKey),
+                  onReserveName: (normalizedName) => {
+                    let active = this.activeCopyNames.get(targetDirKey);
+                    if (!active) {
+                      active = new Set();
+                      this.activeCopyNames.set(targetDirKey, active);
+                    }
+                    active.add(normalizedName);
+                    reservedForGroup.push(normalizedName);
+                  },
+                }
+              : undefined,
           ),
         toFailure: (error) => toTaskFailure(error),
         onPreparationFailure: (failure) => {
@@ -475,20 +518,14 @@ export class StorageTaskService {
             this.emit({ type: 'auth-required', connectionId: request.targetParent.connectionId });
           }
         },
-        ...(removeSources
-          ? {
-              onSettled: async () => {
-                if (groupId !== undefined && this.isGroupFullyCompleted(groupId)) {
-                  await removeMovedSources(
-                    this.browser,
-                    request.sourceParent,
-                    removeSources,
-                    (change) => this.emitDirectoryChanged(change),
-                  );
-                }
-              },
-            }
-          : {}),
+        onSettled: async () => {
+          releaseReservedNames();
+          if (removeSources && groupId !== undefined && this.isGroupFullyCompleted(groupId)) {
+            await removeMovedSources(this.browser, request.sourceParent, removeSources, (change) =>
+              this.emitDirectoryChanged(change),
+            );
+          }
+        },
       },
     );
     if (groupId === undefined) {
@@ -796,11 +833,27 @@ export class StorageTaskService {
     );
   }
 
-  private prepareUploadGroup(
+  private async prepareUploadGroup(
     request: UploadFileRequest,
     prepared: PreparedUploadBatch,
     context: TaskGroupPreparationContext<InternalTaskDefinitions>,
   ): Promise<void> {
+    if (prepared.needsValidation) {
+      context.reportProgress({
+        kind: 'indeterminate',
+        stage: { key: 'storage:uploadScanning' },
+        summary: {
+          key: 'storage:uploadPreparationProgress',
+          values: { files: 0, folders: 0 },
+        },
+      });
+      await this.browser.uploads.validateDestination(
+        request.parent,
+        prepared.needsValidation.requireCreateDirectory,
+        context.signal,
+      );
+      if (context.signal.aborted) return;
+    }
     return prepareBatchGroup<UploadPlanItem, InternalTaskDefinitions>(
       {
         initialItems: prepared.items,

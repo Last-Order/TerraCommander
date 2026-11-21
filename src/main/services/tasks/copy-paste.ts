@@ -29,6 +29,7 @@ export type PastePlan =
       kind: 'copy';
       items: CopyDiscoveryItem[];
       entries: Entry[];
+      sameDirectory?: boolean | undefined;
       removeSources?: readonly Entry[] | undefined;
     }
   | { kind: 'move'; items: CopyDiscoveryItem[]; entries: Entry[] };
@@ -79,11 +80,14 @@ export async function listAllNames(
   browser: StorageBrowser,
   parent: EntryRef,
   caseInsensitive = false,
+  signal?: AbortSignal,
 ): Promise<Set<string>> {
   const names = new Set<string>();
   let cursor: string | undefined;
   do {
+    if (signal?.aborted) return names;
     const page = await browser.listDirectory(parent, cursor);
+    if (signal?.aborted) return names;
     for (const entry of page.entries) {
       names.add(caseInsensitive ? entry.name.toLowerCase() : entry.name);
     }
@@ -209,26 +213,16 @@ export async function planPaste(
     return { kind: 'move', items, entries: uniqueEntries };
   }
 
-  const caseInsensitive = sourceConnectionId === localConnectionId && process.platform === 'win32';
-  const usedNames = sameDirectory
-    ? await listAllNames(browser, request.targetParent, caseInsensitive)
-    : undefined;
+  const items: CopyDiscoveryItem[] = uniqueEntries.map((entry) => ({
+    sourceEntry: entry,
+    sourceParent: request.sourceParent,
+    targetParent: request.targetParent,
+    targetName: entry.name,
+    relativePath: entry.name,
+    emitAddedOnCreate: true,
+  }));
 
-  const items: CopyDiscoveryItem[] = uniqueEntries.map((entry) => {
-    const targetName = usedNames
-      ? allocateCopyName(entry.name, entry.kind, usedNames, caseInsensitive)
-      : entry.name;
-    return {
-      sourceEntry: entry,
-      sourceParent: request.sourceParent,
-      targetParent: request.targetParent,
-      targetName,
-      relativePath: targetName,
-      emitAddedOnCreate: true,
-    };
-  });
-
-  return { kind: 'copy', items, entries: uniqueEntries };
+  return { kind: 'copy', items, entries: uniqueEntries, sameDirectory };
 }
 
 /** Deletes source entries after a cross-device or cross-connection move completes cleanly. */
@@ -248,6 +242,12 @@ export async function removeMovedSources(
       });
     }
   }
+}
+
+export interface PrepareCopyGroupOptions {
+  sameDirectory?: boolean | undefined;
+  getReservedNames?: (() => ReadonlySet<string> | undefined) | undefined;
+  onReserveName?: ((normalizedName: string) => void) | undefined;
 }
 
 export async function prepareCopyGroup<
@@ -271,8 +271,9 @@ export async function prepareCopyGroup<
   initialItems: readonly CopyDiscoveryItem[],
   emitDirectoryChanged: (change: StorageDirectoryChange) => void,
   context: TaskGroupPreparationContext<TTasks>,
+  options?: PrepareCopyGroupOptions,
 ): Promise<void> {
-  const pending: CopyDiscoveryItem[] = [...initialItems];
+  const pending: CopyDiscoveryItem[] = initialItems.map((item) => ({ ...item }));
   const visitedDirectories = new Set<string>([entryKey(request.targetParent)]);
   let discoveredFiles = 0;
   let scannedDirectories = 0;
@@ -288,6 +289,36 @@ export async function prepareCopyGroup<
     });
   };
   updateProgress();
+
+  if (options?.sameDirectory) {
+    const caseInsensitive =
+      request.targetParent.connectionId === localConnectionId && process.platform === 'win32';
+    const usedNames = await listAllNames(
+      browser,
+      request.targetParent,
+      caseInsensitive,
+      context.signal,
+    );
+    if (context.signal.aborted) return;
+    const reservedNames = options.getReservedNames?.();
+    if (reservedNames) {
+      for (const name of reservedNames) {
+        usedNames.add(name);
+      }
+    }
+    for (const item of pending) {
+      const targetName = allocateCopyName(
+        item.sourceEntry.name,
+        item.sourceEntry.kind,
+        usedNames,
+        caseInsensitive,
+      );
+      const normalized = caseInsensitive ? targetName.toLowerCase() : targetName;
+      options.onReserveName?.(normalized);
+      item.targetName = targetName;
+      item.relativePath = targetName;
+    }
+  }
 
   while (pending.length > 0) {
     if (context.signal.aborted) return;

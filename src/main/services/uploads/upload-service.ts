@@ -23,6 +23,7 @@ interface UploadPlanRecord {
   owner: number;
   plan: UploadPlan;
   standalone: boolean;
+  validateOnResolve?: { parent: EntryRef; requireCreateDirectory: boolean } | undefined;
 }
 
 function localStatError(error: unknown): never {
@@ -92,6 +93,7 @@ export class UploadService {
             owner,
             { parent: request.parent, path: localPath },
             request.validated,
+            request.deferValidation,
           ),
         };
       }
@@ -122,8 +124,15 @@ export class UploadService {
     return this.ownedPlan(owner, id).plan.directoryPage(itemId, offset);
   }
 
-  resolveWork(owner: number, ref: UploadWorkRef): Promise<ResolvedUploadWork> {
+  async resolveWork(owner: number, ref: UploadWorkRef): Promise<ResolvedUploadWork> {
     const record = this.ownedPlan(owner, ref.planId);
+    if (record.validateOnResolve) {
+      await this.validateDestination(
+        record.validateOnResolve.parent,
+        record.validateOnResolve.requireCreateDirectory,
+      );
+      record.validateOnResolve = undefined;
+    }
     record.plan.reopen();
     return record.plan.prepareFile(ref.itemId);
   }
@@ -237,8 +246,15 @@ export class UploadService {
     }
   }
 
-  async validateDestination(parent: EntryRef, requireCreateDirectory = false): Promise<void> {
-    const directory = await this.destination.stat(parent, { signal: this.lifetime.signal });
+  async validateDestination(
+    parent: EntryRef,
+    requireCreateDirectory = false,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const effectiveSignal = signal
+      ? AbortSignal.any([this.lifetime.signal, signal])
+      : this.lifetime.signal;
+    const directory = await this.destination.stat(parent, { signal: effectiveSignal });
     if (directory.kind !== 'directory') throw new StorageError('InvalidArgument');
     if (directory.capabilities.write?.support === 'unsupported') {
       throw new StorageError('PermissionDenied');
@@ -256,10 +272,11 @@ export class UploadService {
     owner: number,
     request: UploadRequest,
     validated = false,
+    deferValidation = false,
   ): Promise<UploadWork> {
     throwIfAborted(this.lifetime.signal);
     const epoch = this.ownerEpochs.get(owner);
-    if (!validated) await this.validateDestination(request.parent, false);
+    if (!validated && !deferValidation) await this.validateDestination(request.parent, false);
     const localPath = resolve(request.path);
     const stat = await lstat(localPath, { bigint: true }).catch((error: unknown) =>
       localStatError(error),
@@ -275,7 +292,14 @@ export class UploadService {
     const plan = new UploadPlan(this.destination, [
       { kind: 'file', localPath, name, size, parent: request.parent },
     ]);
-    this.plans.set(id, { owner, plan, standalone: true });
+    this.plans.set(id, {
+      owner,
+      plan,
+      standalone: true,
+      ...(!validated && deferValidation
+        ? { validateOnResolve: { parent: request.parent, requireCreateDirectory: false } }
+        : {}),
+    });
     return { ref: { planId: id, itemId: 0 }, parent: request.parent, name, size };
   }
 
@@ -323,7 +347,8 @@ export class UploadService {
         throw new StorageError('Unsupported');
       }
     }
-    if (!request.validated || hasDirectory) {
+    const needsValidation = !request.validated || hasDirectory;
+    if (needsValidation && !request.deferValidation) {
       await this.validateDestination(request.parent, hasDirectory);
     }
     throwIfAborted(this.lifetime.signal);
@@ -350,6 +375,9 @@ export class UploadService {
       id,
       sourcePath: commonLocalParent(inspected.map((item) => item.localPath)),
       items: plan.roots,
+      ...(needsValidation && request.deferValidation
+        ? { needsValidation: { requireCreateDirectory: hasDirectory } }
+        : {}),
     };
   }
 
