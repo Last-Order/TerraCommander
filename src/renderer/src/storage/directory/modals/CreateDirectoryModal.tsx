@@ -1,22 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button, Group, Modal, Stack, TextInput } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
-import type { EntryRef } from '@shared/storage';
 import { useStorageTaskQueue } from '@renderer/storage/tasks/storage-task-queue-context';
+import { useCurrentDirectory } from '../current-directory-context';
 
 interface CreateDirectoryModalProps {
-  parent: EntryRef;
-  directoryPath: string;
   onClose: () => void;
 }
 
-export function CreateDirectoryModal({
-  parent,
-  directoryPath,
-  onClose,
-}: CreateDirectoryModalProps) {
+export function CreateDirectoryModal({ onClose }: CreateDirectoryModalProps) {
   const { t } = useTranslation(['storage', 'common']);
   const queue = useStorageTaskQueue();
+  const { ref: parent, path: directoryPath } = useCurrentDirectory();
   const [name, setName] = useState('');
   const submitted = useRef(false);
   const active = useRef(true);

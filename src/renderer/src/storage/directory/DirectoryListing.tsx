@@ -4,12 +4,13 @@ import { notifications } from '@mantine/notifications';
 import { ClipboardPaste, FolderPlus, Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
-import type { Capabilities, Entry, EntryRef } from '@shared/storage';
+import type { Entry } from '@shared/storage';
 import { localConnectionId } from '@shared/storage-browser';
 import { useKeyboardShortcuts } from '@renderer/shortcuts/useKeyboardShortcuts';
 import { useStorageWorkspace } from '../storage-workspace-context';
 import { selectPendingEntryEffects } from '../tasks/pending-entry-effects';
 import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
+import { useCurrentDirectory } from './current-directory-context';
 import { buildDirectoryRows } from './directory-rows';
 import type { DirectorySort } from './directory-types';
 import { DirectoryEntryMenu } from './DirectoryEntryMenu';
@@ -30,32 +31,19 @@ import { useDirectoryUpload } from './useDirectoryUpload';
 const selectAllLoadingNotification = 'directory-select-all-loading';
 
 interface ListingProps {
-  parent: EntryRef;
   cacheable: boolean;
   version: number;
-  directoryPath: string;
-  targetCapabilities?: Capabilities | undefined;
-  targetAncestors: readonly EntryRef[];
   onOpen: (entry: Entry) => void;
   children: ReactNode;
 }
 
-export function DirectoryListing({
-  parent,
-  cacheable,
-  version,
-  directoryPath,
-  targetCapabilities,
-  targetAncestors,
-  onOpen,
-  children,
-}: ListingProps) {
+export function DirectoryListing({ cacheable, version, onOpen, children }: ListingProps) {
   const { t, i18n } = useTranslation(['storage', 'errors']);
   const { directoryCache: cache, onAuthRequired, reauthorize } = useStorageWorkspace();
-  const canCreateDirectory = targetCapabilities?.createDirectory?.support !== 'unsupported';
+  const { ref: parent, capabilities } = useCurrentDirectory();
+  const canCreateDirectory = capabilities?.createDirectory?.support !== 'unsupported';
   const canUpload =
-    parent.connectionId !== localConnectionId &&
-    targetCapabilities?.write?.support !== 'unsupported';
+    parent.connectionId !== localConnectionId && capabilities?.write?.support !== 'unsupported';
   const canUploadFolder = canUpload && canCreateDirectory;
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const [sort, setSort] = useState<DirectorySort | null>(null);
@@ -112,8 +100,6 @@ export function DirectoryListing({
     selectForContextMenu,
   });
   const upload = useDirectoryUpload({
-    parent,
-    directoryPath,
     canUpload,
     blocked: loading || error !== null,
     onAuthRequired,
@@ -167,10 +153,6 @@ export function DirectoryListing({
     setCreateDirectoryOpened(true);
   };
   const clipboard = useDirectoryClipboard({
-    parent,
-    directoryPath,
-    targetCapabilities,
-    targetAncestors,
     blocked: loadingWithoutEntries || error !== null,
     onAuthRequired,
   });
@@ -421,8 +403,6 @@ export function DirectoryListing({
         />
       )}
       <DirectoryEntryModals
-        parent={parent}
-        directoryPath={directoryPath}
         dateFormatter={dateFormatter}
         sizeFormatter={sizeFormatter}
         onAuthRequired={onAuthRequired}

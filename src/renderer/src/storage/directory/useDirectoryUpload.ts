@@ -1,11 +1,9 @@
 import { useState, type DragEvent } from 'react';
-import type { EntryRef } from '@shared/storage';
 import { errorKey, type StorageErrorKey } from '../storage-client';
 import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
+import { useCurrentDirectory } from './current-directory-context';
 
 interface DirectoryUploadOptions {
-  parent: EntryRef;
-  directoryPath: string;
   canUpload: boolean;
   blocked: boolean;
   onAuthRequired: () => void;
@@ -15,14 +13,9 @@ function hasDroppedFiles(dataTransfer: DataTransfer | null) {
   return Array.from(dataTransfer?.types ?? []).includes('Files');
 }
 
-export function useDirectoryUpload({
-  parent,
-  directoryPath,
-  canUpload,
-  blocked,
-  onAuthRequired,
-}: DirectoryUploadOptions) {
+export function useDirectoryUpload({ canUpload, blocked, onAuthRequired }: DirectoryUploadOptions) {
   const queue = useStorageTaskQueue();
+  const { ref: parent, path: directoryPath } = useCurrentDirectory();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<StorageErrorKey | null>(null);
   const [dragActive, setDragActive] = useState(false);

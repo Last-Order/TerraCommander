@@ -1,19 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button, Group, Modal, Stack, TextInput } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
-import type { Entry, EntryRef } from '@shared/storage';
+import type { Entry } from '@shared/storage';
 import { useStorageTaskQueue } from '@renderer/storage/tasks/storage-task-queue-context';
+import { useCurrentDirectory } from '../current-directory-context';
 
 interface EntryRenameProps {
   entry: Entry;
-  parent: EntryRef;
-  directoryPath: string;
   onClose: () => void;
 }
 
-export function EntryRenameModal({ entry, parent, directoryPath, onClose }: EntryRenameProps) {
+export function EntryRenameModal({ entry, onClose }: EntryRenameProps) {
   const { t } = useTranslation(['storage', 'common']);
   const queue = useStorageTaskQueue();
+  const { ref: parent, path: directoryPath } = useCurrentDirectory();
   const [name, setName] = useState(entry.name);
   const submitted = useRef(false);
   const active = useRef(true);

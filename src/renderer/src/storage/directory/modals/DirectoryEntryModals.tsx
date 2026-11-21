@@ -1,4 +1,4 @@
-import type { Entry, EntryRef } from '@shared/storage';
+import type { Entry } from '@shared/storage';
 import { CreateDirectoryModal } from './CreateDirectoryModal';
 import { EntryDeleteModal } from './EntryDeleteModal';
 import { EntryDownloadModal } from './EntryDownloadModal';
@@ -6,8 +6,6 @@ import { EntryInformationModal, type EntrySelection } from './EntryInformationMo
 import { EntryRenameModal } from './EntryRenameModal';
 
 interface DirectoryEntryModalsProps {
-  parent: EntryRef;
-  directoryPath: string;
   dateFormatter: Intl.DateTimeFormat;
   sizeFormatter: Intl.NumberFormat;
   onAuthRequired: () => void;
@@ -24,8 +22,6 @@ interface DirectoryEntryModalsProps {
 }
 
 export function DirectoryEntryModals({
-  parent,
-  directoryPath,
   dateFormatter,
   sizeFormatter,
   onAuthRequired,
@@ -42,42 +38,19 @@ export function DirectoryEntryModals({
 }: DirectoryEntryModalsProps) {
   return (
     <>
-      {createDirectoryOpened && (
-        <CreateDirectoryModal
-          parent={parent}
-          directoryPath={directoryPath}
-          onClose={onCloseCreateDirectory}
-        />
-      )}
-      {renameEntry && (
-        <EntryRenameModal
-          entry={renameEntry}
-          parent={parent}
-          directoryPath={directoryPath}
-          onClose={onCloseRename}
-        />
-      )}
+      {createDirectoryOpened && <CreateDirectoryModal onClose={onCloseCreateDirectory} />}
+      {renameEntry && <EntryRenameModal entry={renameEntry} onClose={onCloseRename} />}
       {downloadEntries && (
         <EntryDownloadModal
           entries={downloadEntries}
-          parent={parent}
-          directoryPath={directoryPath}
           onClose={onCloseDownload}
           onAuthRequired={onAuthRequired}
         />
       )}
-      {deleteEntries && (
-        <EntryDeleteModal
-          entries={deleteEntries}
-          parent={parent}
-          directoryPath={directoryPath}
-          onClose={onCloseDelete}
-        />
-      )}
+      {deleteEntries && <EntryDeleteModal entries={deleteEntries} onClose={onCloseDelete} />}
       {informationEntries && (
         <EntryInformationModal
           entries={informationEntries}
-          directoryPath={directoryPath}
           dateFormatter={dateFormatter}
           sizeFormatter={sizeFormatter}
           onAuthRequired={onAuthRequired}

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { notifications } from '@mantine/notifications';
 import { useTranslation } from 'react-i18next';
-import type { Capabilities, Entry, EntryRef } from '@shared/storage';
+import type { Entry } from '@shared/storage';
 import { errorKey, StorageBrowserError } from '../storage-client';
 import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
+import { useCurrentDirectory } from './current-directory-context';
 import { directoryKey } from './directory-cache';
 import { useStorageClipboard, validatePaste } from './storage-clipboard';
 
@@ -11,10 +12,6 @@ const copyEntriesNotification = 'directory-copy-entries';
 const pasteStatusNotification = 'directory-paste-status';
 
 interface DirectoryClipboardOptions {
-  parent: EntryRef;
-  directoryPath: string;
-  targetCapabilities?: Capabilities | undefined;
-  targetAncestors: readonly EntryRef[];
   blocked: boolean;
   onAuthRequired: () => void;
 }
@@ -26,16 +23,15 @@ interface PasteConflictState {
   busy: boolean;
 }
 
-export function useDirectoryClipboard({
-  parent,
-  directoryPath,
-  targetCapabilities,
-  targetAncestors,
-  blocked,
-  onAuthRequired,
-}: DirectoryClipboardOptions) {
+export function useDirectoryClipboard({ blocked, onAuthRequired }: DirectoryClipboardOptions) {
   const { t } = useTranslation(['storage', 'errors']);
   const queue = useStorageTaskQueue();
+  const {
+    ref: parent,
+    path: directoryPath,
+    capabilities: targetCapabilities,
+    ancestors: targetAncestors,
+  } = useCurrentDirectory();
   const clipboard = useStorageClipboard((state) => state.clipboard);
   const setClipboard = useStorageClipboard((state) => state.setClipboard);
   const [pasteConflict, setPasteConflict] = useState<PasteConflictState | null>(null);

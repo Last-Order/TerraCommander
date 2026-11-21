@@ -3,6 +3,7 @@ import { Alert, Group, Loader, Modal } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
 import type { Entry } from '@shared/storage';
 import { errorKey, resultOf, type StorageErrorKey } from '@renderer/storage/storage-client';
+import { useCurrentDirectory } from '../current-directory-context';
 import classes from './EntryInformationModal.module.css';
 import { formatSize } from '@renderer/format/size';
 
@@ -10,7 +11,6 @@ export type EntrySelection = [Entry, ...Entry[]];
 
 interface EntryInformationProps {
   entries: EntrySelection;
-  directoryPath: string;
   dateFormatter: Intl.DateTimeFormat;
   sizeFormatter: Intl.NumberFormat;
   onAuthRequired: () => void;
@@ -19,13 +19,13 @@ interface EntryInformationProps {
 
 export function EntryInformationModal({
   entries,
-  directoryPath,
   dateFormatter,
   sizeFormatter,
   onAuthRequired,
   onClose,
 }: EntryInformationProps) {
   const { t } = useTranslation(['storage', 'common', 'errors']);
+  const { path: directoryPath } = useCurrentDirectory();
   const [measurement, setMeasurement] = useState<
     { bytes: number | null } | { error: StorageErrorKey } | null
   >(null);

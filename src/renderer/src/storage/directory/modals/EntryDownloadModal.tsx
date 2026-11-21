@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button, Group, Modal, Stack, Text } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
-import type { Entry, EntryRef } from '@shared/storage';
+import type { Entry } from '@shared/storage';
 import { DownloadDirectoryInput } from '@renderer/downloads/DownloadDirectoryInput';
 import { errorKey, resultOf, type StorageErrorKey } from '@renderer/storage/storage-client';
 import { useStorageTaskQueue } from '@renderer/storage/tasks/storage-task-queue-context';
+import { useCurrentDirectory } from '../current-directory-context';
 import { DownloadOverwriteModal } from './DownloadOverwriteModal';
 
 interface PendingOverwriteConfirmation {
@@ -14,19 +15,16 @@ interface PendingOverwriteConfirmation {
 
 export function EntryDownloadModal({
   entries,
-  parent,
-  directoryPath,
   onClose,
   onAuthRequired,
 }: {
   entries: readonly Entry[];
-  parent: EntryRef;
-  directoryPath: string;
   onClose: () => void;
   onAuthRequired: () => void;
 }) {
   const { t } = useTranslation(['storage', 'common', 'errors']);
   const queue = useStorageTaskQueue();
+  const { ref: parent, path: directoryPath } = useCurrentDirectory();
   const [directory, setDirectory] = useState('');
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
