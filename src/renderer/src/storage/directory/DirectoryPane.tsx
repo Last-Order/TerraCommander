@@ -5,6 +5,7 @@ import type { Capabilities, EntryRef, Space, StorageLabel } from '@shared/storag
 import { formatStorageLabel } from '../storage-labels';
 import { useStorageWorkspace } from '../storage-workspace-context';
 import {
+  createCurrentDirectoryValue,
   CurrentDirectoryContext,
   type CurrentDirectoryContextValue,
 } from './current-directory-context';
@@ -47,12 +48,13 @@ export function DirectoryPane({ space }: DirectoryProps) {
   );
 
   const currentDirectory = useMemo<CurrentDirectoryContextValue>(
-    () => ({
-      ref: current.ref,
-      path: trail.map(({ name }) => formatStorageLabel(name, t)).join(' / '),
-      capabilities: current.capabilities,
-      ancestors: trail.map(({ ref }) => ref),
-    }),
+    () =>
+      createCurrentDirectoryValue({
+        ref: current.ref,
+        path: trail.map(({ name }) => formatStorageLabel(name, t)).join(' / '),
+        capabilities: current.capabilities,
+        ancestors: trail.map(({ ref }) => ref),
+      }),
     [current.ref, current.capabilities, trail, t],
   );
 

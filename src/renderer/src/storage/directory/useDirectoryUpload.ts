@@ -4,7 +4,6 @@ import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
 import { useCurrentDirectory } from './current-directory-context';
 
 interface DirectoryUploadOptions {
-  canUpload: boolean;
   blocked: boolean;
   onAuthRequired: () => void;
 }
@@ -13,9 +12,9 @@ function hasDroppedFiles(dataTransfer: DataTransfer | null) {
   return Array.from(dataTransfer?.types ?? []).includes('Files');
 }
 
-export function useDirectoryUpload({ canUpload, blocked, onAuthRequired }: DirectoryUploadOptions) {
+export function useDirectoryUpload({ blocked, onAuthRequired }: DirectoryUploadOptions) {
   const queue = useStorageTaskQueue();
-  const { ref: parent, path: directoryPath } = useCurrentDirectory();
+  const { ref: parent, path: directoryPath, canUpload } = useCurrentDirectory();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<StorageErrorKey | null>(null);
   const [dragActive, setDragActive] = useState(false);

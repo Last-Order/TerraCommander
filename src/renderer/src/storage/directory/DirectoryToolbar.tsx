@@ -2,13 +2,11 @@ import type { ReactNode, RefObject } from 'react';
 import { ActionIcon, Menu } from '@mantine/core';
 import { FileUp, FolderPlus, FolderUp, Plus, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useCurrentDirectory } from './current-directory-context';
 import classes from './DirectoryListing.module.css';
 
 interface DirectoryToolbarProps {
-  canCreateDirectory: boolean;
   createDirectoryDisabled: boolean;
-  canUpload: boolean;
-  canUploadFolder: boolean;
   uploadDisabled: boolean;
   refreshDisabled: boolean;
   refreshButton: RefObject<HTMLButtonElement | null>;
@@ -20,10 +18,7 @@ interface DirectoryToolbarProps {
 }
 
 export function DirectoryToolbar({
-  canCreateDirectory,
   createDirectoryDisabled,
-  canUpload,
-  canUploadFolder,
   uploadDisabled,
   refreshDisabled,
   refreshButton,
@@ -34,6 +29,7 @@ export function DirectoryToolbar({
   children,
 }: DirectoryToolbarProps) {
   const { t } = useTranslation('storage');
+  const { canCreateDirectory, canUpload } = useCurrentDirectory();
   const canAdd = canCreateDirectory || canUpload;
 
   return (
@@ -42,10 +38,7 @@ export function DirectoryToolbar({
       <div className={classes.directoryActions}>
         {canAdd && (
           <AddButton
-            canCreateDirectory={canCreateDirectory}
             createDirectoryDisabled={createDirectoryDisabled}
-            canUpload={canUpload}
-            canUploadFolder={canUploadFolder}
             uploadDisabled={uploadDisabled}
             onCreateDirectory={onCreateDirectory}
             onUploadFile={onUploadFile}
@@ -70,10 +63,7 @@ export function DirectoryToolbar({
 }
 
 interface AddButtonProps {
-  canCreateDirectory: boolean;
   createDirectoryDisabled: boolean;
-  canUpload: boolean;
-  canUploadFolder: boolean;
   uploadDisabled: boolean;
   onCreateDirectory: () => void;
   onUploadFile: () => void;
@@ -81,16 +71,14 @@ interface AddButtonProps {
 }
 
 function AddButton({
-  canCreateDirectory,
   createDirectoryDisabled,
-  canUpload,
-  canUploadFolder,
   uploadDisabled,
   onCreateDirectory,
   onUploadFile,
   onUploadFolder,
 }: AddButtonProps) {
   const { t } = useTranslation('storage');
+  const { canCreateDirectory, canUpload, canUploadFolder } = useCurrentDirectory();
   const disabled =
     (!canCreateDirectory || createDirectoryDisabled) && (!canUpload || uploadDisabled);
 

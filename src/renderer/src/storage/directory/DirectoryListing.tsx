@@ -5,7 +5,6 @@ import { ClipboardPaste, FolderPlus, Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
 import type { Entry } from '@shared/storage';
-import { localConnectionId } from '@shared/storage-browser';
 import { useKeyboardShortcuts } from '@renderer/shortcuts/useKeyboardShortcuts';
 import { useStorageWorkspace } from '../storage-workspace-context';
 import { selectPendingEntryEffects } from '../tasks/pending-entry-effects';
@@ -40,11 +39,7 @@ interface ListingProps {
 export function DirectoryListing({ cacheable, version, onOpen, children }: ListingProps) {
   const { t, i18n } = useTranslation(['storage', 'errors']);
   const { directoryCache: cache, onAuthRequired, reauthorize } = useStorageWorkspace();
-  const { ref: parent, capabilities } = useCurrentDirectory();
-  const canCreateDirectory = capabilities?.createDirectory?.support !== 'unsupported';
-  const canUpload =
-    parent.connectionId !== localConnectionId && capabilities?.write?.support !== 'unsupported';
-  const canUploadFolder = canUpload && canCreateDirectory;
+  const { ref: parent, canCreateDirectory } = useCurrentDirectory();
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const [sort, setSort] = useState<DirectorySort | null>(null);
   const [createDirectoryOpened, setCreateDirectoryOpened] = useState(false);
@@ -100,7 +95,6 @@ export function DirectoryListing({ cacheable, version, onOpen, children }: Listi
     selectForContextMenu,
   });
   const upload = useDirectoryUpload({
-    canUpload,
     blocked: loading || error !== null,
     onAuthRequired,
   });
@@ -235,10 +229,7 @@ export function DirectoryListing({ cacheable, version, onOpen, children }: Listi
   return (
     <>
       <DirectoryToolbar
-        canCreateDirectory={canCreateDirectory}
         createDirectoryDisabled={!createDirectoryEnabled}
-        canUpload={canUpload}
-        canUploadFolder={canUploadFolder}
         uploadDisabled={upload.disabled}
         refreshDisabled={loading}
         refreshButton={refreshButton}
