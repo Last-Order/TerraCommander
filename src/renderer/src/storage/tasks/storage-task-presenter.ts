@@ -51,7 +51,7 @@ export const presentStorageTask: TaskPresenter<StorageTaskItem> = (task) => {
         title: [{ text: input.displayName ?? input.entry.name }],
         summary: `${input.directoryPath} → ${input.destinationPath}`,
         ...(task.status === 'skipped'
-          ? { resultMessage: { key: 'errors:Unsupported' as const } }
+          ? { resultMessage: { key: 'errors:unsupported' as const } }
           : {}),
       };
     }

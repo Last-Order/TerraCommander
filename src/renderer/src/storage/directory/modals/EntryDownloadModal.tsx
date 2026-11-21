@@ -93,7 +93,7 @@ export function EntryDownloadModal({
       const code = errorKey(error);
       setPendingConflict(null);
       setError(code);
-      if (code === 'AuthRequired') onAuthRequired();
+      if (code === 'authRequired') onAuthRequired();
     } finally {
       submitting.current = false;
       if (active.current) setBusy(false);
@@ -115,7 +115,7 @@ export function EntryDownloadModal({
       const code = errorKey(error);
       setPendingConflict(null);
       setError(code);
-      if (code === 'AuthRequired') onAuthRequired();
+      if (code === 'authRequired') onAuthRequired();
     } finally {
       submitting.current = false;
       if (active.current) setBusy(false);
@@ -175,8 +175,8 @@ export function EntryDownloadModal({
               value={directory}
               disabled={blocked}
               error={
-                error === 'InvalidDownloadDirectory'
-                  ? t('errors:InvalidDownloadDirectory')
+                error === 'invalidDownloadDirectory'
+                  ? t('errors:invalidDownloadDirectory')
                   : undefined
               }
               onChange={(value) => {
@@ -186,7 +186,7 @@ export function EntryDownloadModal({
                 setError(undefined);
               }}
             />
-            {error && error !== 'InvalidDownloadDirectory' && (
+            {error && error !== 'invalidDownloadDirectory' && (
               <Text size="sm" c="red" role="alert">
                 {t(`errors:${error}`)}
               </Text>

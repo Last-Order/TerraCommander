@@ -28,7 +28,12 @@ export interface SpaceChoice {
 }
 
 export type BrowserErrorCode = AccountErrorCode | StorageErrorCode | DownloadErrorCode;
+export type BrowserErrorKey = Uncapitalize<BrowserErrorCode>;
 export type BrowserResult<T> = { ok: true; value: T } | { ok: false; code: BrowserErrorCode };
+
+export function browserErrorKey(code: BrowserErrorCode): BrowserErrorKey {
+  return `${code[0]!.toLowerCase()}${code.slice(1)}` as BrowserErrorKey;
+}
 
 export interface StorageBrowserApi {
   listConnections(): Promise<BrowserResult<StorageConnectionSummary[]>>;

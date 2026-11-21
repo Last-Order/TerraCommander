@@ -69,7 +69,7 @@ export function TaskQueueGroupRow<TTask extends TaskViewItem, TGroup extends Tas
           <span className={classes.error}>
             {failure && (
               <>
-                {t('preparationStatus_failed')}
+                {t('preparationStatusFailed')}
                 {' · '}
               </>
             )}

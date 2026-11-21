@@ -1,6 +1,11 @@
-import type { BrowserErrorCode, BrowserResult } from '@shared/storage-browser';
+import {
+  browserErrorKey,
+  type BrowserErrorCode,
+  type BrowserErrorKey,
+  type BrowserResult,
+} from '@shared/storage-browser';
 
-export type StorageErrorKey = BrowserErrorCode | 'unknown';
+export type StorageErrorKey = BrowserErrorKey | 'unknown';
 
 export class StorageBrowserError extends Error {
   constructor(readonly code: BrowserErrorCode) {
@@ -15,5 +20,5 @@ export async function resultOf<T>(request: Promise<BrowserResult<T>>): Promise<T
 }
 
 export function errorKey(error: unknown): StorageErrorKey {
-  return error instanceof StorageBrowserError ? error.code : 'unknown';
+  return error instanceof StorageBrowserError ? browserErrorKey(error.code) : 'unknown';
 }

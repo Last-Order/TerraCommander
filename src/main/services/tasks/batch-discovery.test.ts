@@ -78,7 +78,7 @@ it('performs DFS discovery across paginated directories, respects skipped items,
   expect(enqueued).toEqual(['dir/a.txt', 'root.txt']);
   expect(reportIssue).toHaveBeenCalledWith({
     label: 'dir/sub',
-    failure: { code: 'PermissionDenied', message: { key: 'errors:PermissionDenied' } },
+    failure: { code: 'PermissionDenied', message: { key: 'errors:permissionDenied' } },
   });
   expect(afterDirectory).toHaveBeenCalledTimes(2);
   expect(reportProgress).toHaveBeenLastCalledWith({

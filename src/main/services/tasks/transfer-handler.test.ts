@@ -83,7 +83,7 @@ it('maps determinate/indeterminate progress, paused status, cancelled error, and
   const paused = await pausedHandler.execute({ id: 1 }, context);
   expect(paused).toEqual({
     status: 'paused',
-    failure: { code: 'NetworkError', message: { key: 'errors:NetworkError' } },
+    failure: { code: 'NetworkError', message: { key: 'errors:networkError' } },
   });
   expect(reportProgress).toHaveBeenNthCalledWith(1, {
     kind: 'indeterminate',
@@ -126,7 +126,7 @@ it('maps determinate/indeterminate progress, paused status, cancelled error, and
 
   await cancelledHandler.onFailure?.(
     { id: 2 },
-    { code: 'AuthRequired', message: { key: 'errors:AuthRequired' } },
+    { code: 'AuthRequired', message: { key: 'errors:authRequired' } },
   );
   expect(emitAuthRequired).toHaveBeenCalledWith('conn-1');
 });

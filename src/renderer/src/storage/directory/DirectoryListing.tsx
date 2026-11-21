@@ -252,7 +252,7 @@ export function DirectoryListing({
         notifications.show({
           id: pasteStatusNotification,
           color: 'red',
-          message: t('errors:PermissionDenied'),
+          message: t('errors:permissionDenied'),
         });
         return;
       }
@@ -263,7 +263,7 @@ export function DirectoryListing({
         notifications.show({
           id: pasteStatusNotification,
           color: 'red',
-          message: t('errors:Unsupported'),
+          message: t('errors:unsupported'),
         });
         return;
       }
@@ -293,7 +293,7 @@ export function DirectoryListing({
         const message =
           caught.code === 'Unsupported'
             ? t('crossSourcePasteUnsupported')
-            : t(`errors:${caught.code}`);
+            : t(`errors:${errorKey(caught)}`);
         notifications.show({ id: pasteStatusNotification, color: 'red', message });
         return;
       }

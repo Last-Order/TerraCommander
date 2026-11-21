@@ -45,7 +45,7 @@ export function EntryInformationModal({
         if (!active) return;
         const error = errorKey(failure);
         setMeasurement({ error });
-        if (error === 'AuthRequired') onAuthRequired();
+        if (error === 'authRequired') onAuthRequired();
       },
     );
     return () => {

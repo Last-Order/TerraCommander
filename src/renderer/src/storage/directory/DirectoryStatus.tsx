@@ -24,10 +24,10 @@ export function DirectoryStatus({ error, empty, onReauthorize, onRetry }: Direct
             variant="subtle"
             size="compact-sm"
             leftSection={<RefreshCw size={16} strokeWidth={1.5} aria-hidden="true" />}
-            aria-haspopup={error === 'AuthRequired' ? 'dialog' : undefined}
-            onClick={error === 'AuthRequired' ? onReauthorize : onRetry}
+            aria-haspopup={error === 'authRequired' ? 'dialog' : undefined}
+            onClick={error === 'authRequired' ? onReauthorize : onRetry}
           >
-            {error === 'AuthRequired' ? t('reauthorize') : t('common:retry')}
+            {error === 'authRequired' ? t('reauthorize') : t('common:retry')}
           </Button>
         </div>
       )}

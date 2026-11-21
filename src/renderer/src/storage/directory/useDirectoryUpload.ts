@@ -36,8 +36,8 @@ export function useDirectoryUpload({
       await upload();
     } catch (failure) {
       const code = errorKey(failure);
-      if (code !== 'Cancelled') setError(code);
-      if (code === 'AuthRequired') onAuthRequired();
+      if (code !== 'cancelled') setError(code);
+      if (code === 'authRequired') onAuthRequired();
     } finally {
       setPending(false);
     }

@@ -18,6 +18,18 @@ const statusIcons = {
   skipped: X,
 };
 
+const statusLabelKeys = {
+  paused: 'tasks:taskStatusPaused',
+  pausing: 'tasks:taskStatusPausing',
+  queued: 'tasks:taskStatusQueued',
+  running: 'tasks:taskStatusRunning',
+  completed: 'tasks:taskStatusCompleted',
+  failed: 'tasks:taskStatusFailed',
+  cancelled: 'tasks:taskStatusCancelled',
+  partial: 'tasks:taskStatusPartial',
+  skipped: 'tasks:taskStatusSkipped',
+} as const satisfies Record<TaskRowStatus | 'pausing', string>;
+
 interface TaskQueueRowProps {
   status: TaskRowStatus;
   model: TaskRowModel;
@@ -72,7 +84,7 @@ export function TaskQueueRow({
         className={classes.statusIcon}
         size={16}
         strokeWidth={1.5}
-        aria-label={t(`tasks:taskStatus_${pausing ? 'pausing' : status}`)}
+        aria-label={t(statusLabelKeys[pausing ? 'pausing' : status])}
       />
       <div className={classes.description}>
         <div className={classes.information}>
@@ -123,11 +135,11 @@ export function TaskQueueRow({
             {determinate && (
               <span>
                 {progress.unit === 'bytes'
-                  ? t('tasks:progress_bytes', {
+                  ? t('tasks:progressBytes', {
                       completed: formatSize(Math.max(0, progress.completed), formatter),
                       total: formatSize(progress.total, formatter),
                     })
-                  : t('tasks:progress_items', {
+                  : t('tasks:progressItems', {
                       completed: progress.completed,
                       total: progress.total,
                     })}

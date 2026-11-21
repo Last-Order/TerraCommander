@@ -97,7 +97,7 @@ export function useDirectoryListing({
           snapshot: previous ? withAdditions(previous) : undefined,
           error,
         });
-        if (error === 'AuthRequired') onAuthRequired();
+        if (error === 'authRequired') onAuthRequired();
       } finally {
         if (currentRequest.current === request) currentRequest.current = null;
       }

@@ -1,5 +1,5 @@
 import type { EntryRef } from '@shared/storage';
-import type { BrowserErrorCode } from '@shared/storage-browser';
+import { browserErrorKey, type BrowserErrorCode } from '@shared/storage-browser';
 import type { TaskFailure } from '@shared/tasks';
 import { AccountError } from '@main/accounts/core/errors';
 import { normalizeStorageError } from '@main/storage';
@@ -31,7 +31,7 @@ export function toTaskFailure(
       key:
         code === 'InvalidArgument' && options?.invalidArgumentKey
           ? options.invalidArgumentKey
-          : `errors:${code}`,
+          : `errors:${browserErrorKey(code)}`,
     },
   };
 }
