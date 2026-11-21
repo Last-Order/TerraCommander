@@ -1,4 +1,4 @@
-import type { Entry } from '@shared/storage';
+import type { Entry, EntryRef } from '@shared/storage';
 import { localConnectionId } from '@shared/storage-browser';
 import type {
   DownloadTaskDisplayInput,
@@ -12,13 +12,20 @@ import type { StorageBrowser } from '../storage/storage-browser';
 import type { UploadWorkRef } from '../uploads/upload-types';
 import { entryKey, queueOwnerId, toBrowserErrorCode, toTaskFailure } from './task-errors';
 
+export interface SourceCleanupTarget {
+  parent: EntryRef;
+  entry: Entry;
+}
+
 export interface InternalDownloadInput extends DownloadTaskDisplayInput {
   workRef: DownloadWorkRef;
+  removeAfterComplete?: SourceCleanupTarget | undefined;
 }
 
 export interface InternalUploadInput {
   display: UploadTaskDisplayInput;
   workRef: UploadWorkRef;
+  removeAfterComplete?: SourceCleanupTarget | undefined;
 }
 
 export interface TransferProgressReport {
@@ -50,13 +57,14 @@ export interface TransferHandlerConfig<TInput, TResult> {
   canRetry?: (input: TInput) => boolean;
   release: (input: TInput) => Promise<void>;
   onSettled?: (input: TInput) => void;
-  onSuccess?: (input: TInput, result: TResult) => void;
+  onSuccess?: (input: TInput, result: TResult) => void | Promise<void>;
   connectionId: (input: TInput) => string;
 }
 
 export interface TransferCallbacks {
   emitAuthRequired: (connectionId: string) => void;
   emitDirectoryChanged: (change: StorageDirectoryChange) => void;
+  removeMovedSource?: (target: SourceCleanupTarget) => Promise<void>;
 }
 
 function toRunningProgress(progress: TransferProgressReport): TaskProgress {
@@ -148,7 +156,7 @@ export function createTransferHandler<TInput, TResult, TCategory extends string 
 
 export function createDownloadTransferConfig(
   downloads: StorageBrowser['downloads'],
-  callbacks: Pick<TransferCallbacks, 'emitDirectoryChanged'>,
+  callbacks: Pick<TransferCallbacks, 'emitDirectoryChanged' | 'removeMovedSource'>,
 ): TransferHandlerConfig<InternalDownloadInput, void> {
   return {
     conflictKeys: ({ entry }) => [entryKey(entry.ref)],
@@ -182,6 +190,11 @@ export function createDownloadTransferConfig(
     pause: ({ workRef }) => downloads.pauseWork(queueOwnerId, workRef),
     cancel: ({ workRef }) => downloads.cancelWork(queueOwnerId, workRef),
     release: ({ workRef }) => downloads.releaseWork(queueOwnerId, workRef),
+    onSuccess: async ({ removeAfterComplete }) => {
+      if (removeAfterComplete && callbacks.removeMovedSource) {
+        await callbacks.removeMovedSource(removeAfterComplete);
+      }
+    },
     onSettled: () => {
       callbacks.emitDirectoryChanged({
         kind: 'invalidate-connection',
@@ -194,11 +207,13 @@ export function createDownloadTransferConfig(
 
 export function createUploadTransferConfig(
   uploads: StorageBrowser['uploads'],
-  callbacks: Pick<TransferCallbacks, 'emitDirectoryChanged'>,
+  callbacks: Pick<TransferCallbacks, 'emitDirectoryChanged' | 'removeMovedSource'>,
 ): TransferHandlerConfig<InternalUploadInput, Entry> {
   return {
     // Each creation has its own provider ID, even when the destination name is shared.
-    conflictKeys: () => [],
+    // Lock the local source entry when this upload is part of a move.
+    conflictKeys: ({ removeAfterComplete }) =>
+      removeAfterComplete ? [entryKey(removeAfterComplete.entry.ref)] : [],
     run: async ({ workRef }, { signal, onProgress }) => {
       const result = await uploads.runWork(queueOwnerId, workRef, {
         signal,
@@ -227,8 +242,11 @@ export function createUploadTransferConfig(
     cancel: ({ workRef }) => uploads.cancelWork(queueOwnerId, workRef),
     canRetry: ({ workRef }) => uploads.canRetryWork(queueOwnerId, workRef),
     release: ({ workRef }) => uploads.releaseWork(queueOwnerId, workRef),
-    onSuccess: ({ display }, entry) => {
+    onSuccess: async ({ display, removeAfterComplete }, entry) => {
       callbacks.emitDirectoryChanged({ kind: 'added', parent: display.parent, entry });
+      if (removeAfterComplete && callbacks.removeMovedSource) {
+        await callbacks.removeMovedSource(removeAfterComplete);
+      }
     },
     connectionId: ({ display }) => display.parent.connectionId,
   };

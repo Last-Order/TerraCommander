@@ -47,6 +47,7 @@ export type StorageOperation = (typeof operations)[number];
 export interface CapabilityGuarantees {
   atomic?: boolean | undefined;
   durableRecovery?: boolean | undefined;
+  allowsDuplicateNames?: boolean | undefined;
 }
 
 export interface Capability {

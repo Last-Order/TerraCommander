@@ -55,6 +55,7 @@ interface DirectoryTableProps {
   canSort: boolean;
   loadingWithoutEntries: boolean;
   selectedLocators: ReadonlySet<string>;
+  cutLocators?: ReadonlySet<string> | undefined;
   dateFormatter: Intl.DateTimeFormat;
   sizeFormatter: Intl.NumberFormat;
   onSort: (field: DirectorySort['field']) => void;
@@ -71,6 +72,7 @@ export function DirectoryTable({
   canSort,
   loadingWithoutEntries,
   selectedLocators,
+  cutLocators,
   dateFormatter,
   sizeFormatter,
   onSort,
@@ -110,6 +112,7 @@ export function DirectoryTable({
       {...row}
       index={index}
       selected={selectedLocators.has(row.entry.ref.locator)}
+      cut={cutLocators?.has(row.entry.ref.locator) ?? false}
       dateFormatter={dateFormatter}
       sizeFormatter={sizeFormatter}
       measure={enabled ? virtualizer.measureElement : undefined}

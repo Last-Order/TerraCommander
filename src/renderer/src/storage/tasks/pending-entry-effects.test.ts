@@ -143,3 +143,93 @@ it('projects active group resource locks without marking settled groups or disca
   expect(effects.get('file-1')).toEqual({ busy: true, optimisticName: 'new.txt' });
   expect(effects.has('file-2')).toBe(false);
 });
+
+it('marks active move tasks and move groups as busy in the source directory', () => {
+  const fileA = makeEntry('a', 'a.txt');
+  const fileB = makeEntry('b', 'b.txt');
+  const entries = new Map([
+    [fileA.ref.locator, fileA],
+    [fileB.ref.locator, fileB],
+  ]);
+
+  const tasks: StorageTaskItem[] = [
+    {
+      id: 1,
+      request: {
+        type: 'move',
+        input: {
+          sourceParent: parent,
+          entry: fileA,
+          targetParent: otherParent,
+          targetName: 'a.txt',
+          sourceDirectoryPath: '/',
+          targetDirectoryPath: '/other',
+        },
+      },
+      status: 'running',
+      controls: idleControls,
+    },
+  ];
+  const groups: StorageTaskGroupItem[] = [
+    {
+      ...makeGroup(20, 'active', [fileB.ref]),
+      request: {
+        kind: 'move',
+        input: {
+          names: ['b.txt'],
+          sourcePath: '/',
+          destinationPath: '/other',
+          entries: [fileB.ref],
+        },
+      },
+    },
+  ];
+
+  const effects = selectPendingEntryEffects(tasks, groups, entries, parent);
+  expect(effects.get('a')).toEqual({ busy: true });
+  expect(effects.get('b')).toEqual({ busy: true });
+});
+
+it('marks cut-upload source entries as busy for both standalone upload tasks and upload groups', () => {
+  const fileA = makeEntry('a', 'a.txt');
+  const fileB = makeEntry('b', 'b.txt');
+  const entries = new Map([
+    [fileA.ref.locator, fileA],
+    [fileB.ref.locator, fileB],
+  ]);
+
+  const tasks: StorageTaskItem[] = [
+    {
+      id: 1,
+      request: {
+        type: 'upload',
+        input: {
+          parent: otherParent,
+          directoryPath: '/remote',
+          name: 'a.txt',
+          sourceEntries: [fileA.ref],
+        },
+      },
+      status: 'running',
+      controls: idleControls,
+    },
+  ];
+  const groups: StorageTaskGroupItem[] = [
+    {
+      ...makeGroup(30, 'active', []),
+      request: {
+        kind: 'upload',
+        input: {
+          names: ['b.txt'],
+          sourcePath: '/',
+          destinationPath: '/remote',
+          sourceEntries: [fileB.ref],
+        },
+      },
+    },
+  ];
+
+  const effects = selectPendingEntryEffects(tasks, groups, entries, parent);
+  expect(effects.get('a')).toEqual({ busy: true });
+  expect(effects.get('b')).toEqual({ busy: true });
+});

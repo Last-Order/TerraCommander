@@ -19,7 +19,7 @@ interface DirectoryProps {
   space: Space;
   cache: DirectoryCache;
   clipboard: StorageClipboard | null;
-  onCopy: (clipboard: StorageClipboard) => void;
+  onClipboardChange: (clipboard: StorageClipboard | null) => void;
   onAuthRequired: () => void;
   onReauthorize: () => void;
 }
@@ -28,7 +28,7 @@ export function DirectoryPane({
   space,
   cache,
   clipboard,
-  onCopy,
+  onClipboardChange,
   onAuthRequired,
   onReauthorize,
 }: DirectoryProps) {
@@ -75,7 +75,7 @@ export function DirectoryPane({
         targetCapabilities={current.capabilities}
         targetAncestors={trail.map(({ ref }) => ref)}
         clipboard={clipboard}
-        onCopy={onCopy}
+        onClipboardChange={onClipboardChange}
         onOpen={(entry) => setTrail([...trail, entry])}
         onAuthRequired={onAuthRequired}
         onReauthorize={onReauthorize}

@@ -45,6 +45,7 @@ const deleteRequestSchema = z.strictObject({
 });
 
 const pasteEntriesSchema = z.strictObject({
+  mode: z.enum(['copy', 'cut']).optional(),
   sourceParent: refSchema,
   sourceDirectoryPath: pathSchema,
   entries: z.array(taskEntrySchema).min(1),

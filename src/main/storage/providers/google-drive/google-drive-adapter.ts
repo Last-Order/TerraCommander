@@ -28,16 +28,25 @@ const sharedPrefix = 'shared:';
 const supported = { support: 'supported' } as const;
 const unsupported = { support: 'unsupported' } as const;
 const unknown = { support: 'unknown' } as const;
+const duplicateNameGuarantees = { allowsDuplicateNames: true } as const;
+const supportedWithDuplicates = {
+  support: 'supported',
+  guarantees: duplicateNameGuarantees,
+} as const;
+const unknownWithDuplicates = {
+  support: 'unknown',
+  guarantees: duplicateNameGuarantees,
+} as const;
 const driveBaseCapabilities: Capabilities = {
   list: supported,
   read: supported,
   rangeRead: supported,
   rename: supported,
   remove: supported,
-  write: unknown,
-  createDirectory: unknown,
-  copyWithin: unknown,
-  moveWithin: unsupported,
+  write: unknownWithDuplicates,
+  createDirectory: unknownWithDuplicates,
+  copyWithin: unknownWithDuplicates,
+  moveWithin: unknownWithDuplicates,
   conditionalRead: unsupported,
   conditionalWrite: unsupported,
   resumeWrite: unsupported,
@@ -46,7 +55,7 @@ const identifier = z.string().regex(/^[A-Za-z0-9_-]+$/);
 const generatedIdsSchema = z.object({ ids: z.tuple([identifier]) });
 const token = z.string().min(1);
 const fileFields =
-  'id,name,mimeType,driveId,trashed,size,modifiedTime,sha256Checksum,md5Checksum,capabilities(canRename,canTrash,canDownload,canAddChildren)';
+  'id,name,mimeType,driveId,trashed,size,modifiedTime,sha256Checksum,md5Checksum,capabilities(canRename,canTrash,canDownload,canAddChildren,canMoveItemWithinDrive)';
 const fileSchema = z.object({
   id: identifier,
   name: z.string(),
@@ -70,6 +79,7 @@ const fileSchema = z.object({
       canTrash: z.boolean().optional(),
       canDownload: z.boolean().optional(),
       canAddChildren: z.boolean().optional(),
+      canMoveItemWithinDrive: z.boolean().optional(),
     })
     .optional(),
 });
@@ -351,6 +361,54 @@ class GoogleDriveAdapter implements StorageAdapter {
     return fileEntry({ ...target.parent, locator: copied.id }, copied, false);
   }
 
+  async moveWithin(ref: EntryRef, target: CreateTarget, context: OperationContext): Promise<Entry> {
+    const id = parse(identifier, ref.locator);
+    const sourceDriveId = this.sharedDriveId(ref.spaceId);
+    const targetDriveId = this.sharedDriveId(target.parent.spaceId);
+    if (id === 'root' || id === sourceDriveId) throw new StorageError('InvalidArgument');
+    if (sourceDriveId !== targetDriveId) throw new StorageError('Unsupported');
+
+    const source = await this.getFile(ref, context, `${fileFields},parents`);
+    if (source.capabilities?.canMoveItemWithinDrive === false) {
+      throw new StorageError('PermissionDenied');
+    }
+    const folder = await this.getFile(target.parent, context);
+    if (folder.mimeType !== 'application/vnd.google-apps.folder') {
+      throw new StorageError('InvalidArgument');
+    }
+    if (folder.id === source.id) throw new StorageError('InvalidArgument');
+    if (folder.capabilities?.canAddChildren === false) {
+      throw new StorageError('PermissionDenied');
+    }
+    if (source.parents?.includes(folder.id) && source.name === target.name) {
+      return fileEntry({ ...target.parent, locator: source.id }, source, false);
+    }
+
+    const params = new URLSearchParams({
+      fields: `${fileFields},parents`,
+      supportsAllDrives: 'true',
+      addParents: folder.id,
+    });
+    if (source.parents && source.parents.length > 0) {
+      params.set('removeParents', source.parents.join(','));
+    }
+    const update: Pick<RequestInit, 'method' | 'body'> = {
+      method: 'PATCH',
+      ...(source.name !== target.name ? { body: JSON.stringify({ name: target.name }) } : {}),
+    };
+    const moved = await this.requestJson(`files/${id}`, params, fileSchema, context, update);
+    if (
+      moved.id !== id ||
+      moved.trashed ||
+      moved.name !== target.name ||
+      moved.driveId !== targetDriveId ||
+      !moved.parents?.includes(folder.id)
+    ) {
+      throw new StorageError('OutcomeUnknown');
+    }
+    return fileEntry({ ...target.parent, locator: moved.id }, moved, false);
+  }
+
   async remove(ref: EntryRef, context: OperationContext): Promise<void> {
     const id = parse(identifier, ref.locator);
     const driveId = this.sharedDriveId(ref.spaceId);
@@ -457,16 +515,38 @@ function fileEntry(ref: EntryRef, file: z.infer<typeof fileSchema>, isRoot: bool
         kind !== 'file' || file.mimeType.startsWith('application/vnd.google-apps.'),
         file.capabilities?.canDownload,
       ),
-      write: grantedCapability(kind !== 'directory', file.capabilities?.canAddChildren),
-      createDirectory: grantedCapability(kind !== 'directory', file.capabilities?.canAddChildren),
-      copyWithin: kind === 'file' && !isRoot ? supported : unsupported,
+      write: grantedCapability(
+        kind !== 'directory',
+        file.capabilities?.canAddChildren,
+        duplicateNameGuarantees,
+      ),
+      createDirectory: grantedCapability(
+        kind !== 'directory',
+        file.capabilities?.canAddChildren,
+        duplicateNameGuarantees,
+      ),
+      copyWithin: kind === 'file' && !isRoot ? supportedWithDuplicates : unsupported,
+      moveWithin: grantedCapability(
+        isRoot,
+        file.capabilities?.canMoveItemWithinDrive,
+        duplicateNameGuarantees,
+      ),
       rename: grantedCapability(isRoot, file.capabilities?.canRename),
       remove: grantedCapability(isRoot, file.capabilities?.canTrash),
     },
   };
 }
 
-function grantedCapability(excluded: boolean, granted: boolean | undefined) {
+function grantedCapability(
+  excluded: boolean,
+  granted: boolean | undefined,
+  guarantees?: { readonly allowsDuplicateNames?: boolean },
+) {
   if (excluded || granted === false) return unsupported;
+  if (guarantees) {
+    return granted
+      ? ({ support: 'supported', guarantees } as const)
+      : ({ support: 'unknown', guarantees } as const);
+  }
   return granted ? supported : unknown;
 }

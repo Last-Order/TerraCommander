@@ -107,6 +107,10 @@
   opacity: 0.6;
 }
 
+.entryRow[data-cut='true'] {
+  opacity: 0.5;
+}
+
 .entries .entryName {
   padding: 0;
 }

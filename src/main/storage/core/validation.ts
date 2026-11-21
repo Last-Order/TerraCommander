@@ -24,7 +24,11 @@ export const entryNameSchema = z
 export const capabilitySchema = z.strictObject({
   support: z.enum(['supported', 'unsupported', 'unknown']),
   guarantees: z
-    .strictObject({ atomic: z.boolean().optional(), durableRecovery: z.boolean().optional() })
+    .strictObject({
+      atomic: z.boolean().optional(),
+      durableRecovery: z.boolean().optional(),
+      allowsDuplicateNames: z.boolean().optional(),
+    })
     .optional(),
 });
 export const capabilitiesSchema = z.partialRecord(z.enum(operations), capabilitySchema);

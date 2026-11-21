@@ -10,7 +10,7 @@ import { useKeyboardShortcuts } from '@renderer/shortcuts/useKeyboardShortcuts';
 import { errorKey, StorageBrowserError } from '../storage-client';
 import { selectPendingEntryEffects } from '../tasks/pending-entry-effects';
 import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
-import type { DirectoryCache } from './directory-cache';
+import { directoryKey, type DirectoryCache } from './directory-cache';
 import { buildDirectoryRows } from './directory-rows';
 import type { DirectorySort } from './directory-types';
 import { DirectoryEntryMenu } from './DirectoryEntryMenu';
@@ -43,7 +43,7 @@ interface ListingProps {
   targetCapabilities?: Capabilities | undefined;
   targetAncestors: readonly EntryRef[];
   clipboard: StorageClipboard | null;
-  onCopy: (clipboard: StorageClipboard) => void;
+  onClipboardChange: (clipboard: StorageClipboard | null) => void;
   onOpen: (entry: Entry) => void;
   onAuthRequired: () => void;
   onReauthorize: () => void;
@@ -61,7 +61,7 @@ export function DirectoryListing({
   targetCapabilities,
   targetAncestors,
   clipboard,
-  onCopy,
+  onClipboardChange,
   onOpen,
   onAuthRequired,
   onReauthorize,
@@ -74,6 +74,7 @@ export function DirectoryListing({
   const [pasteConflict, setPasteConflict] = useState<{
     confirmationId: string;
     conflicts?: readonly string[] | undefined;
+    clearClipboardOnConfirm: boolean;
     busy: boolean;
   } | null>(null);
   const pasteConflictIdRef = useRef<string | null>(null);
@@ -189,12 +190,18 @@ export function DirectoryListing({
 
   const canPaste =
     clipboard !== null && clipboard.entries.length > 0 && !loadingWithoutEntries && error === null;
+  const cutLocators = useMemo(() => {
+    if (!clipboard || clipboard.mode !== 'cut') return undefined;
+    if (directoryKey(clipboard.sourceParent) !== directoryKey(parent)) return undefined;
+    return new Set(clipboard.entries.map((entry) => entry.ref.locator));
+  }, [clipboard, parent]);
 
   const copySelection = () => {
     if (!actions.canCopy) return;
     actions.closeMenu();
     setBlankMenuPosition(null);
-    onCopy({
+    onClipboardChange({
+      mode: 'copy',
       sourceParent: parent,
       sourceDirectoryPath: directoryPath,
       entries: actions.selectedEntries,
@@ -209,9 +216,33 @@ export function DirectoryListing({
     });
   };
 
+  const cutSelection = () => {
+    if (!actions.canCut || actions.cutPending) return;
+    actions.closeMenu();
+    setBlankMenuPosition(null);
+    onClipboardChange({
+      mode: 'cut',
+      sourceParent: parent,
+      sourceDirectoryPath: directoryPath,
+      entries: actions.selectedEntries,
+    });
+    notifications.show({
+      id: copyEntriesNotification,
+      color: 'blue',
+      message:
+        actions.selectedEntries.length === 1
+          ? t('cutEntryNotice', { name: actions.selectedEntries[0]!.name })
+          : t('cutEntriesNotice', { count: actions.selectedEntries.length }),
+    });
+  };
+
   const pasteSelection = async () => {
     setBlankMenuPosition(null);
     if (!clipboard || clipboard.entries.length === 0 || loadingWithoutEntries || error !== null) {
+      return;
+    }
+    if (clipboard.mode === 'cut' && directoryKey(clipboard.sourceParent) === directoryKey(parent)) {
+      onClipboardChange(null);
       return;
     }
     const sourceConnectionId = clipboard.sourceParent.connectionId;
@@ -257,6 +288,7 @@ export function DirectoryListing({
         return;
       }
       if (
+        (clipboard.mode === 'copy' || sourceConnectionId !== targetConnectionId) &&
         clipboard.entries.some((entry) => entry.kind === 'directory') &&
         targetCapabilities?.createDirectory?.support === 'unsupported'
       ) {
@@ -271,6 +303,7 @@ export function DirectoryListing({
 
     try {
       const response = await queue.pasteEntries({
+        mode: clipboard.mode,
         sourceParent: clipboard.sourceParent,
         sourceDirectoryPath: clipboard.sourceDirectoryPath,
         entries: clipboard.entries,
@@ -281,8 +314,11 @@ export function DirectoryListing({
         setPasteConflict({
           confirmationId: response.confirmationId,
           conflicts: response.conflicts,
+          clearClipboardOnConfirm: clipboard.mode === 'cut',
           busy: false,
         });
+      } else if (clipboard.mode === 'cut') {
+        onClipboardChange(null);
       }
     } catch (caught) {
       if (caught instanceof StorageBrowserError) {
@@ -290,11 +326,11 @@ export function DirectoryListing({
           onAuthRequired();
           return;
         }
-        const message =
-          caught.code === 'Unsupported'
-            ? t('crossSourcePasteUnsupported')
-            : t(`errors:${errorKey(caught)}`);
-        notifications.show({ id: pasteStatusNotification, color: 'red', message });
+        notifications.show({
+          id: pasteStatusNotification,
+          color: 'red',
+          message: t(`errors:${errorKey(caught)}`),
+        });
         return;
       }
       notifications.show({
@@ -313,6 +349,12 @@ export function DirectoryListing({
       enabled: actions.canCopy,
     },
     {
+      key: 'x',
+      ctrlKey: true,
+      onTrigger: cutSelection,
+      enabled: actions.canCut && !actions.cutPending,
+    },
+    {
       key: 'v',
       ctrlKey: true,
       onTrigger: () => void pasteSelection(),
@@ -327,6 +369,9 @@ export function DirectoryListing({
     { key: 'f', ctrlKey: true, onTrigger: openSearch, allowInEditable: true },
     { key: 'a', ctrlKey: true, onTrigger: selectAllEntries, enabled: phase !== 'error' },
     ...(search.opened ? [{ key: 'Escape', onTrigger: closeSearch, allowInEditable: true }] : []),
+    ...(!search.opened && clipboard?.mode === 'cut'
+      ? [{ key: 'Escape', onTrigger: () => onClipboardChange(null) }]
+      : []),
   ]);
 
   const changeSort = (field: DirectorySort['field']) =>
@@ -426,6 +471,7 @@ export function DirectoryListing({
                 canSort={snapshot !== undefined && !loading}
                 loadingWithoutEntries={loadingWithoutEntries}
                 selectedLocators={selectedLocators}
+                cutLocators={cutLocators}
                 dateFormatter={dateFormatter}
                 sizeFormatter={sizeFormatter}
                 onSort={changeSort}
@@ -435,6 +481,8 @@ export function DirectoryListing({
               />
               <DirectoryEntryMenu
                 canCopy={actions.canCopy}
+                canCut={actions.canCut}
+                cutPending={actions.cutPending}
                 canDownload={actions.canDownload}
                 downloadPending={actions.downloadPending}
                 canRename={actions.canRename}
@@ -442,6 +490,7 @@ export function DirectoryListing({
                 canDelete={actions.canDelete}
                 deletePending={actions.deletePending}
                 onCopy={copySelection}
+                onCut={cutSelection}
                 onDownload={actions.showDownload}
                 onRename={actions.showRename}
                 onInformation={actions.showInformation}
@@ -490,9 +539,13 @@ export function DirectoryListing({
           conflicts={pasteConflict.conflicts}
           confirmLabel={t('overwriteAndPaste')}
           onConfirm={() => {
+            const shouldClearClipboard = pasteConflict.clearClipboardOnConfirm;
             setPasteConflict((current) => (current ? { ...current, busy: true } : null));
             void queue
               .confirmDownload(pasteConflict.confirmationId)
+              .then(() => {
+                if (shouldClearClipboard) onClipboardChange(null);
+              })
               .catch((caught) => {
                 if (caught instanceof StorageBrowserError && caught.code === 'AuthRequired') {
                   onAuthRequired();

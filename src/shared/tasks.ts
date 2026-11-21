@@ -122,6 +122,8 @@ export interface DeleteEntriesRequest {
   directoryPath: string;
 }
 
+export type PasteMode = 'copy' | 'cut';
+
 export interface CopyTaskRequest {
   sourceParent: EntryRef;
   entry: Entry;
@@ -132,7 +134,18 @@ export interface CopyTaskRequest {
   displayName?: string | undefined;
 }
 
+export interface MoveTaskRequest {
+  sourceParent: EntryRef;
+  entry: Entry;
+  targetParent: EntryRef;
+  targetName: string;
+  sourceDirectoryPath: string;
+  targetDirectoryPath: string;
+  displayName?: string | undefined;
+}
+
 export interface PasteEntriesRequest {
+  mode?: PasteMode | undefined;
   sourceParent: EntryRef;
   sourceDirectoryPath: string;
   entries: readonly Entry[];
@@ -160,12 +173,14 @@ export interface UploadPathsRequest extends UploadFileRequest {
 export interface UploadTaskDisplayInput extends UploadFileRequest {
   name: string;
   displayName?: string | undefined;
+  sourceEntries?: readonly EntryRef[] | undefined;
 }
 
 export type StorageTaskRequest =
   | { type: 'rename'; input: RenameTaskRequest }
   | { type: 'delete'; input: DeleteTaskRequest }
   | { type: 'copy'; input: CopyTaskRequest }
+  | { type: 'move'; input: MoveTaskRequest }
   | { type: 'download'; input: DownloadTaskDisplayInput }
   | { type: 'upload'; input: UploadTaskDisplayInput };
 
@@ -185,6 +200,7 @@ export type StorageTaskGroupRequest =
         names: readonly string[];
         sourcePath: string;
         destinationPath: string;
+        sourceEntries?: readonly EntryRef[] | undefined;
       };
     }
   | {
@@ -197,6 +213,15 @@ export type StorageTaskGroupRequest =
     }
   | {
       kind: 'copy';
+      input: {
+        names: readonly string[];
+        sourcePath: string;
+        destinationPath: string;
+        entries: readonly EntryRef[];
+      };
+    }
+  | {
+      kind: 'move';
       input: {
         names: readonly string[];
         sourcePath: string;

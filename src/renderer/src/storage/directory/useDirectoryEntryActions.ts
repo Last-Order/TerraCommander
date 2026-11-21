@@ -59,6 +59,13 @@ export function useDirectoryEntryActions({
   const canCopy =
     selectedEntries.length > 0 &&
     selectedEntries.every((entry) => entry.kind === 'file' || entry.kind === 'directory');
+  const canCut =
+    selectedEntries.length > 0 &&
+    selectedEntries.every(
+      (entry) =>
+        (entry.kind === 'file' || entry.kind === 'directory' || entry.kind === 'link') &&
+        (entry.capabilities.moveWithin?.support !== 'unsupported' || canDeleteEntry(entry)),
+    );
 
   const closeMenu = useCallback(() => {
     setMenuLocator(null);
@@ -110,6 +117,8 @@ export function useDirectoryEntryActions({
     showDownload,
     selectedEntries,
     canCopy,
+    canCut,
+    cutPending: selectionBusy,
     canDownload,
     downloadPending: selectionBusy,
     canRename: renamableEntry !== undefined,

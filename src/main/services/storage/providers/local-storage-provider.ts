@@ -46,8 +46,8 @@ export function createLocalStorageProvider(
       }
     },
     async resolvePath(ref) {
-      const { path, kind } = await locateLocalEntry(ref, () => preferences.folders());
-      return { path, kind };
+      const { path, info, kind } = await locateLocalEntry(ref, () => preferences.folders());
+      return { path, kind, dev: info.dev };
     },
   };
 }

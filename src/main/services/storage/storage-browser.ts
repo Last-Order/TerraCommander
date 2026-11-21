@@ -110,7 +110,7 @@ export class StorageBrowser {
     return this.spaces.withBrowsableSpace(ref, () => this.storage.stat(ref));
   }
 
-  resolveLocalPath(ref: EntryRef): Promise<{ path: string; kind: Entry['kind'] }> {
+  resolveLocalPath(ref: EntryRef): Promise<{ path: string; kind: Entry['kind']; dev?: number }> {
     const local = this.connections
       .localIntegrations()
       .find((integration) => integration.connectionDefinition.id === ref.connectionId);
@@ -130,6 +130,13 @@ export class StorageBrowser {
     this.downloads.assertSourceAvailable(ref);
     return this.spaces.withBrowsableSpace(ref, () =>
       this.spaces.withBrowsableSpace(target.parent, () => this.storage.copyWithin(ref, target)),
+    );
+  }
+
+  moveWithin(ref: EntryRef, target: CreateTarget): Promise<Entry> {
+    this.downloads.assertSourceAvailable(ref);
+    return this.spaces.withBrowsableSpace(ref, () =>
+      this.spaces.withBrowsableSpace(target.parent, () => this.storage.moveWithin(ref, target)),
     );
   }
 

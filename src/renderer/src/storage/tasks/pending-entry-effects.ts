@@ -32,16 +32,41 @@ export function selectPendingEntryEffects(
           effects.set(input.entry.ref.locator, { busy: true });
         break;
       }
+      case 'move': {
+        const { input } = task.request;
+        if (directoryKey(input.sourceParent) === parentKey)
+          effects.set(input.entry.ref.locator, { busy: true });
+        break;
+      }
+      case 'upload': {
+        for (const ref of task.request.input.sourceEntries ?? []) {
+          if (
+            ref.connectionId === parent.connectionId &&
+            ref.spaceId === parent.spaceId &&
+            entries.has(ref.locator)
+          ) {
+            effects.set(ref.locator, { busy: true });
+          }
+        }
+        break;
+      }
     }
   }
   for (const group of groups) {
+    if (group.state.phase === 'settled') continue;
+    let groupEntries: readonly EntryRef[] | undefined;
     if (
-      group.state.phase === 'settled' ||
-      (group.request.kind !== 'download' && group.request.kind !== 'delete')
+      group.request.kind === 'download' ||
+      group.request.kind === 'delete' ||
+      group.request.kind === 'move'
     ) {
+      groupEntries = group.request.input.entries;
+    } else if (group.request.kind === 'upload') {
+      groupEntries = group.request.input.sourceEntries;
+    } else {
       continue;
     }
-    for (const ref of group.request.input.entries ?? []) {
+    for (const ref of groupEntries ?? []) {
       if (
         ref.connectionId !== parent.connectionId ||
         ref.spaceId !== parent.spaceId ||

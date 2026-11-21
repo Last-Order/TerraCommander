@@ -12,7 +12,7 @@ export interface LocalStorageProviderIntegration {
   extraKnownSpaces(connectionId: string): Space[];
   validateStoredSpace(space: { id: string; locator?: string }): boolean;
   addFolder(path: string): Promise<Space>;
-  resolvePath?(ref: EntryRef): Promise<{ path: string; kind: Entry['kind'] }>;
+  resolvePath?(ref: EntryRef): Promise<{ path: string; kind: Entry['kind']; dev?: number }>;
 }
 
 export interface AccountStorageProviderIntegration {

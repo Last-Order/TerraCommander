@@ -347,3 +347,93 @@ it.each([
     }
   },
 );
+
+it('moves Drive entries within the same space and enforces permissions and space boundaries', async () => {
+  let canMoveItemWithinDrive = true;
+  let canAddChildren = true;
+  const request = vi.fn<typeof fetch>(async (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (url.pathname === '/drive/v3/files/file-1' && init?.method === 'PATCH') {
+      expect(url.searchParams.get('addParents')).toBe('folder-2');
+      expect(url.searchParams.get('removeParents')).toBe('folder-1');
+      expect(url.searchParams.get('supportsAllDrives')).toBe('true');
+      return Response.json({
+        id: 'file-1',
+        name: 'report.txt',
+        mimeType: 'text/plain',
+        parents: ['folder-2'],
+        capabilities: { canMoveItemWithinDrive: true },
+      });
+    }
+    if (url.pathname === '/drive/v3/files/file-1') {
+      return Response.json({
+        id: 'file-1',
+        name: 'report.txt',
+        mimeType: 'text/plain',
+        parents: ['folder-1'],
+        capabilities: { canMoveItemWithinDrive },
+      });
+    }
+    if (url.pathname === '/drive/v3/files/folder-2') {
+      return Response.json({
+        id: 'folder-2',
+        name: 'Target',
+        mimeType: 'application/vnd.google-apps.folder',
+        capabilities: { canAddChildren },
+      });
+    }
+    return Response.json({}, { status: 404 });
+  });
+  const registry = new AdapterRegistry({
+    credentials: {
+      async resolve() {
+        return {
+          provider: 'google-drive',
+          connectionId: 'account',
+          subject: 'subject',
+          oauthClientId: 'client',
+          getAccessToken: async () => 'test-access-token',
+        };
+      },
+    },
+    logger: { event() {} },
+  });
+  registry.register(googleDriveAdapterFactory(request));
+  const storage = new StorageAccess(registry);
+  const fileRef = { connectionId: 'account', spaceId: 'my-drive', locator: 'file-1' };
+  const targetParent = { connectionId: 'account', spaceId: 'my-drive', locator: 'folder-2' };
+  try {
+    await registry.connect({
+      id: 'account',
+      provider: 'google-drive',
+      configuration: { subject: 'subject', oauthClientId: 'client' },
+      credentialRef: 'ref',
+    });
+    const moved = await storage.moveWithin(fileRef, { parent: targetParent, name: 'report.txt' });
+    expect(moved).toMatchObject({
+      name: 'report.txt',
+      ref: { connectionId: 'account', spaceId: 'my-drive', locator: 'file-1' },
+      capabilities: { moveWithin: { support: 'supported' } },
+    });
+
+    await expect(
+      storage.moveWithin(fileRef, {
+        parent: { connectionId: 'account', spaceId: 'shared:team', locator: 'folder-2' },
+        name: 'report.txt',
+      }),
+    ).rejects.toMatchObject({ code: 'Unsupported' });
+
+    canMoveItemWithinDrive = false;
+    await expect(
+      storage.moveWithin(fileRef, { parent: targetParent, name: 'report.txt' }),
+    ).rejects.toMatchObject({ code: 'PermissionDenied' });
+
+    canMoveItemWithinDrive = true;
+    canAddChildren = false;
+    await expect(
+      storage.moveWithin(fileRef, { parent: targetParent, name: 'report.txt' }),
+    ).rejects.toMatchObject({ code: 'PermissionDenied' });
+  } finally {
+    await registry.dispose();
+  }
+});

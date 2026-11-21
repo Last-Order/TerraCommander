@@ -16,6 +16,7 @@ const entryIcons: Record<Entry['kind'], LucideIcon> = {
 interface DirectoryEntryRowProps extends DirectoryRow {
   index: number;
   selected: boolean;
+  cut: boolean;
   dateFormatter: Intl.DateTimeFormat;
   sizeFormatter: Intl.NumberFormat;
   measure: ((element: HTMLTableRowElement | null) => void) | undefined;
@@ -32,6 +33,7 @@ export const DirectoryEntryRow = memo(function DirectoryEntryRow({
   size,
   index,
   selected,
+  cut,
   dateFormatter,
   sizeFormatter,
   measure,
@@ -51,6 +53,7 @@ export const DirectoryEntryRow = memo(function DirectoryEntryRow({
       aria-rowindex={index + 2}
       className={classes.entryRow}
       data-selected={selected}
+      data-cut={cut || undefined}
       data-disabled={disabled || undefined}
       aria-busy={disabled || undefined}
       onClick={(event) => {

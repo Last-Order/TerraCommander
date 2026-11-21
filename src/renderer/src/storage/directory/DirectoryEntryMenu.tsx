@@ -1,9 +1,11 @@
 import { Menu } from '@mantine/core';
-import { Copy, Download, Info, SquarePen, Trash2 } from 'lucide-react';
+import { Copy, Download, Info, Scissors, SquarePen, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface DirectoryEntryMenuProps {
   canCopy: boolean;
+  canCut: boolean;
+  cutPending: boolean;
   canDownload: boolean;
   downloadPending: boolean;
   canRename: boolean;
@@ -11,6 +13,7 @@ interface DirectoryEntryMenuProps {
   canDelete: boolean;
   deletePending: boolean;
   onCopy: () => void;
+  onCut: () => void;
   onDownload: () => void;
   onRename: () => void;
   onInformation: () => void;
@@ -19,6 +22,8 @@ interface DirectoryEntryMenuProps {
 
 export function DirectoryEntryMenu({
   canCopy,
+  canCut,
+  cutPending,
   canDownload,
   downloadPending,
   canRename,
@@ -26,6 +31,7 @@ export function DirectoryEntryMenu({
   canDelete,
   deletePending,
   onCopy,
+  onCut,
   onDownload,
   onRename,
   onInformation,
@@ -41,6 +47,16 @@ export function DirectoryEntryMenu({
           onClick={onCopy}
         >
           {t('copyEntry')}
+        </Menu.Item>
+      )}
+      {canCut && (
+        <Menu.Item
+          disabled={cutPending}
+          aria-keyshortcuts="Control+X"
+          leftSection={<Scissors size={16} strokeWidth={1.5} aria-hidden="true" />}
+          onClick={onCut}
+        >
+          {t('cutEntry')}
         </Menu.Item>
       )}
       {canDownload && (

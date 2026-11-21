@@ -79,7 +79,7 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
               space={location.space}
               cache={directoryCache}
               clipboard={clipboard}
-              onCopy={setClipboard}
+              onClipboardChange={setClipboard}
               onAuthRequired={refresh}
               onReauthorize={() => reauthorizeConnection(location.space.connectionId)}
             />

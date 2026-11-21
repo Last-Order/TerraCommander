@@ -228,3 +228,51 @@ it('maps cross-platform filesystem errors to normalized storage errors', () => {
     expect(thrown).toMatchObject({ code: expected, providerCode: errno });
   }
 });
+
+it('moves local files and folders across directories and rejects conflicts and self-containment', async () => {
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-move-'));
+  await mkdir(join(temporary.path, 'src'));
+  await mkdir(join(temporary.path, 'dst'));
+  await mkdir(join(temporary.path, 'src', 'sub'));
+  await writeFile(join(temporary.path, 'src', 'report.txt'), 'moved content');
+  await writeFile(join(temporary.path, 'src', 'sub', 'child.txt'), 'nested');
+  await writeFile(join(temporary.path, 'dst', 'existing.txt'), 'already there');
+  const { registry, storage, root } = await setup(temporary.path);
+  try {
+    const fileRef = { ...root, locator: 'src/report.txt' };
+    const dstRef = { ...root, locator: 'dst' };
+    expect((await storage.stat(fileRef)).capabilities.moveWithin?.support).toBe('supported');
+
+    const movedFile = await storage.moveWithin(fileRef, { parent: dstRef, name: 'report.txt' });
+    expect(movedFile).toMatchObject({
+      name: 'report.txt',
+      ref: { ...root, locator: 'dst/report.txt' },
+    });
+    expect(await readFile(join(temporary.path, 'dst', 'report.txt'), 'utf8')).toBe('moved content');
+    await expect(storage.stat(fileRef)).rejects.toMatchObject({ code: 'NotFound' });
+
+    await expect(
+      storage.moveWithin(movedFile.ref, { parent: dstRef, name: 'existing.txt' }),
+    ).rejects.toMatchObject({ code: 'AlreadyExists' });
+
+    const srcRef = { ...root, locator: 'src' };
+    const subRef = { ...root, locator: 'src/sub' };
+    await expect(storage.moveWithin(srcRef, { parent: srcRef, name: 'src' })).rejects.toMatchObject(
+      { code: 'InvalidArgument' },
+    );
+    await expect(storage.moveWithin(srcRef, { parent: subRef, name: 'src' })).rejects.toMatchObject(
+      { code: 'InvalidArgument' },
+    );
+
+    const movedFolder = await storage.moveWithin(subRef, { parent: dstRef, name: 'sub' });
+    expect(movedFolder).toMatchObject({
+      kind: 'directory',
+      name: 'sub',
+      ref: { ...root, locator: 'dst/sub' },
+    });
+    expect(await readFile(join(temporary.path, 'dst', 'sub', 'child.txt'), 'utf8')).toBe('nested');
+    await expect(storage.stat(subRef)).rejects.toMatchObject({ code: 'NotFound' });
+  } finally {
+    await registry.dispose();
+  }
+});

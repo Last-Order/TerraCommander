@@ -18,9 +18,20 @@ export interface CopyDiscoveryItem {
 
 export type PastePlan =
   | { kind: 'empty' }
-  | { kind: 'upload'; paths: string[] }
-  | { kind: 'download'; directory: string; entries: Entry[] }
-  | { kind: 'copy'; items: CopyDiscoveryItem[]; entries: Entry[] };
+  | { kind: 'upload'; paths: string[]; removeSources?: readonly Entry[] | undefined }
+  | {
+      kind: 'download';
+      directory: string;
+      entries: Entry[];
+      removeSources?: readonly Entry[] | undefined;
+    }
+  | {
+      kind: 'copy';
+      items: CopyDiscoveryItem[];
+      entries: Entry[];
+      removeSources?: readonly Entry[] | undefined;
+    }
+  | { kind: 'move'; items: CopyDiscoveryItem[]; entries: Entry[] };
 
 const fatalCopyErrorCodes: ReadonlySet<BrowserErrorCode> = new Set<BrowserErrorCode>([
   'AuthRequired',
@@ -81,11 +92,12 @@ export async function listAllNames(
   return names;
 }
 
-/** Validates a paste request and resolves it into an upload, download, or same-connection copy plan. */
+/** Validates a paste request and resolves it into an upload, download, copy, or move plan. */
 export async function planPaste(
   browser: StorageBrowser,
   request: PasteEntriesRequest,
 ): Promise<PastePlan> {
+  const mode = request.mode ?? 'copy';
   const sourceConnectionId = request.sourceParent.connectionId;
   const targetConnectionId = request.targetParent.connectionId;
   const uniqueEntries: Entry[] = [];
@@ -104,6 +116,11 @@ export async function planPaste(
   }
   if (uniqueEntries.length === 0) return { kind: 'empty' };
 
+  const sameDirectory = entryKey(request.sourceParent) === entryKey(request.targetParent);
+  if (mode === 'cut' && sameDirectory) {
+    return { kind: 'empty' };
+  }
+
   // Cross-source cloud-to-cloud transfer is not supported yet.
   if (
     sourceConnectionId !== localConnectionId &&
@@ -120,28 +137,52 @@ export async function planPaste(
       const resolved = await browser.resolveLocalPath(entry.ref);
       paths.push(resolved.path);
     }
-    return { kind: 'upload', paths };
+    return mode === 'cut'
+      ? { kind: 'upload', paths, removeSources: uniqueEntries }
+      : { kind: 'upload', paths };
   }
 
   // Cloud -> Local: resolve target local directory via local provider integration for download.
   if (sourceConnectionId !== localConnectionId && targetConnectionId === localConnectionId) {
     const target = await browser.resolveLocalPath(request.targetParent);
     if (target.kind !== 'directory') throw new StorageError('InvalidArgument');
-    return { kind: 'download', directory: target.path, entries: uniqueEntries };
+    return mode === 'cut'
+      ? {
+          kind: 'download',
+          directory: target.path,
+          entries: uniqueEntries,
+          removeSources: uniqueEntries,
+        }
+      : { kind: 'download', directory: target.path, entries: uniqueEntries };
   }
 
-  // Same-connection copy (Local -> Local or same-account Cloud -> Cloud).
+  // Same-connection copy or move (Local -> Local or same-account Cloud -> Cloud).
+  let crossDevice = false;
   if (sourceConnectionId === localConnectionId) {
     const target = await browser.resolveLocalPath(request.targetParent);
     if (target.kind !== 'directory') throw new StorageError('InvalidArgument');
     for (const entry of uniqueEntries) {
-      if (entry.kind !== 'directory') continue;
+      if (mode === 'copy' && entry.kind !== 'directory') continue;
       const source = await browser.resolveLocalPath(entry.ref);
-      if (target.path === source.path || isSubpath(source.path, target.path)) {
+      if (
+        entry.kind === 'directory' &&
+        (target.path === source.path || isSubpath(source.path, target.path))
+      ) {
         throw new StorageError('InvalidArgument');
+      }
+      if (
+        mode === 'cut' &&
+        target.dev !== undefined &&
+        source.dev !== undefined &&
+        target.dev !== source.dev
+      ) {
+        crossDevice = true;
       }
     }
   } else {
+    if (mode === 'cut' && request.sourceParent.spaceId !== request.targetParent.spaceId) {
+      throw new StorageError('Unsupported');
+    }
     for (const entry of uniqueEntries) {
       if (
         entry.kind === 'directory' &&
@@ -153,7 +194,21 @@ export async function planPaste(
     }
   }
 
-  const sameDirectory = entryKey(request.sourceParent) === entryKey(request.targetParent);
+  if (mode === 'cut') {
+    const items: CopyDiscoveryItem[] = uniqueEntries.map((entry) => ({
+      sourceEntry: entry,
+      sourceParent: request.sourceParent,
+      targetParent: request.targetParent,
+      targetName: entry.name,
+      relativePath: entry.name,
+      emitAddedOnCreate: true,
+    }));
+    if (crossDevice) {
+      return { kind: 'copy', items, entries: uniqueEntries, removeSources: uniqueEntries };
+    }
+    return { kind: 'move', items, entries: uniqueEntries };
+  }
+
   const caseInsensitive = sourceConnectionId === localConnectionId && process.platform === 'win32';
   const usedNames = sameDirectory
     ? await listAllNames(browser, request.targetParent, caseInsensitive)
@@ -174,6 +229,25 @@ export async function planPaste(
   });
 
   return { kind: 'copy', items, entries: uniqueEntries };
+}
+
+/** Deletes source entries after a cross-device or cross-connection move completes cleanly. */
+export async function removeMovedSources(
+  browser: StorageBrowser,
+  sourceParent: EntryRef,
+  entries: readonly Entry[],
+  emitDirectoryChanged: (change: StorageDirectoryChange) => void,
+): Promise<void> {
+  for (const entry of entries) {
+    try {
+      await browser.deleteEntry(entry.ref);
+      emitDirectoryChanged({ kind: 'removed', parent: sourceParent, ref: entry.ref });
+    } catch {
+      console.error('Failed to remove source entry after move.', {
+        connectionId: entry.ref.connectionId,
+      });
+    }
+  }
 }
 
 export async function prepareCopyGroup<

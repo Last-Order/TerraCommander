@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Entry } from '@shared/storage';
+import type { Entry, EntryRef } from '@shared/storage';
 import type {
   PrepareDownloadRequest,
   PrepareDownloadResponse,
@@ -14,25 +14,51 @@ import type { StorageBrowser } from '../storage/storage-browser';
 import type { PreparedUploadBatch, UploadWork } from '../uploads/upload-types';
 import { queueOwnerId, releaseQuietly, toBrowserErrorCode } from './task-errors';
 
+export interface TransferSourceCleanup {
+  sourceParent: EntryRef;
+  entries: readonly Entry[];
+}
+
 type PendingConfirmation =
-  | { kind: 'single'; owner: number; request: PrepareDownloadRequest; entry: Entry }
+  | {
+      kind: 'single';
+      owner: number;
+      request: PrepareDownloadRequest;
+      entry: Entry;
+      sourceCleanup?: TransferSourceCleanup | undefined;
+    }
   | {
       kind: 'batch';
       owner: number;
       request: PrepareDownloadRequest;
       prepared: PreparedDownloadBatch;
+      sourceCleanup?: TransferSourceCleanup | undefined;
     };
 
 export interface TransferSessionHost {
   downloads: StorageBrowser['downloads'];
   uploads: StorageBrowser['uploads'];
-  enqueueDownload: (request: PrepareDownloadRequest, entry: Entry, work: DownloadWork) => boolean;
+  enqueueDownload: (
+    request: PrepareDownloadRequest,
+    entry: Entry,
+    work: DownloadWork,
+    sourceCleanup?: TransferSourceCleanup,
+  ) => boolean;
   enqueueDownloadGroup: (
     request: PrepareDownloadRequest,
     prepared: PreparedDownloadBatch,
+    sourceCleanup?: TransferSourceCleanup,
   ) => boolean;
-  enqueueUpload: (request: UploadFileRequest, work: UploadWork) => boolean;
-  enqueueUploadGroup: (request: UploadFileRequest, prepared: PreparedUploadBatch) => boolean;
+  enqueueUpload: (
+    request: UploadFileRequest,
+    work: UploadWork,
+    sourceCleanup?: TransferSourceCleanup,
+  ) => boolean;
+  enqueueUploadGroup: (
+    request: UploadFileRequest,
+    prepared: PreparedUploadBatch,
+    sourceCleanup?: TransferSourceCleanup,
+  ) => boolean;
   emitDirectoryChanged: (change: StorageDirectoryChange) => void;
 }
 
@@ -77,9 +103,13 @@ export class TransferSessionCoordinator {
     }
   }
 
-  async uploadSelectedPaths(owner: number, request: UploadPathsRequest): Promise<void> {
+  async uploadSelectedPaths(
+    owner: number,
+    request: UploadPathsRequest,
+    sourceCleanup?: TransferSourceCleanup,
+  ): Promise<void> {
     if (this.disposed || request.paths.length === 0) return;
-    await this.prepareAndEnqueueUpload(owner, request, request.paths, false);
+    await this.prepareAndEnqueueUpload(owner, request, request.paths, false, sourceCleanup);
   }
 
   private async prepareAndEnqueueUpload(
@@ -87,6 +117,7 @@ export class TransferSessionCoordinator {
     request: UploadFileRequest,
     paths: readonly string[],
     validated: boolean,
+    sourceCleanup?: TransferSourceCleanup,
   ): Promise<void> {
     const epoch = this.ownerEpochs.get(owner) ?? 0;
     const active = () => !this.disposed && (this.ownerEpochs.get(owner) ?? 0) === epoch;
@@ -111,7 +142,7 @@ export class TransferSessionCoordinator {
       return;
     }
     if (selection.kind === 'single') {
-      if (!this.host.enqueueUpload(request, selection.work)) {
+      if (!this.host.enqueueUpload(request, selection.work, sourceCleanup)) {
         await releaseQuietly(
           () => this.host.uploads.releaseWork(queueOwnerId, selection.work.ref),
           'Upload work cleanup failed.',
@@ -119,7 +150,7 @@ export class TransferSessionCoordinator {
       }
       return;
     }
-    if (!this.host.enqueueUploadGroup(request, selection.prepared)) {
+    if (!this.host.enqueueUploadGroup(request, selection.prepared, sourceCleanup)) {
       await releaseQuietly(
         () => this.host.uploads.releaseBatch(queueOwnerId, selection.prepared.id),
         'Upload batch cleanup failed.',
@@ -130,6 +161,7 @@ export class TransferSessionCoordinator {
   async prepareDownload(
     owner: number,
     request: PrepareDownloadRequest,
+    sourceCleanup?: TransferSourceCleanup,
   ): Promise<PrepareDownloadResponse> {
     if (this.disposed) throw new StorageError('Cancelled');
     if (request.entries.length === 0) throw new StorageError('InvalidArgument');
@@ -159,6 +191,7 @@ export class TransferSessionCoordinator {
             owner,
             request,
             entry: single,
+            sourceCleanup,
           });
           return { status: 'conflict', confirmationId };
         }
@@ -171,7 +204,7 @@ export class TransferSessionCoordinator {
         );
         throw new StorageError('Cancelled');
       }
-      if (!this.host.enqueueDownload(request, single, work)) {
+      if (!this.host.enqueueDownload(request, single, work, sourceCleanup)) {
         await releaseQuietly(
           () => this.host.downloads.releaseWork(queueOwnerId, work.ref),
           'Download work cleanup failed.',
@@ -199,10 +232,11 @@ export class TransferSessionCoordinator {
         owner,
         request,
         prepared,
+        sourceCleanup,
       });
       return { status: 'conflict', confirmationId, conflicts: prepared.conflicts };
     }
-    if (!this.host.enqueueDownloadGroup(request, prepared)) {
+    if (!this.host.enqueueDownloadGroup(request, prepared, sourceCleanup)) {
       await releaseQuietly(
         () => this.host.downloads.releaseBatch(queueOwnerId, prepared.id),
         'Download batch cleanup failed.',
@@ -233,7 +267,14 @@ export class TransferSessionCoordinator {
         );
         throw new StorageError('Cancelled');
       }
-      if (!this.host.enqueueDownload(confirmation.request, confirmation.entry, work)) {
+      if (
+        !this.host.enqueueDownload(
+          confirmation.request,
+          confirmation.entry,
+          work,
+          confirmation.sourceCleanup,
+        )
+      ) {
         await releaseQuietly(
           () => this.host.downloads.releaseWork(queueOwnerId, work.ref),
           'Download work cleanup failed.',
@@ -252,7 +293,13 @@ export class TransferSessionCoordinator {
       );
       throw error;
     }
-    if (!this.host.enqueueDownloadGroup(confirmation.request, confirmation.prepared)) {
+    if (
+      !this.host.enqueueDownloadGroup(
+        confirmation.request,
+        confirmation.prepared,
+        confirmation.sourceCleanup,
+      )
+    ) {
       await releaseQuietly(
         () => this.host.downloads.releaseBatch(queueOwnerId, confirmation.prepared.id),
         'Download batch cleanup failed.',

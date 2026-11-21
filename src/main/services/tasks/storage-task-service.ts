@@ -5,6 +5,7 @@ import type {
   CopyTaskRequest,
   DeleteEntriesRequest,
   DeleteTaskRequest,
+  MoveTaskRequest,
   PasteEntriesRequest,
   PasteEntriesResponse,
   PrepareDownloadRequest,
@@ -40,7 +41,12 @@ import type {
 import type { StorageBrowser } from '../storage/storage-browser';
 import type { PreparedUploadBatch, UploadPlanItem, UploadWork } from '../uploads/upload-types';
 import { prepareBatchGroup } from './batch-discovery';
-import { planPaste, prepareCopyGroup, type CopyDiscoveryItem } from './copy-paste';
+import {
+  planPaste,
+  prepareCopyGroup,
+  removeMovedSources,
+  type CopyDiscoveryItem,
+} from './copy-paste';
 import { entryKey, queueOwnerId, toTaskFailure } from './task-errors';
 import {
   createDownloadTransferConfig,
@@ -49,12 +55,16 @@ import {
   type InternalDownloadInput,
   type InternalUploadInput,
 } from './transfer-handler';
-import { TransferSessionCoordinator } from './transfer-session-coordinator';
+import {
+  TransferSessionCoordinator,
+  type TransferSourceCleanup,
+} from './transfer-session-coordinator';
 
 type InternalTaskDefinitions = {
   rename: { input: RenameTaskRequest; result: Entry };
   delete: { input: DeleteTaskRequest; result: void };
   copy: { input: CopyTaskRequest; result: Entry };
+  move: { input: MoveTaskRequest; result: Entry };
   download: { input: InternalDownloadInput; result: void };
   upload: { input: InternalUploadInput; result: Entry };
 };
@@ -64,6 +74,7 @@ type InternalGroupDefinitions = {
   upload: { input: Extract<StorageTaskGroupRequest, { kind: 'upload' }>['input'] };
   delete: { input: Extract<StorageTaskGroupRequest, { kind: 'delete' }>['input'] };
   copy: { input: Extract<StorageTaskGroupRequest, { kind: 'copy' }>['input'] };
+  move: { input: Extract<StorageTaskGroupRequest, { kind: 'move' }>['input'] };
 };
 
 type TaskCategory = 'operation' | 'transfer';
@@ -87,7 +98,11 @@ const taskRequestProjectors: {
   rename: (input) => ({ type: 'rename', input }),
   delete: (input) => ({ type: 'delete', input }),
   copy: (input) => ({ type: 'copy', input }),
-  download: ({ workRef: _workRef, ...input }) => ({ type: 'download', input }),
+  move: (input) => ({ type: 'move', input }),
+  download: ({ workRef: _workRef, removeAfterComplete: _removeAfterComplete, ...input }) => ({
+    type: 'download',
+    input,
+  }),
   upload: ({ display }) => ({ type: 'upload', input: display }),
 };
 
@@ -100,6 +115,7 @@ const groupRequestProjectors: {
   upload: (input) => ({ kind: 'upload', input }),
   delete: (input) => ({ kind: 'delete', input }),
   copy: (input) => ({ kind: 'copy', input }),
+  move: (input) => ({ kind: 'move', input }),
 };
 
 function projectTaskRequest<K extends keyof InternalTaskDefinitions>(request: {
@@ -114,6 +130,29 @@ function projectGroupRequest<K extends keyof InternalGroupDefinitions>(request: 
   input: InternalGroupDefinitions[K]['input'];
 }): StorageTaskGroupRequest {
   return groupRequestProjectors[request.kind](request.input);
+}
+
+function copyConflictKeys({ entry, targetParent, targetName }: CopyTaskRequest): string[] {
+  if (entry.capabilities.copyWithin?.guarantees?.allowsDuplicateNames === true) {
+    return [];
+  }
+  return [`${entryKey(targetParent)}/${targetName}`];
+}
+
+function moveTargetConflictKey(
+  entry: Entry,
+  targetParent: Entry['ref'],
+  targetName: string,
+): string | undefined {
+  if (entry.capabilities.moveWithin?.guarantees?.allowsDuplicateNames === true) {
+    return undefined;
+  }
+  return `${entryKey(targetParent)}/${targetName}`;
+}
+
+function moveConflictKeys({ entry, targetParent, targetName }: MoveTaskRequest): string[] {
+  const targetKey = moveTargetConflictKey(entry, targetParent, targetName);
+  return targetKey ? [entryKey(entry.ref), targetKey] : [entryKey(entry.ref)];
 }
 
 export interface StorageTaskServiceOptions {
@@ -143,12 +182,17 @@ export class StorageTaskService {
       emitDirectoryChanged: (change: StorageDirectoryChange) => {
         this.emitDirectoryChanged(change);
       },
+      removeMovedSource: ({ parent, entry }: { parent: Entry['ref']; entry: Entry }) =>
+        removeMovedSources(this.browser, parent, [entry], (change) =>
+          this.emitDirectoryChanged(change),
+        ),
     };
     this.queue = new TaskQueue<InternalTaskDefinitions, InternalGroupDefinitions, TaskCategory>(
       {
         rename: this.createRenameHandler(),
         delete: this.createDeleteHandler(),
         copy: this.createCopyHandler(),
+        move: this.createMoveHandler(),
         download: createTransferHandler(
           'transfer',
           createDownloadTransferConfig(this.browser.downloads, callbacks),
@@ -170,11 +214,14 @@ export class StorageTaskService {
     this.session = new TransferSessionCoordinator({
       downloads: this.browser.downloads,
       uploads: this.browser.uploads,
-      enqueueDownload: (request, entry, work) =>
-        this.enqueueStandaloneDownload(request, entry, work),
-      enqueueDownloadGroup: (request, prepared) => this.enqueueDownloadGroup(request, prepared),
-      enqueueUpload: (request, work) => this.enqueueStandaloneUpload(request, work),
-      enqueueUploadGroup: (request, prepared) => this.enqueueUploadGroup(request, prepared),
+      enqueueDownload: (request, entry, work, sourceCleanup) =>
+        this.enqueueStandaloneDownload(request, entry, work, sourceCleanup),
+      enqueueDownloadGroup: (request, prepared, sourceCleanup) =>
+        this.enqueueDownloadGroup(request, prepared, sourceCleanup),
+      enqueueUpload: (request, work, sourceCleanup) =>
+        this.enqueueStandaloneUpload(request, work, sourceCleanup),
+      enqueueUploadGroup: (request, prepared, sourceCleanup) =>
+        this.enqueueUploadGroup(request, prepared, sourceCleanup),
       emitDirectoryChanged: (change) => this.emitDirectoryChanged(change),
     });
     this.unsubscribeQueue = this.queue.store.subscribe(() => {
@@ -285,30 +332,106 @@ export class StorageTaskService {
     const plan = await planPaste(this.browser, request);
     if (plan.kind === 'empty') return { status: 'started' };
     if (plan.kind === 'upload') {
-      await this.session.uploadSelectedPaths(owner, {
-        parent: request.targetParent,
-        directoryPath: request.targetDirectoryPath,
-        paths: plan.paths,
-      });
+      const sourceCleanup = plan.removeSources
+        ? { sourceParent: request.sourceParent, entries: plan.removeSources }
+        : undefined;
+      await this.session.uploadSelectedPaths(
+        owner,
+        {
+          parent: request.targetParent,
+          directoryPath: request.targetDirectoryPath,
+          paths: plan.paths,
+        },
+        sourceCleanup,
+      );
       return { status: 'started' };
     }
     if (plan.kind === 'download') {
-      return this.session.prepareDownload(owner, {
-        parent: request.sourceParent,
-        entries: plan.entries,
-        directory: plan.directory,
-        directoryPath: request.sourceDirectoryPath,
-      });
+      const sourceCleanup = plan.removeSources
+        ? { sourceParent: request.sourceParent, entries: plan.removeSources }
+        : undefined;
+      return this.session.prepareDownload(
+        owner,
+        {
+          parent: request.sourceParent,
+          entries: plan.entries,
+          directory: plan.directory,
+          directoryPath: request.sourceDirectoryPath,
+        },
+        sourceCleanup,
+      );
     }
-    return this.enqueueCopyPlan(request, plan.items, plan.entries);
+    if (plan.kind === 'move') {
+      return this.enqueueMovePlan(request, plan.items, plan.entries);
+    }
+    return this.enqueueCopyPlan(request, plan.items, plan.entries, plan.removeSources);
+  }
+
+  private enqueueMovePlan(
+    request: PasteEntriesRequest,
+    items: readonly CopyDiscoveryItem[],
+    entries: readonly Entry[],
+  ): PasteEntriesResponse {
+    if (items.length === 1) {
+      const [item] = items;
+      const enqueued = this.queue.enqueue({
+        type: 'move',
+        input: {
+          sourceParent: item!.sourceParent,
+          entry: item!.sourceEntry,
+          targetParent: item!.targetParent,
+          targetName: item!.targetName,
+          sourceDirectoryPath: request.sourceDirectoryPath,
+          targetDirectoryPath: request.targetDirectoryPath,
+        },
+      });
+      if (!enqueued) throw new StorageError('PreconditionFailed');
+      return { status: 'started' };
+    }
+
+    const groupResources = new Set<string>(entries.map((entry) => entryKey(entry.ref)));
+    for (const item of items) {
+      const targetKey = moveTargetConflictKey(item.sourceEntry, item.targetParent, item.targetName);
+      if (targetKey) groupResources.add(targetKey);
+    }
+    const groupId = this.queue.createGroup({
+      kind: 'move',
+      input: {
+        names: items.map((item) => item.targetName),
+        sourcePath: request.sourceDirectoryPath,
+        destinationPath: request.targetDirectoryPath,
+        entries: entries.map((entry) => entry.ref),
+      },
+      resources: [...groupResources],
+    });
+    if (groupId === undefined) throw new StorageError('PreconditionFailed');
+    for (const item of items) {
+      this.queue.enqueue(
+        {
+          type: 'move',
+          input: {
+            sourceParent: item.sourceParent,
+            entry: item.sourceEntry,
+            targetParent: item.targetParent,
+            targetName: item.targetName,
+            sourceDirectoryPath: request.sourceDirectoryPath,
+            targetDirectoryPath: request.targetDirectoryPath,
+          },
+        },
+        { groupId },
+      );
+    }
+    this.queue.sealGroup(groupId);
+    return { status: 'started' };
   }
 
   private enqueueCopyPlan(
     request: PasteEntriesRequest,
     items: readonly CopyDiscoveryItem[],
     entries: readonly Entry[],
+    removeSources?: readonly Entry[],
   ): PasteEntriesResponse {
-    if (items.length === 1 && items[0]!.sourceEntry.kind === 'file') {
+    if (!removeSources && items.length === 1 && items[0]!.sourceEntry.kind === 'file') {
       const [item] = items;
       const enqueued = this.queue.enqueue({
         type: 'copy',
@@ -325,15 +448,17 @@ export class StorageTaskService {
       return { status: 'started' };
     }
 
-    this.queue.createGroup(
+    let groupId: number | undefined;
+    groupId = this.queue.createGroup(
       {
-        kind: 'copy',
+        kind: removeSources ? 'move' : 'copy',
         input: {
           names: items.map((item) => item.targetName),
           sourcePath: request.sourceDirectoryPath,
           destinationPath: request.targetDirectoryPath,
           entries: entries.map((entry) => entry.ref),
         },
+        ...(removeSources ? { resources: removeSources.map((entry) => entryKey(entry.ref)) } : {}),
       },
       {
         prepare: (context) =>
@@ -350,8 +475,25 @@ export class StorageTaskService {
             this.emit({ type: 'auth-required', connectionId: request.targetParent.connectionId });
           }
         },
+        ...(removeSources
+          ? {
+              onSettled: async () => {
+                if (groupId !== undefined && this.isGroupFullyCompleted(groupId)) {
+                  await removeMovedSources(
+                    this.browser,
+                    request.sourceParent,
+                    removeSources,
+                    (change) => this.emitDirectoryChanged(change),
+                  );
+                }
+              },
+            }
+          : {}),
       },
     );
+    if (groupId === undefined) {
+      throw new StorageError(removeSources ? 'PreconditionFailed' : 'AlreadyExists');
+    }
     return { status: 'started' };
   }
 
@@ -448,7 +590,7 @@ export class StorageTaskService {
   private createCopyHandler(): TaskHandler<CopyTaskRequest, Entry, TaskCategory> {
     return {
       category: 'operation',
-      conflictKeys: ({ targetParent, targetName }) => [`${entryKey(targetParent)}/${targetName}`],
+      conflictKeys: copyConflictKeys,
       execute: async ({ entry, targetParent, targetName }) => ({
         status: 'completed',
         result: await this.browser.copyWithin(entry.ref, {
@@ -468,11 +610,52 @@ export class StorageTaskService {
     };
   }
 
+  private createMoveHandler(): TaskHandler<MoveTaskRequest, Entry, TaskCategory> {
+    return {
+      category: 'operation',
+      conflictKeys: moveConflictKeys,
+      execute: async ({ entry, targetParent, targetName }) => ({
+        status: 'completed',
+        result: await this.browser.moveWithin(entry.ref, {
+          parent: targetParent,
+          name: targetName,
+        }),
+      }),
+      onSuccess: ({ sourceParent, entry, targetParent }, result) => {
+        this.emitDirectoryChanged({ kind: 'removed', parent: sourceParent, ref: entry.ref });
+        this.emitDirectoryChanged({ kind: 'added', parent: targetParent, entry: result });
+      },
+      toFailure: (error) => toTaskFailure(error),
+      onFailure: (input, failure) => {
+        if (failure.code === 'AuthRequired') {
+          this.emit({ type: 'auth-required', connectionId: input.targetParent.connectionId });
+        }
+      },
+    };
+  }
+
+  private isGroupFullyCompleted(groupId: number): boolean {
+    const group = this.queue.store.getState().groups.find((item) => item.id === groupId);
+    if (!group) return false;
+    return (
+      group.preparation.status === 'completed' &&
+      group.preparation.issues.length === 0 &&
+      group.summary.failed === 0 &&
+      group.summary.cancelled === 0 &&
+      group.summary.skipped === 0
+    );
+  }
+
   private enqueueStandaloneDownload(
     request: PrepareDownloadRequest,
     entry: Entry,
     work: DownloadWork,
+    sourceCleanup?: TransferSourceCleanup,
   ): boolean {
+    const removeAfterComplete =
+      sourceCleanup && sourceCleanup.entries.length === 1
+        ? { parent: sourceCleanup.sourceParent, entry: sourceCleanup.entries[0]! }
+        : undefined;
     return this.queue.enqueue({
       type: 'download',
       input: {
@@ -481,6 +664,7 @@ export class StorageTaskService {
         directoryPath: request.directoryPath,
         destinationPath: work.path,
         workRef: work.ref,
+        ...(removeAfterComplete ? { removeAfterComplete } : {}),
       },
     });
   }
@@ -488,6 +672,7 @@ export class StorageTaskService {
   private enqueueDownloadGroup(
     request: PrepareDownloadRequest,
     prepared: PreparedDownloadBatch,
+    sourceCleanup?: TransferSourceCleanup,
   ): boolean {
     return this.createTransferGroup(
       {
@@ -504,6 +689,7 @@ export class StorageTaskService {
       (context) => this.prepareDownloadGroup(request, prepared, context),
       () => this.browser.downloads.finishBatch(queueOwnerId, prepared.id),
       () => this.browser.downloads.releaseBatch(queueOwnerId, prepared.id),
+      sourceCleanup,
     );
   }
 
@@ -559,17 +745,34 @@ export class StorageTaskService {
     );
   }
 
-  private enqueueStandaloneUpload(request: UploadFileRequest, work: UploadWork): boolean {
+  private enqueueStandaloneUpload(
+    request: UploadFileRequest,
+    work: UploadWork,
+    sourceCleanup?: TransferSourceCleanup,
+  ): boolean {
+    const removeAfterComplete =
+      sourceCleanup && sourceCleanup.entries.length === 1
+        ? { parent: sourceCleanup.sourceParent, entry: sourceCleanup.entries[0]! }
+        : undefined;
     return this.queue.enqueue({
       type: 'upload',
       input: {
-        display: { ...request, name: work.name },
+        display: {
+          ...request,
+          name: work.name,
+          ...(removeAfterComplete ? { sourceEntries: [removeAfterComplete.entry.ref] } : {}),
+        },
         workRef: work.ref,
+        ...(removeAfterComplete ? { removeAfterComplete } : {}),
       },
     });
   }
 
-  private enqueueUploadGroup(request: UploadFileRequest, prepared: PreparedUploadBatch): boolean {
+  private enqueueUploadGroup(
+    request: UploadFileRequest,
+    prepared: PreparedUploadBatch,
+    sourceCleanup?: TransferSourceCleanup,
+  ): boolean {
     return this.createTransferGroup(
       {
         kind: 'upload',
@@ -577,12 +780,19 @@ export class StorageTaskService {
           names: prepared.items.map((item) => item.name),
           sourcePath: prepared.sourcePath,
           destinationPath: request.directoryPath,
+          ...(sourceCleanup
+            ? { sourceEntries: sourceCleanup.entries.map((entry) => entry.ref) }
+            : {}),
         },
+        ...(sourceCleanup
+          ? { resources: sourceCleanup.entries.map((entry) => entryKey(entry.ref)) }
+          : {}),
       },
       request.parent.connectionId,
       (context) => this.prepareUploadGroup(request, prepared, context),
       () => this.browser.uploads.finishBatch(queueOwnerId, prepared.id),
       () => this.browser.uploads.releaseBatch(queueOwnerId, prepared.id),
+      sourceCleanup,
     );
   }
 
@@ -649,7 +859,9 @@ export class StorageTaskService {
     prepare: (context: TaskGroupPreparationContext<InternalTaskDefinitions>) => Promise<void>,
     onFinish: () => void,
     onRelease: () => Promise<void>,
+    sourceCleanup?: TransferSourceCleanup,
   ): boolean {
+    let groupId: number | undefined;
     const hooks: TaskGroupHooks<InternalTaskDefinitions> = {
       prepare,
       toFailure: (error) => toTaskFailure(error),
@@ -660,10 +872,19 @@ export class StorageTaskService {
       },
       onSettled: async () => {
         onFinish();
+        if (sourceCleanup && groupId !== undefined && this.isGroupFullyCompleted(groupId)) {
+          await removeMovedSources(
+            this.browser,
+            sourceCleanup.sourceParent,
+            sourceCleanup.entries,
+            (change) => this.emitDirectoryChanged(change),
+          );
+        }
       },
       release: onRelease,
     };
-    return this.queue.createGroup(request, hooks) !== undefined;
+    groupId = this.queue.createGroup(request, hooks);
+    return groupId !== undefined;
   }
 
   private projectTask(task: QueueTask<InternalTaskDefinitions>): StorageTaskItem {
