@@ -5,58 +5,30 @@ import { EntryDownloadModal } from './EntryDownloadModal';
 import { EntryInformationModal, type EntrySelection } from './EntryInformationModal';
 import { EntryRenameModal } from './EntryRenameModal';
 
+export type DirectoryModal =
+  | { kind: 'createDirectory' }
+  | { kind: 'rename'; entry: Entry }
+  | { kind: 'download'; entries: Entry[] }
+  | { kind: 'delete'; entries: Entry[] }
+  | { kind: 'information'; entries: EntrySelection };
+
 interface DirectoryEntryModalsProps {
-  dateFormatter: Intl.DateTimeFormat;
-  sizeFormatter: Intl.NumberFormat;
-  onAuthRequired: () => void;
-  createDirectoryOpened: boolean;
-  onCloseCreateDirectory: () => void;
-  renameEntry: Entry | null;
-  onCloseRename: () => void;
-  downloadEntries: Entry[] | null;
-  onCloseDownload: () => void;
-  deleteEntries: Entry[] | null;
-  onCloseDelete: () => void;
-  informationEntries: EntrySelection | null;
-  onCloseInformation: () => void;
+  modal: DirectoryModal | null;
+  onClose: () => void;
 }
 
-export function DirectoryEntryModals({
-  dateFormatter,
-  sizeFormatter,
-  onAuthRequired,
-  createDirectoryOpened,
-  onCloseCreateDirectory,
-  renameEntry,
-  onCloseRename,
-  downloadEntries,
-  onCloseDownload,
-  deleteEntries,
-  onCloseDelete,
-  informationEntries,
-  onCloseInformation,
-}: DirectoryEntryModalsProps) {
-  return (
-    <>
-      {createDirectoryOpened && <CreateDirectoryModal onClose={onCloseCreateDirectory} />}
-      {renameEntry && <EntryRenameModal entry={renameEntry} onClose={onCloseRename} />}
-      {downloadEntries && (
-        <EntryDownloadModal
-          entries={downloadEntries}
-          onClose={onCloseDownload}
-          onAuthRequired={onAuthRequired}
-        />
-      )}
-      {deleteEntries && <EntryDeleteModal entries={deleteEntries} onClose={onCloseDelete} />}
-      {informationEntries && (
-        <EntryInformationModal
-          entries={informationEntries}
-          dateFormatter={dateFormatter}
-          sizeFormatter={sizeFormatter}
-          onAuthRequired={onAuthRequired}
-          onClose={onCloseInformation}
-        />
-      )}
-    </>
-  );
+export function DirectoryEntryModals({ modal, onClose }: DirectoryEntryModalsProps) {
+  if (!modal) return null;
+  switch (modal.kind) {
+    case 'createDirectory':
+      return <CreateDirectoryModal onClose={onClose} />;
+    case 'rename':
+      return <EntryRenameModal entry={modal.entry} onClose={onClose} />;
+    case 'download':
+      return <EntryDownloadModal entries={modal.entries} onClose={onClose} />;
+    case 'delete':
+      return <EntryDeleteModal entries={modal.entries} onClose={onClose} />;
+    case 'information':
+      return <EntryInformationModal entries={modal.entries} onClose={onClose} />;
+  }
 }

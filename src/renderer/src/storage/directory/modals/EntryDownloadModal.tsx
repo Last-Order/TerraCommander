@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { Entry } from '@shared/storage';
 import { DownloadDirectoryInput } from '@renderer/downloads/DownloadDirectoryInput';
 import { errorKey, resultOf, type StorageErrorKey } from '@renderer/storage/storage-client';
+import { useStorageWorkspace } from '@renderer/storage/storage-workspace-context';
 import { useStorageTaskQueue } from '@renderer/storage/tasks/storage-task-queue-context';
 import { useCurrentDirectory } from '../current-directory-context';
 import { DownloadOverwriteModal } from './DownloadOverwriteModal';
@@ -16,13 +17,12 @@ interface PendingOverwriteConfirmation {
 export function EntryDownloadModal({
   entries,
   onClose,
-  onAuthRequired,
 }: {
   entries: readonly Entry[];
   onClose: () => void;
-  onAuthRequired: () => void;
 }) {
   const { t } = useTranslation(['storage', 'common', 'errors']);
+  const { onAuthRequired } = useStorageWorkspace();
   const queue = useStorageTaskQueue();
   const { ref: parent, path: directoryPath } = useCurrentDirectory();
   const [directory, setDirectory] = useState('');

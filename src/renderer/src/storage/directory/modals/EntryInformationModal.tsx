@@ -1,31 +1,33 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Group, Loader, Modal } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
 import type { Entry } from '@shared/storage';
+import { formatSize } from '@renderer/format/size';
 import { errorKey, resultOf, type StorageErrorKey } from '@renderer/storage/storage-client';
+import { useStorageWorkspace } from '@renderer/storage/storage-workspace-context';
 import { useCurrentDirectory } from '../current-directory-context';
 import classes from './EntryInformationModal.module.css';
-import { formatSize } from '@renderer/format/size';
 
 export type EntrySelection = [Entry, ...Entry[]];
 
 interface EntryInformationProps {
   entries: EntrySelection;
-  dateFormatter: Intl.DateTimeFormat;
-  sizeFormatter: Intl.NumberFormat;
-  onAuthRequired: () => void;
   onClose: () => void;
 }
 
-export function EntryInformationModal({
-  entries,
-  dateFormatter,
-  sizeFormatter,
-  onAuthRequired,
-  onClose,
-}: EntryInformationProps) {
-  const { t } = useTranslation(['storage', 'common', 'errors']);
+export function EntryInformationModal({ entries, onClose }: EntryInformationProps) {
+  const { t, i18n } = useTranslation(['storage', 'common', 'errors']);
+  const { onAuthRequired } = useStorageWorkspace();
   const { path: directoryPath } = useCurrentDirectory();
+  const locale = i18n.resolvedLanguage;
+  const dateFormatter = useMemo(
+    () => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }),
+    [locale],
+  );
+  const sizeFormatter = useMemo(
+    () => new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }),
+    [locale],
+  );
   const [measurement, setMeasurement] = useState<
     { bytes: number | null } | { error: StorageErrorKey } | null
   >(null);

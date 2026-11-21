@@ -42,7 +42,6 @@ export function DirectoryListing({ cacheable, version, onOpen, children }: Listi
   const { ref: parent, canCreateDirectory } = useCurrentDirectory();
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const [sort, setSort] = useState<DirectorySort | null>(null);
-  const [createDirectoryOpened, setCreateDirectoryOpened] = useState(false);
   const [blankMenuPosition, setBlankMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const refreshButton = useRef<HTMLButtonElement>(null);
@@ -142,9 +141,8 @@ export function DirectoryListing({ cacheable, version, onOpen, children }: Listi
   const createDirectoryEnabled = canCreateDirectory && !loading && error === null;
   const openCreateDirectory = () => {
     if (!createDirectoryEnabled) return;
-    actions.closeMenu();
     setBlankMenuPosition(null);
-    setCreateDirectoryOpened(true);
+    actions.showCreateDirectory();
   };
   const clipboard = useDirectoryClipboard({
     blocked: loadingWithoutEntries || error !== null,
@@ -393,21 +391,7 @@ export function DirectoryListing({ cacheable, version, onOpen, children }: Listi
           onCancel={clipboard.cancelPasteConflict}
         />
       )}
-      <DirectoryEntryModals
-        dateFormatter={dateFormatter}
-        sizeFormatter={sizeFormatter}
-        onAuthRequired={onAuthRequired}
-        createDirectoryOpened={createDirectoryOpened}
-        onCloseCreateDirectory={() => setCreateDirectoryOpened(false)}
-        renameEntry={actions.renameEntry}
-        onCloseRename={actions.closeRename}
-        downloadEntries={actions.downloadEntries}
-        onCloseDownload={actions.closeDownload}
-        deleteEntries={actions.deleteEntries}
-        onCloseDelete={actions.closeDelete}
-        informationEntries={actions.informationEntries}
-        onCloseInformation={actions.closeInformation}
-      />
+      <DirectoryEntryModals modal={actions.modal} onClose={actions.closeModal} />
     </>
   );
 }

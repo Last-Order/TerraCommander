@@ -3,6 +3,7 @@ import type { Entry } from '@shared/storage';
 import { localConnectionId } from '@shared/storage-browser';
 import type { PendingEntryEffect } from '../tasks/pending-entry-effects';
 import { canDeleteEntry } from './entry-deletion';
+import type { DirectoryModal } from './modals/DirectoryEntryModals';
 import type { EntrySelection } from './modals/EntryInformationModal';
 
 interface UseDirectoryEntryActionsOptions {
@@ -21,10 +22,7 @@ export function useDirectoryEntryActions({
   selectForContextMenu,
 }: UseDirectoryEntryActionsOptions) {
   const [menuLocator, setMenuLocator] = useState<string | null>(null);
-  const [informationEntries, setInformationEntries] = useState<EntrySelection | null>(null);
-  const [renameEntry, setRenameEntry] = useState<Entry | null>(null);
-  const [deleteEntries, setDeleteEntries] = useState<Entry[] | null>(null);
-  const [downloadEntries, setDownloadEntries] = useState<Entry[] | null>(null);
+  const [modal, setModal] = useState<DirectoryModal | null>(null);
 
   const menuEntry = menuLocator === null ? undefined : entries.get(menuLocator);
   if (phase === 'ready' && menuLocator !== null && !menuEntry) setMenuLocator(null);
@@ -79,6 +77,11 @@ export function useDirectoryEntryActions({
     [selectForContextMenu],
   );
 
+  const showCreateDirectory = useCallback(() => {
+    setMenuLocator(null);
+    setModal({ kind: 'createDirectory' });
+  }, []);
+
   const showInformation = () => {
     if (!menuEntry) return;
     const selection: EntrySelection = [menuEntry];
@@ -86,31 +89,36 @@ export function useDirectoryEntryActions({
       const entry = entries.get(locator);
       if (entry && entry !== menuEntry) selection.push(entry);
     }
-    setInformationEntries(selection);
+    setModal({ kind: 'information', entries: selection });
   };
 
   const showRename = () => {
     if (!renamableEntry || renamePending) return;
     setMenuLocator(null);
-    setRenameEntry(renamableEntry);
+    setModal({ kind: 'rename', entry: renamableEntry });
   };
 
   const showDelete = () => {
     if (!canDelete || selectionBusy) return;
     setMenuLocator(null);
-    setDeleteEntries(selectedEntries);
+    setModal({ kind: 'delete', entries: selectedEntries });
   };
 
   const showDownload = () => {
     if (!canDownload || selectionBusy) return;
     setMenuLocator(null);
-    setDownloadEntries(selectedEntries);
+    setModal({ kind: 'download', entries: selectedEntries });
   };
+
+  const closeModal = useCallback(() => {
+    setModal(null);
+  }, []);
 
   return {
     menuOpened: menuEntry !== undefined,
     closeMenu,
     showEntryMenu,
+    showCreateDirectory,
     showInformation,
     showRename,
     showDelete,
@@ -125,13 +133,7 @@ export function useDirectoryEntryActions({
     renamePending,
     canDelete,
     deletePending: selectionBusy,
-    renameEntry,
-    closeRename: () => setRenameEntry(null),
-    deleteEntries,
-    closeDelete: () => setDeleteEntries(null),
-    downloadEntries,
-    closeDownload: () => setDownloadEntries(null),
-    informationEntries,
-    closeInformation: () => setInformationEntries(null),
+    modal,
+    closeModal,
   };
 }
