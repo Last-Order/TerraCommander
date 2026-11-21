@@ -5,13 +5,11 @@ import { useTranslation } from 'react-i18next';
 interface DirectoryEntryMenuProps {
   canCopy: boolean;
   canCut: boolean;
-  cutPending: boolean;
   canDownload: boolean;
-  downloadPending: boolean;
   canRename: boolean;
   renamePending: boolean;
   canDelete: boolean;
-  deletePending: boolean;
+  selectionBusy: boolean;
   onCopy: () => void;
   onCut: () => void;
   onDownload: () => void;
@@ -23,13 +21,11 @@ interface DirectoryEntryMenuProps {
 export function DirectoryEntryMenu({
   canCopy,
   canCut,
-  cutPending,
   canDownload,
-  downloadPending,
   canRename,
   renamePending,
   canDelete,
-  deletePending,
+  selectionBusy,
   onCopy,
   onCut,
   onDownload,
@@ -51,7 +47,7 @@ export function DirectoryEntryMenu({
       )}
       {canCut && (
         <Menu.Item
-          disabled={cutPending}
+          disabled={selectionBusy}
           aria-keyshortcuts="Control+X"
           leftSection={<Scissors size={16} strokeWidth={1.5} aria-hidden="true" />}
           onClick={onCut}
@@ -61,7 +57,7 @@ export function DirectoryEntryMenu({
       )}
       {canDownload && (
         <Menu.Item
-          disabled={downloadPending}
+          disabled={selectionBusy}
           leftSection={<Download size={16} strokeWidth={1.5} aria-hidden="true" />}
           onClick={onDownload}
         >
@@ -89,7 +85,7 @@ export function DirectoryEntryMenu({
           <Menu.Divider />
           <Menu.Item
             color="red"
-            disabled={deletePending}
+            disabled={selectionBusy}
             aria-keyshortcuts="Delete"
             leftSection={<Trash2 size={16} strokeWidth={1.5} aria-hidden="true" />}
             onClick={onDelete}

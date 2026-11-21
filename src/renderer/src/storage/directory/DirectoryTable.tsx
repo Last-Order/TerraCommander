@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Menu, Skeleton } from '@mantine/core';
 import { ChevronDown, ChevronsUpDown, ChevronUp, type LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -58,8 +58,6 @@ interface DirectoryTableProps {
   navigationBlocked?: boolean | undefined;
   selectedLocators: ReadonlySet<string>;
   cutLocators?: ReadonlySet<string> | undefined;
-  dateFormatter: Intl.DateTimeFormat;
-  sizeFormatter: Intl.NumberFormat;
   onSort: (field: DirectorySort['field']) => void;
   onSelect: (locator: string, modifiers: DirectorySelectionModifiers) => void;
   onContextMenu: (entry: Entry) => void;
@@ -76,14 +74,21 @@ export function DirectoryTable({
   navigationBlocked = false,
   selectedLocators,
   cutLocators,
-  dateFormatter,
-  sizeFormatter,
   onSort,
   onSelect,
   onContextMenu,
   onOpen,
 }: DirectoryTableProps) {
-  const { t } = useTranslation('storage');
+  const { t, i18n } = useTranslation('storage');
+  const locale = i18n.resolvedLanguage;
+  const dateFormatter = useMemo(
+    () => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }),
+    [locale],
+  );
+  const sizeFormatter = useMemo(
+    () => new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }),
+    [locale],
+  );
   const [tabNavigation, setTabNavigation] = useState(false);
   const { tableRef, enabled, scrollMargin, virtualizer, onFocus, onBlur, onKeyDown } =
     useDirectoryVirtualizer({

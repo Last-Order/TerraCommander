@@ -1,33 +1,32 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Menu, VisuallyHidden } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
-import { ClipboardPaste, FolderPlus, Upload } from 'lucide-react';
+import { Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
 import type { Entry } from '@shared/storage';
-import { useKeyboardShortcuts } from '@renderer/shortcuts/useKeyboardShortcuts';
 import { useStorageWorkspace } from '../storage-workspace-context';
 import { selectPendingEntryEffects } from '../tasks/pending-entry-effects';
 import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
 import { useCurrentDirectory } from './current-directory-context';
 import { buildDirectoryRows } from './directory-rows';
 import { useDirectorySortStore } from './directory-sort';
+import { DirectoryBlankMenu } from './DirectoryBlankMenu';
 import { DirectoryEntryMenu } from './DirectoryEntryMenu';
 import classes from './DirectoryListing.module.css';
 import { DirectorySearch } from './DirectorySearch';
 import { DirectoryStatus } from './DirectoryStatus';
 import { DirectoryTable } from './DirectoryTable';
 import { DirectoryToolbar } from './DirectoryToolbar';
+import { resolveEntryCapabilities } from './entry-capabilities';
 import { DirectoryEntryModals } from './modals/DirectoryEntryModals';
-import { DownloadOverwriteModal } from './modals/DownloadOverwriteModal';
 import { useDirectoryClipboard } from './useDirectoryClipboard';
-import { useDirectoryEntryActions } from './useDirectoryEntryActions';
+import { useDirectoryCommands } from './useDirectoryCommands';
+import { useDirectoryContextMenu } from './useDirectoryContextMenu';
+import { useDirectoryEntryModals } from './useDirectoryEntryModals';
 import { useDirectoryListing } from './useDirectoryListing';
 import { useDirectorySearch } from './useDirectorySearch';
 import { useDirectorySelection } from './useDirectorySelection';
 import { useDirectoryUpload } from './useDirectoryUpload';
-
-const selectAllLoadingNotification = 'directory-select-all-loading';
 
 interface ListingProps {
   cacheable: boolean;
@@ -50,7 +49,6 @@ export function DirectoryListing({
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const sort = useDirectorySortStore((state) => state.sort);
   const changeSort = useDirectorySortStore((state) => state.toggleSort);
-  const [blankMenuPosition, setBlankMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const refreshButton = useRef<HTMLButtonElement>(null);
 
@@ -72,18 +70,10 @@ export function DirectoryListing({
     [tasks, groups, entries, parent],
   );
 
-  const locale = i18n.resolvedLanguage;
   const rows = useMemo(
-    () => buildDirectoryRows(entries, pendingEntries, snapshot ? sort : null, locale),
-    [entries, pendingEntries, snapshot, sort, locale],
-  );
-  const dateFormatter = useMemo(
-    () => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }),
-    [locale],
-  );
-  const sizeFormatter = useMemo(
-    () => new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }),
-    [locale],
+    () =>
+      buildDirectoryRows(entries, pendingEntries, snapshot ? sort : null, i18n.resolvedLanguage),
+    [entries, pendingEntries, snapshot, sort, i18n.resolvedLanguage],
   );
 
   const { selectedLocators, selectEntry, selectAll, selectOnly, selectForContextMenu } =
@@ -94,19 +84,28 @@ export function DirectoryListing({
       parent,
       scrollElement,
     });
-  const actions = useDirectoryEntryActions({
+  const capabilities = useMemo(
+    () => resolveEntryCapabilities(entries, selectedLocators, pendingEntries),
+    [entries, selectedLocators, pendingEntries],
+  );
+  const menu = useDirectoryContextMenu({
     entries,
-    selectedLocators,
-    pendingEntries,
     phase,
     selectForContextMenu,
+  });
+  const modals = useDirectoryEntryModals({
+    entries,
+    selectedLocators,
+    capabilities,
+    menuEntry: menu.menuEntry,
+    onOpenModal: menu.closeMenu,
   });
   const upload = useDirectoryUpload({
     blocked: loading || error !== null,
     onAuthRequired,
   });
 
-  const { closeMenu } = actions;
+  const { closeMenu } = menu;
   const selectSearchMatch = useCallback(
     (locator: string | null) => {
       selectOnly(locator);
@@ -115,145 +114,48 @@ export function DirectoryListing({
     [selectOnly, closeMenu],
   );
   const search = useDirectorySearch(rows, selectSearchMatch);
-
-  const reload = () => {
-    actions.closeMenu();
-    refresh();
-  };
-  const openSearch = () => {
-    actions.closeMenu();
-    search.open();
-    searchInput.current?.focus();
-    searchInput.current?.select();
-  };
-  const closeSearch = () => {
-    search.close();
-    refreshButton.current?.focus();
-  };
-  const selectAllEntries = () => {
-    if (phase === 'ready') {
-      actions.closeMenu();
-      selectAll();
-    } else if (loading) {
-      notifications.show({
-        id: selectAllLoadingNotification,
-        color: 'yellow',
-        message: t('selectAllWhileLoading'),
-      });
-    }
-  };
-  useEffect(() => {
-    if (phase === 'ready') notifications.hide(selectAllLoadingNotification);
-  }, [phase]);
-
-  const createDirectoryEnabled = canCreateDirectory && !loading && error === null;
-  const openCreateDirectory = () => {
-    if (!createDirectoryEnabled) return;
-    setBlankMenuPosition(null);
-    actions.showCreateDirectory();
-  };
   const clipboard = useDirectoryClipboard({
     blocked: loadingWithoutEntries || error !== null,
     onAuthRequired,
   });
-
-  const copySelection = () => {
-    if (!actions.canCopy) return;
-    actions.closeMenu();
-    setBlankMenuPosition(null);
-    clipboard.copy(actions.selectedEntries);
-  };
-
-  const cutSelection = () => {
-    if (!actions.canCut || actions.cutPending) return;
-    actions.closeMenu();
-    setBlankMenuPosition(null);
-    clipboard.cut(actions.selectedEntries);
-  };
-
-  const pasteSelection = () => {
-    setBlankMenuPosition(null);
-    void clipboard.paste();
-  };
-
-  const navigateUp = () => {
-    if (!onNavigateUp) return;
-    actions.closeMenu();
-    setBlankMenuPosition(null);
-    onNavigateUp();
-  };
-  const canNavigateUp =
-    onNavigateUp !== undefined && !actions.menuOpened && blankMenuPosition === null;
-
-  useKeyboardShortcuts([
-    {
-      key: 'Backspace',
-      onTrigger: navigateUp,
-      enabled: canNavigateUp,
-    },
-    {
-      key: 'ArrowUp',
-      altKey: true,
-      onTrigger: navigateUp,
-      enabled: canNavigateUp,
-    },
-    {
-      key: 'n',
-      ctrlKey: true,
-      shiftKey: true,
-      onTrigger: openCreateDirectory,
-      enabled: createDirectoryEnabled,
-    },
-    {
-      key: 'c',
-      ctrlKey: true,
-      onTrigger: copySelection,
-      enabled: actions.canCopy,
-    },
-    {
-      key: 'x',
-      ctrlKey: true,
-      onTrigger: cutSelection,
-      enabled: actions.canCut && !actions.cutPending,
-    },
-    {
-      key: 'v',
-      ctrlKey: true,
-      onTrigger: pasteSelection,
-      enabled: clipboard.canPaste,
-    },
-    {
-      key: 'F2',
-      onTrigger: actions.showRename,
-      enabled: actions.canRename && !actions.renamePending,
-    },
-    {
-      key: 'Delete',
-      onTrigger: actions.showDelete,
-      enabled: actions.canDelete && !actions.deletePending,
-    },
-    { key: 'F5', onTrigger: reload, enabled: !loading, allowInEditable: true },
-    { key: 'f', ctrlKey: true, onTrigger: openSearch, allowInEditable: true },
-    { key: 'a', ctrlKey: true, onTrigger: selectAllEntries, enabled: phase !== 'error' },
-    ...(search.opened ? [{ key: 'Escape', onTrigger: closeSearch, allowInEditable: true }] : []),
-    ...(!search.opened && clipboard.isCutActive
-      ? [{ key: 'Escape', onTrigger: clipboard.clear }]
-      : []),
-  ]);
+  const commands = useDirectoryCommands({
+    phase,
+    loading,
+    hasError: error !== null,
+    canCreateDirectory,
+    refresh,
+    selectAll,
+    capabilities,
+    menu,
+    modals,
+    clipboard,
+    search,
+    searchInput,
+    refreshButton,
+    onNavigateUp,
+  });
 
   const centeredState = (error && entries.size === 0) || (!error && snapshot?.size === 0);
+  const pasteConflict = clipboard.pasteConflict
+    ? {
+        busy: clipboard.pasteConflict.busy,
+        conflicts: clipboard.pasteConflict.conflicts,
+        onConfirm: clipboard.confirmPasteConflict,
+        onCancel: clipboard.cancelPasteConflict,
+      }
+    : null;
 
   return (
     <>
       <DirectoryToolbar
-        createDirectoryDisabled={!createDirectoryEnabled}
+        createDirectoryDisabled={!commands.createDirectoryEnabled}
         uploadDisabled={upload.disabled}
         refreshDisabled={loading}
         refreshButton={refreshButton}
-        onCreateDirectory={openCreateDirectory}
+        onCreateDirectory={commands.openCreateDirectory}
         onUploadFile={() => void upload.uploadFile()}
         onUploadFolder={() => void upload.uploadFolder()}
-        onRefresh={reload}
+        onRefresh={commands.reload}
       >
         {children}
       </DirectoryToolbar>
@@ -290,8 +192,7 @@ export function DirectoryListing({
             if (target.closest('tr[data-index], thead, [data-directory-search]')) return;
             if (loadingWithoutEntries || error !== null) return;
             event.preventDefault();
-            actions.closeMenu();
-            setBlankMenuPosition({ x: event.clientX, y: event.clientY });
+            menu.showBlankMenu({ x: event.clientX, y: event.clientY });
           }}
         >
           <DirectorySearch
@@ -302,19 +203,19 @@ export function DirectoryListing({
             total={search.total}
             onChange={search.changeQuery}
             onNavigate={search.navigate}
-            onClose={closeSearch}
+            onClose={commands.closeSearch}
           />
           <DirectoryStatus
             error={error}
             empty={snapshot?.size === 0}
             onReauthorize={() => reauthorize(parent.connectionId)}
-            onRetry={reload}
+            onRetry={commands.reload}
           />
           {(loadingWithoutEntries || entries.size > 0) && (
             <Menu
-              opened={actions.menuOpened}
+              opened={menu.entryMenuOpened}
               onChange={(opened) => {
-                if (!opened) actions.closeMenu();
+                if (!opened) menu.closeMenu();
               }}
               position="bottom-start"
               floatingStrategy="fixed"
@@ -328,90 +229,47 @@ export function DirectoryListing({
                 sort={sort}
                 canSort={snapshot !== undefined && !loading}
                 loadingWithoutEntries={loadingWithoutEntries}
-                navigationBlocked={actions.menuOpened || blankMenuPosition !== null}
+                navigationBlocked={menu.anyMenuOpened}
                 selectedLocators={selectedLocators}
                 cutLocators={clipboard.cutLocators}
-                dateFormatter={dateFormatter}
-                sizeFormatter={sizeFormatter}
                 onSort={changeSort}
                 onSelect={selectEntry}
-                onContextMenu={actions.showEntryMenu}
+                onContextMenu={menu.showEntryMenu}
                 onOpen={onOpen}
               />
               <DirectoryEntryMenu
-                canCopy={actions.canCopy}
-                canCut={actions.canCut}
-                cutPending={actions.cutPending}
-                canDownload={actions.canDownload}
-                downloadPending={actions.downloadPending}
-                canRename={actions.canRename}
-                renamePending={actions.renamePending}
-                canDelete={actions.canDelete}
-                deletePending={actions.deletePending}
-                onCopy={copySelection}
-                onCut={cutSelection}
-                onDownload={actions.showDownload}
-                onRename={actions.showRename}
-                onInformation={actions.showInformation}
-                onDelete={actions.showDelete}
+                canCopy={capabilities.canCopy}
+                canCut={capabilities.canCut}
+                canDownload={capabilities.canDownload}
+                canRename={capabilities.canRename}
+                renamePending={capabilities.renamePending}
+                canDelete={capabilities.canDelete}
+                selectionBusy={capabilities.selectionBusy}
+                onCopy={commands.copySelection}
+                onCut={commands.cutSelection}
+                onDownload={modals.showDownload}
+                onRename={modals.showRename}
+                onInformation={modals.showInformation}
+                onDelete={modals.showDelete}
               />
             </Menu>
           )}
-          <Menu
-            opened={blankMenuPosition !== null}
-            onChange={(opened) => {
-              if (!opened) setBlankMenuPosition(null);
-            }}
-            position="bottom-start"
-            floatingStrategy="fixed"
-            hideDetached={false}
-            transitionProps={{ duration: 0 }}
-          >
-            <Menu.Target>
-              <div
-                style={{
-                  position: 'fixed',
-                  left: blankMenuPosition?.x ?? 0,
-                  top: blankMenuPosition?.y ?? 0,
-                  width: 0,
-                  height: 0,
-                  pointerEvents: 'none',
-                }}
-              />
-            </Menu.Target>
-            <Menu.Dropdown>
-              {canCreateDirectory && (
-                <Menu.Item
-                  disabled={!createDirectoryEnabled}
-                  aria-keyshortcuts="Control+Shift+N"
-                  leftSection={<FolderPlus size={16} strokeWidth={1.5} aria-hidden="true" />}
-                  onClick={openCreateDirectory}
-                >
-                  {t('newFolder')}
-                </Menu.Item>
-              )}
-              <Menu.Item
-                disabled={!clipboard.canPaste}
-                aria-keyshortcuts="Control+V"
-                leftSection={<ClipboardPaste size={16} strokeWidth={1.5} aria-hidden="true" />}
-                onClick={pasteSelection}
-              >
-                {t('pasteEntry')}
-              </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
+          <DirectoryBlankMenu
+            position={menu.blankMenuPosition}
+            canCreateDirectory={canCreateDirectory}
+            createDirectoryEnabled={commands.createDirectoryEnabled}
+            canPaste={clipboard.canPaste}
+            onCreateDirectory={commands.openCreateDirectory}
+            onPaste={commands.pasteSelection}
+            onClose={menu.closeMenu}
+          />
         </div>
       </div>
-      {clipboard.pasteConflict && (
-        <DownloadOverwriteModal
-          busy={clipboard.pasteConflict.busy}
-          conflicts={clipboard.pasteConflict.conflicts}
-          confirmLabel={t('overwriteAndPaste')}
-          onConfirm={clipboard.confirmPasteConflict}
-          onCancel={clipboard.cancelPasteConflict}
-        />
-      )}
-      <DirectoryEntryModals modal={actions.modal} onClose={actions.closeModal} />
+      <DirectoryEntryModals
+        modal={modals.modal}
+        pasteConflict={pasteConflict}
+        onClose={modals.closeModal}
+      />
     </>
   );
 }
