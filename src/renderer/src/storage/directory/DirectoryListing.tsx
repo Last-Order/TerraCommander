@@ -8,9 +8,10 @@ import type { Capabilities, Entry, EntryRef } from '@shared/storage';
 import { localConnectionId } from '@shared/storage-browser';
 import { useKeyboardShortcuts } from '@renderer/shortcuts/useKeyboardShortcuts';
 import { errorKey, StorageBrowserError } from '../storage-client';
+import { useStorageWorkspace } from '../storage-workspace-context';
 import { selectPendingEntryEffects } from '../tasks/pending-entry-effects';
 import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
-import { directoryKey, type DirectoryCache } from './directory-cache';
+import { directoryKey } from './directory-cache';
 import { buildDirectoryRows } from './directory-rows';
 import type { DirectorySort } from './directory-types';
 import { DirectoryEntryMenu } from './DirectoryEntryMenu';
@@ -21,7 +22,7 @@ import { DirectoryTable } from './DirectoryTable';
 import { DirectoryToolbar } from './DirectoryToolbar';
 import { DirectoryEntryModals } from './modals/DirectoryEntryModals';
 import { DownloadOverwriteModal } from './modals/DownloadOverwriteModal';
-import type { StorageClipboard } from './storage-clipboard';
+import { useStorageClipboard } from './storage-clipboard';
 import { useDirectoryEntryActions } from './useDirectoryEntryActions';
 import { useDirectoryListing } from './useDirectoryListing';
 import { useDirectorySearch } from './useDirectorySearch';
@@ -34,7 +35,6 @@ const pasteStatusNotification = 'directory-paste-status';
 
 interface ListingProps {
   parent: EntryRef;
-  cache: DirectoryCache;
   cacheable: boolean;
   version: number;
   directoryPath: string;
@@ -43,17 +43,12 @@ interface ListingProps {
   canUploadFolder: boolean;
   targetCapabilities?: Capabilities | undefined;
   targetAncestors: readonly EntryRef[];
-  clipboard: StorageClipboard | null;
-  onClipboardChange: (clipboard: StorageClipboard | null) => void;
   onOpen: (entry: Entry) => void;
-  onAuthRequired: () => void;
-  onReauthorize: () => void;
   children: ReactNode;
 }
 
 export function DirectoryListing({
   parent,
-  cache,
   cacheable,
   version,
   directoryPath,
@@ -62,14 +57,13 @@ export function DirectoryListing({
   canUploadFolder,
   targetCapabilities,
   targetAncestors,
-  clipboard,
-  onClipboardChange,
   onOpen,
-  onAuthRequired,
-  onReauthorize,
   children,
 }: ListingProps) {
   const { t, i18n } = useTranslation(['storage', 'errors']);
+  const { directoryCache: cache, onAuthRequired, reauthorize } = useStorageWorkspace();
+  const clipboard = useStorageClipboard((state) => state.clipboard);
+  const onClipboardChange = useStorageClipboard((state) => state.setClipboard);
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const [sort, setSort] = useState<DirectorySort | null>(null);
   const [createDirectoryOpened, setCreateDirectoryOpened] = useState(false);
@@ -474,7 +468,7 @@ export function DirectoryListing({
           <DirectoryStatus
             error={error}
             empty={snapshot?.size === 0}
-            onReauthorize={onReauthorize}
+            onReauthorize={() => reauthorize(parent.connectionId)}
             onRetry={reload}
           />
           {(loadingWithoutEntries || entries.size > 0) && (

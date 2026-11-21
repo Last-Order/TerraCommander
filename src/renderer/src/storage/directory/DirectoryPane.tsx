@@ -4,10 +4,10 @@ import { useTranslation } from 'react-i18next';
 import type { Capabilities, EntryRef, Space, StorageLabel } from '@shared/storage';
 import { localConnectionId } from '@shared/storage-browser';
 import { formatStorageLabel } from '../storage-labels';
+import { useStorageWorkspace } from '../storage-workspace-context';
 import classes from './DirectoryPane.module.css';
 import { DirectoryListing } from './DirectoryListing';
-import { directoryKey, type DirectoryCache } from './directory-cache';
-import type { StorageClipboard } from './storage-clipboard';
+import { directoryKey } from './directory-cache';
 
 interface Location {
   ref: EntryRef;
@@ -17,22 +17,11 @@ interface Location {
 
 interface DirectoryProps {
   space: Space;
-  cache: DirectoryCache;
-  clipboard: StorageClipboard | null;
-  onClipboardChange: (clipboard: StorageClipboard | null) => void;
-  onAuthRequired: () => void;
-  onReauthorize: () => void;
 }
 
-export function DirectoryPane({
-  space,
-  cache,
-  clipboard,
-  onClipboardChange,
-  onAuthRequired,
-  onReauthorize,
-}: DirectoryProps) {
+export function DirectoryPane({ space }: DirectoryProps) {
   const { t } = useTranslation('storage');
+  const { directoryCache: cache } = useStorageWorkspace();
   const [trail, setTrail] = useState<Location[]>([{ ref: space.root, name: space.name }]);
   const current = trail.at(-1) ?? { ref: space.root, name: space.name };
   const version = useSyncExternalStore(cache.subscribe, () => cache.version(space.connectionId));
@@ -59,7 +48,6 @@ export function DirectoryPane({
       <DirectoryListing
         key={`${directoryKey(current.ref)}:${version}`}
         parent={current.ref}
-        cache={cache}
         cacheable={trail.length === 1}
         version={version}
         directoryPath={trail.map(({ name }) => formatStorageLabel(name, t)).join(' / ')}
@@ -75,11 +63,7 @@ export function DirectoryPane({
         }
         targetCapabilities={current.capabilities}
         targetAncestors={trail.map(({ ref }) => ref)}
-        clipboard={clipboard}
-        onClipboardChange={onClipboardChange}
         onOpen={(entry) => setTrail([...trail, entry])}
-        onAuthRequired={onAuthRequired}
-        onReauthorize={onReauthorize}
       >
         <nav className={classes.breadcrumbs} aria-label={t('currentDirectory')}>
           {trail.map((location, index) => {
