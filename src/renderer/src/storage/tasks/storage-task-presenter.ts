@@ -30,7 +30,6 @@ export const presentStorageTask: TaskPresenter<StorageTaskItem> = (task) => {
     case 'copy': {
       const input = task.request.input;
       return {
-        compact: true,
         typeLabel: { key: 'storage:copyTask' },
         title: [{ text: input.displayName ?? input.targetName }],
         summary: `${input.sourceDirectoryPath} → ${input.targetDirectoryPath}`,
@@ -39,7 +38,6 @@ export const presentStorageTask: TaskPresenter<StorageTaskItem> = (task) => {
     case 'move': {
       const input = task.request.input;
       return {
-        compact: true,
         typeLabel: { key: 'storage:moveTask' },
         title: [{ text: input.displayName ?? input.targetName }],
         summary: `${input.sourceDirectoryPath} → ${input.targetDirectoryPath}`,
@@ -47,7 +45,6 @@ export const presentStorageTask: TaskPresenter<StorageTaskItem> = (task) => {
     }
     case 'upload':
       return {
-        compact: true,
         typeLabel: { key: 'storage:uploadTask' },
         title: [{ text: task.request.input.displayName ?? task.request.input.name }],
         summary: task.request.input.directoryPath,
@@ -55,7 +52,6 @@ export const presentStorageTask: TaskPresenter<StorageTaskItem> = (task) => {
     case 'download': {
       const input = task.request.input;
       return {
-        compact: true,
         typeLabel: { key: 'storage:downloadEntry' },
         title: [{ text: input.displayName ?? input.entry.name }],
         summary: `${input.directoryPath} → ${input.destinationPath}`,

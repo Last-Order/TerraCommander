@@ -153,8 +153,6 @@ export const zhCN = {
     groupFailed: '失败 {{count}}',
     groupSkipped: '跳过 {{count}}',
     groupCancelled: '取消 {{count}}',
-    showDetails: '查看明细',
-    hideDetails: '收起明细',
     unknownError: '无法完成任务。',
     progress: '{{task}}进度',
     progressItems: '{{completed, number}} / {{total, number}} 项',

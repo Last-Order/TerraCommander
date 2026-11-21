@@ -49,21 +49,14 @@ export function TaskQueueGroupRow<TTask extends TaskViewItem, TGroup extends Tas
     const { summary: _summary, ...model } = presentTask(task);
     return model;
   };
+  const toggle = () => setOpened((previous) => !previous);
   return (
     <TaskQueueRow
       status={presentGroupStatus(group)}
       model={presentGroup(group)}
       aside={<GroupCounts summary={group.summary} />}
-      action={
-        <button
-          className={classes.control}
-          type="button"
-          aria-expanded={opened}
-          onClick={() => setOpened(!opened)}
-        >
-          {t(opened ? 'hideDetails' : 'showDetails')}
-        </button>
-      }
+      expanded={opened}
+      onToggle={toggle}
       summaryNote={
         issueCount > 0 && (
           <span className={classes.error}>

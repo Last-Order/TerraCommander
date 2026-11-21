@@ -157,8 +157,6 @@ export const en = {
     groupFailed: '{{count}} failed',
     groupSkipped: '{{count}} skipped',
     groupCancelled: '{{count}} canceled',
-    showDetails: 'Show details',
-    hideDetails: 'Hide details',
     unknownError: 'Could not complete the task.',
     progress: '{{task}} progress',
     progressItems: '{{completed, number}} / {{total, number}} items',

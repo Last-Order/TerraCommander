@@ -4,7 +4,6 @@ import type { TaskGroupViewItem, TaskMessage, TaskViewItem } from './task-types'
 export { presentGroupStatus, type TaskRowStatus };
 
 export interface TaskRowModel {
-  compact?: boolean;
   typeLabel: TaskMessage;
   title: readonly { text: string; secondary?: boolean }[];
   titleNote?: TaskMessage;
