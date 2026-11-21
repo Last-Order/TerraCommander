@@ -2,3 +2,12 @@
   outline: 2px solid light-dark(var(--mantine-color-teal-9), var(--mantine-color-teal-3));
   outline-offset: 2px;
 }
+
+.quietActionIcon:is([data-variant='subtle'], [data-variant='transparent']):is(
+    :disabled:not([data-loading]),
+    [data-disabled]:not([data-loading])
+  ) {
+  border-color: transparent;
+  background-color: transparent;
+  color: light-dark(var(--mantine-color-gray-4), var(--mantine-color-dark-3));
+}

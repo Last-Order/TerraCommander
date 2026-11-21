@@ -19,7 +19,10 @@ export const theme = createTheme({
   focusClassName: classes.focus!,
   headings: { fontWeight: '600' },
   components: {
-    ActionIcon: ActionIcon.extend({ defaultProps: { size: 32 } }),
+    ActionIcon: ActionIcon.extend({
+      defaultProps: { size: 32 },
+      classNames: { root: classes.quietActionIcon! },
+    }),
     Button: Button.extend({ defaultProps: { fw: 500 } }),
     Modal: Modal.extend({ defaultProps: { radius: 'lg' } }),
   },
