@@ -2,7 +2,6 @@ import { useLayoutEffect, useState, useSyncExternalStore } from 'react';
 import { ChevronRight, FolderOpen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Capabilities, EntryRef, Space, StorageLabel } from '@shared/storage';
-import { localConnectionId } from '@shared/storage-browser';
 import { formatStorageLabel } from '../storage-labels';
 import { useStorageWorkspace } from '../storage-workspace-context';
 import classes from './DirectoryPane.module.css';
@@ -51,16 +50,6 @@ export function DirectoryPane({ space }: DirectoryProps) {
         cacheable={trail.length === 1}
         version={version}
         directoryPath={trail.map(({ name }) => formatStorageLabel(name, t)).join(' / ')}
-        canCreateDirectory={current.capabilities?.createDirectory?.support !== 'unsupported'}
-        canUpload={
-          current.ref.connectionId !== localConnectionId &&
-          current.capabilities?.write?.support !== 'unsupported'
-        }
-        canUploadFolder={
-          current.ref.connectionId !== localConnectionId &&
-          current.capabilities?.write?.support !== 'unsupported' &&
-          current.capabilities?.createDirectory?.support !== 'unsupported'
-        }
         targetCapabilities={current.capabilities}
         targetAncestors={trail.map(({ ref }) => ref)}
         onOpen={(entry) => setTrail([...trail, entry])}

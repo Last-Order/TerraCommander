@@ -38,9 +38,6 @@ interface ListingProps {
   cacheable: boolean;
   version: number;
   directoryPath: string;
-  canCreateDirectory: boolean;
-  canUpload: boolean;
-  canUploadFolder: boolean;
   targetCapabilities?: Capabilities | undefined;
   targetAncestors: readonly EntryRef[];
   onOpen: (entry: Entry) => void;
@@ -52,9 +49,6 @@ export function DirectoryListing({
   cacheable,
   version,
   directoryPath,
-  canCreateDirectory,
-  canUpload,
-  canUploadFolder,
   targetCapabilities,
   targetAncestors,
   onOpen,
@@ -64,6 +58,11 @@ export function DirectoryListing({
   const { directoryCache: cache, onAuthRequired, reauthorize } = useStorageWorkspace();
   const clipboard = useStorageClipboard((state) => state.clipboard);
   const onClipboardChange = useStorageClipboard((state) => state.setClipboard);
+  const canCreateDirectory = targetCapabilities?.createDirectory?.support !== 'unsupported';
+  const canUpload =
+    parent.connectionId !== localConnectionId &&
+    targetCapabilities?.write?.support !== 'unsupported';
+  const canUploadFolder = canUpload && canCreateDirectory;
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const [sort, setSort] = useState<DirectorySort | null>(null);
   const [createDirectoryOpened, setCreateDirectoryOpened] = useState(false);
