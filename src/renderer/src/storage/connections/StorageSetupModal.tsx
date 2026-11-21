@@ -1,11 +1,11 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { Alert, Button, Group, Modal, Stack, Text } from '@mantine/core';
-import { Cloud, Monitor } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { emptyLocalConnection, type StorageConnectionSummary } from '@shared/storage-browser';
 import { errorKey, resultOf, type StorageErrorKey } from '../storage-client';
 import { formatStorageLabel } from '../storage-labels';
 import { SpacePicker } from './SpacePicker';
+import { StorageTypePicker } from './StorageTypePicker';
 
 export type SetupIntent =
   | { kind: 'add' }
@@ -77,6 +77,7 @@ export function StorageSetupModal({
   else if (showAuthorization) title = t('addGoogleDrive');
 
   let content: ReactNode;
+  let choosingType = false;
   if (connection) {
     content = (
       <SpacePicker
@@ -119,28 +120,14 @@ export function StorageSetupModal({
       </Stack>
     );
   } else {
+    choosingType = true;
     content = (
-      <Stack gap="xs">
-        <Text size="sm" c="dimmed">
-          {t('chooseType')}
-        </Text>
-        <Button
-          justify="flex-start"
-          variant="default"
-          leftSection={<Monitor size={16} strokeWidth={1.5} aria-hidden="true" />}
-          onClick={() => setConnection(localConnection ?? emptyLocalConnection)}
-        >
-          {t('localFileSystem')}
-        </Button>
-        <Button
-          justify="flex-start"
-          variant="default"
-          leftSection={<Cloud size={16} strokeWidth={1.5} aria-hidden="true" />}
-          onClick={() => setShowAuthorization(true)}
-        >
-          Google Drive
-        </Button>
-      </Stack>
+      <StorageTypePicker
+        onSelect={(type) => {
+          if (type === 'local') setConnection(localConnection ?? emptyLocalConnection);
+          else setShowAuthorization(true);
+        }}
+      />
     );
   }
 
@@ -149,6 +136,7 @@ export function StorageSetupModal({
       opened
       onClose={dismiss}
       title={title}
+      size={choosingType ? 'lg' : 'md'}
       closeButtonProps={{ 'aria-label': t('common:close') }}
       centered
       closeOnClickOutside={!busy && !authorizing}

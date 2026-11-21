@@ -1,0 +1,100 @@
+.picker {
+  display: grid;
+  gap: 1.25rem;
+  max-height: min(60vh, 32rem);
+  padding: 0.125rem;
+  margin: -0.125rem;
+  overflow: auto;
+}
+
+.category {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.categoryTitle {
+  margin: 0;
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr));
+  gap: 0.5rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.option {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  color: inherit;
+  background: var(--mantine-color-body);
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-md);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.option:hover {
+  background: var(--mantine-color-default-hover);
+  border-color: light-dark(var(--mantine-color-gray-4), var(--mantine-color-dark-3));
+}
+
+.option:hover .icon {
+  color: var(--mantine-primary-color-filled);
+}
+
+.icon {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: none;
+  place-items: center;
+  color: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1));
+  background: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-5));
+  border-radius: var(--mantine-radius-md);
+  transition: color 120ms ease;
+}
+
+.text {
+  display: grid;
+  min-width: 0;
+  gap: 0.125rem;
+}
+
+.name {
+  overflow: hidden;
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 500;
+  line-height: 1.25rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.description {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-xs);
+  line-height: 1rem;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
