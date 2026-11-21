@@ -88,6 +88,8 @@
 }
 
 .contents {
+  composes: listScrollbar from '../styles/list-scrollbar.module.css';
+
   min-height: 0;
   overflow: auto;
   scrollbar-gutter: stable;

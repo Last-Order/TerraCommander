@@ -30,6 +30,8 @@
 }
 
 .directoryContents {
+  composes: listScrollbar from '../../styles/list-scrollbar.module.css';
+
   --directory-cell-padding-block: 0.5rem;
   --directory-cell-padding-inline: 0.75rem;
   --directory-line-height: 1.25rem;
