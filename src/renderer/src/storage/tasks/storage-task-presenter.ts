@@ -27,6 +27,15 @@ export const presentStorageTask: TaskPresenter<StorageTaskItem> = (task) => {
         title: [{ text: task.request.input.entry.name }],
         summary: task.request.input.directoryPath,
       };
+    case 'copy': {
+      const input = task.request.input;
+      return {
+        compact: true,
+        typeLabel: { key: 'storage:copyTask' },
+        title: [{ text: input.displayName ?? input.targetName }],
+        summary: `${input.sourceDirectoryPath} → ${input.targetDirectoryPath}`,
+      };
+    }
     case 'upload':
       return {
         compact: true,
@@ -77,6 +86,12 @@ export const presentStorageTaskGroup: TaskGroupPresenter<StorageTaskGroupItem> =
         typeLabel: { key: 'storage:deleteEntry' },
         ...presentGroupTitle(group.request.input.names),
         summary: group.request.input.directoryPath,
+      };
+    case 'copy':
+      return {
+        typeLabel: { key: 'storage:copyTask' },
+        ...presentGroupTitle(group.request.input.names),
+        summary: `${group.request.input.sourcePath} → ${group.request.input.destinationPath}`,
       };
   }
 };

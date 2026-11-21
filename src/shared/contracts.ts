@@ -23,6 +23,7 @@ export const channels = {
   getTaskSnapshot: 'tasks:snapshot',
   enqueueRenameTask: 'tasks:enqueue-rename',
   enqueueDeleteTask: 'tasks:enqueue-delete',
+  pasteEntriesTask: 'tasks:paste-entries',
   uploadFileTask: 'tasks:upload-file',
   uploadFolderTask: 'tasks:upload-folder',
   uploadPathsTask: 'tasks:upload-paths',

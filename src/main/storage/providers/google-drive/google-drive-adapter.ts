@@ -36,7 +36,7 @@ const driveBaseCapabilities: Capabilities = {
   remove: supported,
   write: unknown,
   createDirectory: unknown,
-  copyWithin: unsupported,
+  copyWithin: unknown,
   moveWithin: unsupported,
   conditionalRead: unsupported,
   conditionalWrite: unsupported,
@@ -314,6 +314,43 @@ class GoogleDriveAdapter implements StorageAdapter {
     return fileEntry({ ...parent, locator: created.id }, created, false);
   }
 
+  async copyWithin(ref: EntryRef, target: CreateTarget, context: OperationContext): Promise<Entry> {
+    const id = parse(identifier, ref.locator);
+    const sourceDriveId = this.sharedDriveId(ref.spaceId);
+    if (id === 'root' || id === sourceDriveId) throw new StorageError('InvalidArgument');
+    const source = await this.getFile(ref, context);
+    if (source.mimeType === 'application/vnd.google-apps.folder') {
+      throw new StorageError('Unsupported');
+    }
+    const folder = await this.getFile(target.parent, context);
+    if (folder.mimeType !== 'application/vnd.google-apps.folder') {
+      throw new StorageError('InvalidArgument');
+    }
+    if (folder.capabilities?.canAddChildren === false) {
+      throw new StorageError('PermissionDenied');
+    }
+    const params = new URLSearchParams({
+      fields: `${fileFields},parents`,
+      supportsAllDrives: 'true',
+    });
+    const copied = await this.requestJson(`files/${id}/copy`, params, fileSchema, context, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: target.name,
+        parents: [folder.id],
+      }),
+    });
+    if (
+      copied.trashed ||
+      copied.name !== target.name ||
+      copied.driveId !== this.sharedDriveId(target.parent.spaceId) ||
+      !copied.parents?.includes(folder.id)
+    ) {
+      throw new StorageError('OutcomeUnknown');
+    }
+    return fileEntry({ ...target.parent, locator: copied.id }, copied, false);
+  }
+
   async remove(ref: EntryRef, context: OperationContext): Promise<void> {
     const id = parse(identifier, ref.locator);
     const driveId = this.sharedDriveId(ref.spaceId);
@@ -422,6 +459,7 @@ function fileEntry(ref: EntryRef, file: z.infer<typeof fileSchema>, isRoot: bool
       ),
       write: grantedCapability(kind !== 'directory', file.capabilities?.canAddChildren),
       createDirectory: grantedCapability(kind !== 'directory', file.capabilities?.canAddChildren),
+      copyWithin: kind === 'file' && !isRoot ? supported : unsupported,
       rename: grantedCapability(isRoot, file.capabilities?.canRename),
       remove: grantedCapability(isRoot, file.capabilities?.canTrash),
     },

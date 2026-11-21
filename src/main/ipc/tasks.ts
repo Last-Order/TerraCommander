@@ -44,6 +44,14 @@ const deleteRequestSchema = z.strictObject({
   directoryPath: pathSchema,
 });
 
+const pasteEntriesSchema = z.strictObject({
+  sourceParent: refSchema,
+  sourceDirectoryPath: pathSchema,
+  entries: z.array(taskEntrySchema).min(1),
+  targetParent: refSchema,
+  targetDirectoryPath: pathSchema,
+});
+
 const uploadFileSchema = z.strictObject({ parent: remoteRefSchema, directoryPath: pathSchema });
 
 const uploadPathsSchema = z.strictObject({
@@ -123,6 +131,9 @@ export function registerTaskIpc(
     channels.enqueueDeleteTask,
     z.tuple([deleteRequestSchema]),
     (tasks, _window, request) => tasks.enqueueDelete(request),
+  );
+  handleTask(channels.pasteEntriesTask, z.tuple([pasteEntriesSchema]), (tasks, window, request) =>
+    tasks.pasteEntries(window.webContents.id, request),
   );
   handleTask(channels.uploadFileTask, z.tuple([uploadFileSchema]), (tasks, window, request) =>
     tasks.uploadPaths(window.webContents.id, request, async () => {

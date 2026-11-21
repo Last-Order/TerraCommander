@@ -1,5 +1,11 @@
 import { createStore } from 'zustand/vanilla';
-import type { TasksApi, UploadFileRequest, UploadPathsRequest } from '@shared/tasks';
+import type {
+  PasteEntriesRequest,
+  PasteEntriesResponse,
+  TasksApi,
+  UploadFileRequest,
+  UploadPathsRequest,
+} from '@shared/tasks';
 import type { TaskQueueViewClient, TaskQueueViewSnapshot } from '@renderer/tasks/task-types';
 import type { DirectoryCache } from '../directory/directory-cache';
 import { resultOf, StorageBrowserError } from '../storage-client';
@@ -95,6 +101,12 @@ export class StorageTaskClient implements TaskQueueViewClient<
     const api = this.api;
     if (!api) return Promise.reject(new StorageBrowserError('Unsupported'));
     return resultOf(api.prepareDownload(request));
+  }
+
+  pasteEntries(request: PasteEntriesRequest): Promise<PasteEntriesResponse> {
+    const api = this.api;
+    if (!api) return Promise.reject(new StorageBrowserError('Unsupported'));
+    return resultOf(api.pasteEntries(request));
   }
 
   confirmDownload(confirmationId: string): Promise<void> {

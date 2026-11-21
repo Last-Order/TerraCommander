@@ -127,12 +127,17 @@
 .aside {
   display: flex;
   flex: none;
+  align-items: baseline;
   gap: 0.5rem;
   margin-inline-start: auto;
   padding-inline-start: 0.5rem;
   color: var(--storage-secondary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.aside > .error {
+  margin: 0;
 }
 
 .summary {

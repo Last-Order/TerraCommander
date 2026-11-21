@@ -1,14 +1,16 @@
 import { Menu } from '@mantine/core';
-import { Download, Info, SquarePen, Trash2 } from 'lucide-react';
+import { Copy, Download, Info, SquarePen, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface DirectoryEntryMenuProps {
+  canCopy: boolean;
   canDownload: boolean;
   downloadPending: boolean;
   canRename: boolean;
   renamePending: boolean;
   canDelete: boolean;
   deletePending: boolean;
+  onCopy: () => void;
   onDownload: () => void;
   onRename: () => void;
   onInformation: () => void;
@@ -16,12 +18,14 @@ interface DirectoryEntryMenuProps {
 }
 
 export function DirectoryEntryMenu({
+  canCopy,
   canDownload,
   downloadPending,
   canRename,
   renamePending,
   canDelete,
   deletePending,
+  onCopy,
   onDownload,
   onRename,
   onInformation,
@@ -30,6 +34,15 @@ export function DirectoryEntryMenu({
   const { t } = useTranslation('storage');
   return (
     <Menu.Dropdown>
+      {canCopy && (
+        <Menu.Item
+          aria-keyshortcuts="Control+C"
+          leftSection={<Copy size={16} strokeWidth={1.5} aria-hidden="true" />}
+          onClick={onCopy}
+        >
+          {t('copyEntry')}
+        </Menu.Item>
+      )}
       {canDownload && (
         <Menu.Item
           disabled={downloadPending}

@@ -39,6 +39,7 @@ const api: DesktopApi = {
       ipcRenderer.invoke(channels.confirmDownloadTask, confirmationId),
     cancelDownloadConfirmation: (confirmationId) =>
       ipcRenderer.invoke(channels.cancelDownloadConfirmation, confirmationId),
+    pasteEntries: (request) => ipcRenderer.invoke(channels.pasteEntriesTask, request),
     pause: (taskId) => ipcRenderer.invoke(channels.pauseTask, taskId),
     resume: (taskId) => ipcRenderer.invoke(channels.resumeTask, taskId),
     cancel: (taskId) => ipcRenderer.invoke(channels.cancelTask, taskId),

@@ -56,6 +56,9 @@ export function useDirectoryEntryActions({
           ? entry.capabilities.read?.support !== 'unsupported'
           : entry.kind === 'directory' && entry.capabilities.list?.support !== 'unsupported'),
     );
+  const canCopy =
+    selectedEntries.length > 0 &&
+    selectedEntries.every((entry) => entry.kind === 'file' || entry.kind === 'directory');
 
   const closeMenu = useCallback(() => {
     setMenuLocator(null);
@@ -105,6 +108,8 @@ export function useDirectoryEntryActions({
     showRename,
     showDelete,
     showDownload,
+    selectedEntries,
+    canCopy,
     canDownload,
     downloadPending: selectionBusy,
     canRename: renamableEntry !== undefined,

@@ -5,11 +5,13 @@ import classes from './DownloadOverwriteModal.module.css';
 export function DownloadOverwriteModal({
   busy,
   conflicts,
+  confirmLabel,
   onConfirm,
   onCancel,
 }: {
   busy: boolean;
   conflicts?: readonly string[] | undefined;
+  confirmLabel?: string | undefined;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -40,7 +42,7 @@ export function DownloadOverwriteModal({
             {t('common:cancel')}
           </Button>
           <Button color="red" loading={busy} onClick={onConfirm}>
-            {t('overwriteAndDownload')}
+            {confirmLabel ?? t('overwriteAndDownload')}
           </Button>
         </Group>
       </Stack>

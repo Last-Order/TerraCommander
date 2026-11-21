@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 import type { Dirent, Stats } from 'node:fs';
-import { lstat, readdir, rename, rm, unlink } from 'node:fs/promises';
+import { constants, copyFile, lstat, mkdir, readdir, rename, rm, unlink } from 'node:fs/promises';
 import { basename, dirname, join, normalize, parse, sep } from 'node:path';
 import type {
   Capabilities,
   CapabilityScope,
+  CreateTarget,
   Entry,
   EntryPage,
   EntryRef,
@@ -18,13 +19,14 @@ import { listLocalVolumes } from './local-volumes';
 
 const supported = { support: 'supported' } as const;
 const unsupported = { support: 'unsupported' } as const;
+const unknown = { support: 'unknown' } as const;
 const localBaseCapabilities: Capabilities = {
   list: supported,
   read: unsupported,
   write: unsupported,
-  createDirectory: unsupported,
+  createDirectory: unknown,
   remove: supported,
-  copyWithin: unsupported,
+  copyWithin: unknown,
   moveWithin: unsupported,
   rename: supported,
   rangeRead: unsupported,
@@ -69,6 +71,63 @@ export function localAdapterFactory(
       return new LocalAdapter(connection.id, folders, volumes);
     },
   };
+}
+
+export async function locateLocalEntry(
+  ref: EntryRef,
+  folders: () => readonly string[],
+  volumes: typeof listLocalVolumes = listLocalVolumes,
+  cachedVolumes?: Map<string, string>,
+  signal?: AbortSignal,
+): Promise<{ path: string; info: Stats; kind: Entry['kind'] }> {
+  throwIfAborted(signal);
+  const names = ref.locator === '.' ? [] : ref.locator.split(sep);
+  if (
+    names.some(
+      (name) =>
+        !name ||
+        name === '.' ||
+        name === '..' ||
+        name.includes('\0') ||
+        (sep === '\\' && /[/:]|[. ]$/.test(name)),
+    )
+  ) {
+    throw new StorageError('InvalidArgument');
+  }
+
+  const folder = folders().find((path) => localSpace(ref.connectionId, path).id === ref.spaceId);
+  let path = folder ?? cachedVolumes?.get(ref.spaceId);
+  if (!path) {
+    const discovered = await volumes(signal);
+    throwIfAborted(signal);
+    if (cachedVolumes) {
+      cachedVolumes.clear();
+      for (const volumePath of discovered) {
+        cachedVolumes.set(localSpace(ref.connectionId, volumePath).id, volumePath);
+      }
+      path = cachedVolumes.get(ref.spaceId);
+    } else {
+      path = discovered.find(
+        (volumePath) => localSpace(ref.connectionId, volumePath).id === ref.spaceId,
+      );
+    }
+  }
+  if (!path) throw new StorageError('NotFound');
+
+  try {
+    let info = await lstat(path);
+    for (const name of names) {
+      // Directory traversal never follows a symlink or junction.
+      if (!info.isDirectory()) throw new StorageError('NotFound');
+      throwIfAborted(signal);
+      path = join(path, name);
+      info = await lstat(path);
+    }
+    throwIfAborted(signal);
+    return { path, info, kind: entryKind(info) };
+  } catch (error) {
+    localFailure(error, signal);
+  }
 }
 
 class LocalAdapter implements StorageAdapter {
@@ -140,18 +199,7 @@ class LocalAdapter implements StorageAdapter {
   }
 
   async rename(ref: EntryRef, name: string, { signal }: OperationContext): Promise<Entry> {
-    if (
-      ref.locator === '.' ||
-      !name.trim() ||
-      name === '.' ||
-      name === '..' ||
-      name.includes('/') ||
-      name.includes('\0') ||
-      (sep === '\\' &&
-        (/[<>:"\\|?*]|[. ]$/.test(name) ||
-          Array.from(name).some((character) => character.charCodeAt(0) < 32) ||
-          /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)))
-    ) {
+    if (ref.locator === '.' || !isValidLocalEntryName(name)) {
       throw new StorageError('InvalidArgument');
     }
     const { path, info } = await this.locate(ref, signal);
@@ -177,6 +225,51 @@ class LocalAdapter implements StorageAdapter {
     }
   }
 
+  async createDirectory(
+    { parent, name }: CreateTarget,
+    { signal }: OperationContext,
+  ): Promise<Entry> {
+    if (!isValidLocalEntryName(name)) throw new StorageError('InvalidArgument');
+    const { path: parentPath, info } = await this.locate(parent, signal);
+    if (!info.isDirectory()) throw new StorageError('InvalidArgument');
+    const targetPath = join(parentPath, name);
+    try {
+      throwIfAborted(signal);
+      await mkdir(targetPath);
+      return await this.stat(
+        { ...parent, locator: join(parent.locator, name) },
+        signal ? { signal } : {},
+      );
+    } catch (error) {
+      localFailure(error, signal);
+    }
+  }
+
+  async copyWithin(
+    ref: EntryRef,
+    { parent, name }: CreateTarget,
+    { signal }: OperationContext,
+  ): Promise<Entry> {
+    if (ref.locator === '.' || !isValidLocalEntryName(name)) {
+      throw new StorageError('InvalidArgument');
+    }
+    const { path: sourcePath, info: sourceInfo } = await this.locate(ref, signal);
+    if (!sourceInfo.isFile()) throw new StorageError('Unsupported');
+    const { path: parentPath, info: parentInfo } = await this.locate(parent, signal);
+    if (!parentInfo.isDirectory()) throw new StorageError('InvalidArgument');
+    const targetPath = join(parentPath, name);
+    try {
+      throwIfAborted(signal);
+      await copyFile(sourcePath, targetPath, constants.COPYFILE_EXCL);
+      return await this.stat(
+        { ...parent, locator: join(parent.locator, name) },
+        signal ? { signal } : {},
+      );
+    } catch (error) {
+      localFailure(error, signal);
+    }
+  }
+
   async remove(ref: EntryRef, { signal }: OperationContext): Promise<void> {
     if (ref.locator === '.') throw new StorageError('InvalidArgument');
     const { path, info } = await this.locate(ref, signal);
@@ -194,52 +287,34 @@ class LocalAdapter implements StorageAdapter {
 
   async dispose() {}
 
-  private async locate(ref: EntryRef, signal?: AbortSignal) {
-    throwIfAborted(signal);
-    const names = ref.locator === '.' ? [] : ref.locator.split(sep);
-    if (
-      names.some(
-        (name) =>
-          !name ||
-          name === '.' ||
-          name === '..' ||
-          name.includes('\0') ||
-          (sep === '\\' && /[/:]|[. ]$/.test(name)),
-      )
-    ) {
-      throw new StorageError('InvalidArgument');
-    }
-
-    const folder = this.folders().find(
-      (path) => localSpace(this.connectionId, path).id === ref.spaceId,
-    );
-    if (!folder && !this.volumePaths.has(ref.spaceId))
-      await this.listSpaces(signal ? { signal } : {});
-    let path = folder ?? this.volumePaths.get(ref.spaceId);
-    if (!path) throw new StorageError('NotFound');
-
-    try {
-      let info = await lstat(path);
-      for (const name of names) {
-        // Directory traversal never follows a symlink or junction.
-        if (!info.isDirectory()) throw new StorageError('NotFound');
-        throwIfAborted(signal);
-        path = join(path, name);
-        info = await lstat(path);
-      }
-      throwIfAborted(signal);
-      return { path, info };
-    } catch (error) {
-      localFailure(error, signal);
-    }
+  private locate(ref: EntryRef, signal?: AbortSignal) {
+    return locateLocalEntry(ref, this.folders, this.volumes, this.volumePaths, signal);
   }
 }
 
+function entryKind(info: Dirent | Stats): Entry['kind'] {
+  if (info.isDirectory()) return 'directory';
+  if (info.isSymbolicLink()) return 'link';
+  if (info.isFile()) return 'file';
+  return 'other';
+}
+
+function isValidLocalEntryName(name: string): boolean {
+  return !(
+    !name.trim() ||
+    name === '.' ||
+    name === '..' ||
+    name.includes('/') ||
+    name.includes('\0') ||
+    (sep === '\\' &&
+      (/[<>:"\\|?*]|[. ]$/.test(name) ||
+        Array.from(name).some((character) => character.charCodeAt(0) < 32) ||
+        /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)))
+  );
+}
+
 function localEntry(ref: EntryRef, name: string, displayPath: string, info: Dirent | Stats): Entry {
-  let kind: Entry['kind'] = 'other';
-  if (info.isDirectory()) kind = 'directory';
-  else if (info.isSymbolicLink()) kind = 'link';
-  else if (info.isFile()) kind = 'file';
+  const kind = entryKind(info);
   const entry: Entry = {
     ref,
     name,
@@ -248,6 +323,8 @@ function localEntry(ref: EntryRef, name: string, displayPath: string, info: Dire
     capabilities: {
       ...localBaseCapabilities,
       list: kind === 'directory' ? supported : unsupported,
+      createDirectory: kind === 'directory' ? supported : unsupported,
+      copyWithin: ref.locator !== '.' && kind === 'file' ? supported : unsupported,
       rename: ref.locator === '.' ? unsupported : supported,
       remove:
         ref.locator !== '.' && (kind === 'file' || kind === 'link' || kind === 'directory')

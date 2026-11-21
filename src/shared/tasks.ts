@@ -122,6 +122,24 @@ export interface DeleteEntriesRequest {
   directoryPath: string;
 }
 
+export interface CopyTaskRequest {
+  sourceParent: EntryRef;
+  entry: Entry;
+  targetParent: EntryRef;
+  targetName: string;
+  sourceDirectoryPath: string;
+  targetDirectoryPath: string;
+  displayName?: string | undefined;
+}
+
+export interface PasteEntriesRequest {
+  sourceParent: EntryRef;
+  sourceDirectoryPath: string;
+  entries: readonly Entry[];
+  targetParent: EntryRef;
+  targetDirectoryPath: string;
+}
+
 export interface DownloadTaskDisplayInput {
   parent: EntryRef;
   entry: Entry;
@@ -147,6 +165,7 @@ export interface UploadTaskDisplayInput extends UploadFileRequest {
 export type StorageTaskRequest =
   | { type: 'rename'; input: RenameTaskRequest }
   | { type: 'delete'; input: DeleteTaskRequest }
+  | { type: 'copy'; input: CopyTaskRequest }
   | { type: 'download'; input: DownloadTaskDisplayInput }
   | { type: 'upload'; input: UploadTaskDisplayInput };
 
@@ -173,6 +192,15 @@ export type StorageTaskGroupRequest =
       input: {
         names: readonly string[];
         directoryPath: string;
+        entries: readonly EntryRef[];
+      };
+    }
+  | {
+      kind: 'copy';
+      input: {
+        names: readonly string[];
+        sourcePath: string;
+        destinationPath: string;
         entries: readonly EntryRef[];
       };
     };
@@ -203,9 +231,12 @@ export interface PrepareDownloadRequest {
   directoryPath: string;
 }
 
-export type PrepareDownloadResponse =
+export type ConflictConfirmationResponse =
   | { status: 'started' }
   | { status: 'conflict'; confirmationId: string; conflicts?: readonly string[] | undefined };
+
+export type PrepareDownloadResponse = ConflictConfirmationResponse;
+export type PasteEntriesResponse = ConflictConfirmationResponse;
 
 export const defaultTransferConcurrency = 8;
 export const minTransferConcurrency = 1;
@@ -226,6 +257,7 @@ export interface TasksApi {
   prepareDownload(request: PrepareDownloadRequest): Promise<BrowserResult<PrepareDownloadResponse>>;
   confirmDownload(confirmationId: string): Promise<BrowserResult<void>>;
   cancelDownloadConfirmation(confirmationId: string): Promise<BrowserResult<void>>;
+  pasteEntries(request: PasteEntriesRequest): Promise<BrowserResult<PasteEntriesResponse>>;
   pause(taskId: number): Promise<BrowserResult<void>>;
   resume(taskId: number): Promise<BrowserResult<void>>;
   cancel(taskId: number): Promise<BrowserResult<void>>;

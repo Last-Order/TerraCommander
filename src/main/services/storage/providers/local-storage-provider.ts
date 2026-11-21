@@ -6,6 +6,7 @@ import {
   localAdapterFactory,
   localFailure,
   localSpace,
+  locateLocalEntry,
 } from '@main/storage/providers/local/local-adapter';
 import type { StoragePreferences } from '../storage-preferences';
 import type { LocalStorageProviderIntegration } from '../storage-provider';
@@ -43,6 +44,10 @@ export function createLocalStorageProvider(
       } catch (error) {
         localFailure(error);
       }
+    },
+    async resolvePath(ref) {
+      const { path, kind } = await locateLocalEntry(ref, () => preferences.folders());
+      return { path, kind };
     },
   };
 }

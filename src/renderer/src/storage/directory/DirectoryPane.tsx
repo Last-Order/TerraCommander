@@ -7,6 +7,7 @@ import { formatStorageLabel } from '../storage-labels';
 import classes from './DirectoryPane.module.css';
 import { DirectoryListing } from './DirectoryListing';
 import { directoryKey, type DirectoryCache } from './directory-cache';
+import type { StorageClipboard } from './storage-clipboard';
 
 interface Location {
   ref: EntryRef;
@@ -17,11 +18,20 @@ interface Location {
 interface DirectoryProps {
   space: Space;
   cache: DirectoryCache;
+  clipboard: StorageClipboard | null;
+  onCopy: (clipboard: StorageClipboard) => void;
   onAuthRequired: () => void;
   onReauthorize: () => void;
 }
 
-export function DirectoryPane({ space, cache, onAuthRequired, onReauthorize }: DirectoryProps) {
+export function DirectoryPane({
+  space,
+  cache,
+  clipboard,
+  onCopy,
+  onAuthRequired,
+  onReauthorize,
+}: DirectoryProps) {
   const { t } = useTranslation('storage');
   const [trail, setTrail] = useState<Location[]>([{ ref: space.root, name: space.name }]);
   const current = trail.at(-1) ?? { ref: space.root, name: space.name };
@@ -62,6 +72,10 @@ export function DirectoryPane({ space, cache, onAuthRequired, onReauthorize }: D
           current.capabilities?.write?.support !== 'unsupported' &&
           current.capabilities?.createDirectory?.support !== 'unsupported'
         }
+        targetCapabilities={current.capabilities}
+        targetAncestors={trail.map(({ ref }) => ref)}
+        clipboard={clipboard}
+        onCopy={onCopy}
         onOpen={(entry) => setTrail([...trail, entry])}
         onAuthRequired={onAuthRequired}
         onReauthorize={onReauthorize}

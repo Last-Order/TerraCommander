@@ -1,4 +1,4 @@
-import type { EntryRef, Space } from '@shared/storage';
+import type { CreateTarget, Entry, EntryRef, Space } from '@shared/storage';
 import type {
   SpaceChoice,
   StorageConnectionSummary,
@@ -104,6 +104,33 @@ export class StorageBrowser {
     return {
       run: (context) => this.spaces.withBrowsableSpace(parent, () => execution.run(context)),
     };
+  }
+
+  statEntry(ref: EntryRef): Promise<Entry> {
+    return this.spaces.withBrowsableSpace(ref, () => this.storage.stat(ref));
+  }
+
+  resolveLocalPath(ref: EntryRef): Promise<{ path: string; kind: Entry['kind'] }> {
+    const local = this.connections
+      .localIntegrations()
+      .find((integration) => integration.connectionDefinition.id === ref.connectionId);
+    if (!local?.resolvePath) {
+      return Promise.reject(new StorageError('InvalidArgument'));
+    }
+    return this.spaces.withBrowsableSpace(ref, () => local.resolvePath!(ref));
+  }
+
+  createDirectory(target: CreateTarget): Promise<Entry> {
+    return this.spaces.withBrowsableSpace(target.parent, () =>
+      this.storage.createDirectory(target),
+    );
+  }
+
+  copyWithin(ref: EntryRef, target: CreateTarget): Promise<Entry> {
+    this.downloads.assertSourceAvailable(ref);
+    return this.spaces.withBrowsableSpace(ref, () =>
+      this.spaces.withBrowsableSpace(target.parent, () => this.storage.copyWithin(ref, target)),
+    );
   }
 
   renameEntry(ref: EntryRef, name: string) {

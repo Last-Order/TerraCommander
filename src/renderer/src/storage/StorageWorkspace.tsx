@@ -9,6 +9,7 @@ import { StorageSetupModal, type SetupIntent } from './connections/StorageSetupM
 import { StorageSidebar } from './connections/StorageSidebar';
 import { DirectoryCache } from './directory/directory-cache';
 import { DirectoryPane, EmptyDirectoryPane } from './directory/DirectoryPane';
+import type { StorageClipboard } from './directory/storage-clipboard';
 import { errorKey, resultOf } from './storage-client';
 import classes from './StorageWorkspace.module.css';
 import { StorageTaskClient } from './tasks/storage-task-client';
@@ -23,6 +24,7 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
   const connections = data ?? [];
   const [dialog, setDialog] = useState<SetupIntent | null>(null);
   const [location, setLocation] = useState<{ space: Space; generation: number } | null>(null);
+  const [clipboard, setClipboard] = useState<StorageClipboard | null>(null);
   const [directoryCache] = useState(() => new DirectoryCache());
 
   const refresh = useCallback(() => {
@@ -76,6 +78,8 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
               key={location.generation}
               space={location.space}
               cache={directoryCache}
+              clipboard={clipboard}
+              onCopy={setClipboard}
               onAuthRequired={refresh}
               onReauthorize={() => reauthorizeConnection(location.space.connectionId)}
             />

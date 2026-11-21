@@ -2,8 +2,11 @@ import type { Entry } from '@shared/storage';
 import { localConnectionId, type BrowserErrorCode } from '@shared/storage-browser';
 import { defaultTransferConcurrency } from '@shared/tasks';
 import type {
+  CopyTaskRequest,
   DeleteEntriesRequest,
   DeleteTaskRequest,
+  PasteEntriesRequest,
+  PasteEntriesResponse,
   PrepareDownloadRequest,
   PrepareDownloadResponse,
   RenameTaskRequest,
@@ -37,6 +40,7 @@ import type {
 import type { StorageBrowser } from '../storage/storage-browser';
 import type { PreparedUploadBatch, UploadPlanItem, UploadWork } from '../uploads/upload-types';
 import { prepareBatchGroup } from './batch-discovery';
+import { planPaste, prepareCopyGroup, type CopyDiscoveryItem } from './copy-paste';
 import { entryKey, queueOwnerId, toTaskFailure } from './task-errors';
 import {
   createDownloadTransferConfig,
@@ -50,6 +54,7 @@ import { TransferSessionCoordinator } from './transfer-session-coordinator';
 type InternalTaskDefinitions = {
   rename: { input: RenameTaskRequest; result: Entry };
   delete: { input: DeleteTaskRequest; result: void };
+  copy: { input: CopyTaskRequest; result: Entry };
   download: { input: InternalDownloadInput; result: void };
   upload: { input: InternalUploadInput; result: Entry };
 };
@@ -58,6 +63,7 @@ type InternalGroupDefinitions = {
   download: { input: Extract<StorageTaskGroupRequest, { kind: 'download' }>['input'] };
   upload: { input: Extract<StorageTaskGroupRequest, { kind: 'upload' }>['input'] };
   delete: { input: Extract<StorageTaskGroupRequest, { kind: 'delete' }>['input'] };
+  copy: { input: Extract<StorageTaskGroupRequest, { kind: 'copy' }>['input'] };
 };
 
 type TaskCategory = 'operation' | 'transfer';
@@ -80,6 +86,7 @@ const taskRequestProjectors: {
 } = {
   rename: (input) => ({ type: 'rename', input }),
   delete: (input) => ({ type: 'delete', input }),
+  copy: (input) => ({ type: 'copy', input }),
   download: ({ workRef: _workRef, ...input }) => ({ type: 'download', input }),
   upload: ({ display }) => ({ type: 'upload', input: display }),
 };
@@ -92,6 +99,7 @@ const groupRequestProjectors: {
   download: (input) => ({ kind: 'download', input }),
   upload: (input) => ({ kind: 'upload', input }),
   delete: (input) => ({ kind: 'delete', input }),
+  copy: (input) => ({ kind: 'copy', input }),
 };
 
 function projectTaskRequest<K extends keyof InternalTaskDefinitions>(request: {
@@ -140,6 +148,7 @@ export class StorageTaskService {
       {
         rename: this.createRenameHandler(),
         delete: this.createDeleteHandler(),
+        copy: this.createCopyHandler(),
         download: createTransferHandler(
           'transfer',
           createDownloadTransferConfig(this.browser.downloads, callbacks),
@@ -272,6 +281,80 @@ export class StorageTaskService {
     return this.session.prepareDownload(owner, request);
   }
 
+  async pasteEntries(owner: number, request: PasteEntriesRequest): Promise<PasteEntriesResponse> {
+    const plan = await planPaste(this.browser, request);
+    if (plan.kind === 'empty') return { status: 'started' };
+    if (plan.kind === 'upload') {
+      await this.session.uploadSelectedPaths(owner, {
+        parent: request.targetParent,
+        directoryPath: request.targetDirectoryPath,
+        paths: plan.paths,
+      });
+      return { status: 'started' };
+    }
+    if (plan.kind === 'download') {
+      return this.session.prepareDownload(owner, {
+        parent: request.sourceParent,
+        entries: plan.entries,
+        directory: plan.directory,
+        directoryPath: request.sourceDirectoryPath,
+      });
+    }
+    return this.enqueueCopyPlan(request, plan.items, plan.entries);
+  }
+
+  private enqueueCopyPlan(
+    request: PasteEntriesRequest,
+    items: readonly CopyDiscoveryItem[],
+    entries: readonly Entry[],
+  ): PasteEntriesResponse {
+    if (items.length === 1 && items[0]!.sourceEntry.kind === 'file') {
+      const [item] = items;
+      const enqueued = this.queue.enqueue({
+        type: 'copy',
+        input: {
+          sourceParent: item!.sourceParent,
+          entry: item!.sourceEntry,
+          targetParent: item!.targetParent,
+          targetName: item!.targetName,
+          sourceDirectoryPath: request.sourceDirectoryPath,
+          targetDirectoryPath: request.targetDirectoryPath,
+        },
+      });
+      if (!enqueued) throw new StorageError('AlreadyExists');
+      return { status: 'started' };
+    }
+
+    this.queue.createGroup(
+      {
+        kind: 'copy',
+        input: {
+          names: items.map((item) => item.targetName),
+          sourcePath: request.sourceDirectoryPath,
+          destinationPath: request.targetDirectoryPath,
+          entries: entries.map((entry) => entry.ref),
+        },
+      },
+      {
+        prepare: (context) =>
+          prepareCopyGroup(
+            this.browser,
+            request,
+            items,
+            (change) => this.emitDirectoryChanged(change),
+            context,
+          ),
+        toFailure: (error) => toTaskFailure(error),
+        onPreparationFailure: (failure) => {
+          if (failure.code === 'AuthRequired') {
+            this.emit({ type: 'auth-required', connectionId: request.targetParent.connectionId });
+          }
+        },
+      },
+    );
+    return { status: 'started' };
+  }
+
   confirmDownload(owner: number, confirmationId: string): Promise<void> {
     return this.session.confirmDownload(owner, confirmationId);
   }
@@ -357,6 +440,29 @@ export class StorageTaskService {
       onFailure: (input, failure) => {
         if (failure.code === 'AuthRequired') {
           this.emit({ type: 'auth-required', connectionId: input.entry.ref.connectionId });
+        }
+      },
+    };
+  }
+
+  private createCopyHandler(): TaskHandler<CopyTaskRequest, Entry, TaskCategory> {
+    return {
+      category: 'operation',
+      conflictKeys: ({ targetParent, targetName }) => [`${entryKey(targetParent)}/${targetName}`],
+      execute: async ({ entry, targetParent, targetName }) => ({
+        status: 'completed',
+        result: await this.browser.copyWithin(entry.ref, {
+          parent: targetParent,
+          name: targetName,
+        }),
+      }),
+      onSuccess: ({ targetParent }, result) => {
+        this.emitDirectoryChanged({ kind: 'added', parent: targetParent, entry: result });
+      },
+      toFailure: (error) => toTaskFailure(error),
+      onFailure: (input, failure) => {
+        if (failure.code === 'AuthRequired') {
+          this.emit({ type: 'auth-required', connectionId: input.targetParent.connectionId });
         }
       },
     };
