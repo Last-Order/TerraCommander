@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Menu, VisuallyHidden } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { ClipboardPaste, Upload } from 'lucide-react';
+import { ClipboardPaste, FolderPlus, Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
 import type { Capabilities, Entry, EntryRef } from '@shared/storage';
@@ -38,6 +38,7 @@ interface ListingProps {
   cacheable: boolean;
   version: number;
   directoryPath: string;
+  canCreateDirectory: boolean;
   canUpload: boolean;
   canUploadFolder: boolean;
   targetCapabilities?: Capabilities | undefined;
@@ -56,6 +57,7 @@ export function DirectoryListing({
   cacheable,
   version,
   directoryPath,
+  canCreateDirectory,
   canUpload,
   canUploadFolder,
   targetCapabilities,
@@ -70,6 +72,7 @@ export function DirectoryListing({
   const { t, i18n } = useTranslation(['storage', 'errors']);
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const [sort, setSort] = useState<DirectorySort | null>(null);
+  const [createDirectoryOpened, setCreateDirectoryOpened] = useState(false);
   const [blankMenuPosition, setBlankMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [pasteConflict, setPasteConflict] = useState<{
     confirmationId: string;
@@ -188,6 +191,13 @@ export function DirectoryListing({
     if (phase === 'ready') notifications.hide(selectAllLoadingNotification);
   }, [phase]);
 
+  const createDirectoryEnabled = canCreateDirectory && !loading && error === null;
+  const openCreateDirectory = () => {
+    if (!createDirectoryEnabled) return;
+    actions.closeMenu();
+    setBlankMenuPosition(null);
+    setCreateDirectoryOpened(true);
+  };
   const canPaste =
     clipboard !== null && clipboard.entries.length > 0 && !loadingWithoutEntries && error === null;
   const cutLocators = useMemo(() => {
@@ -343,6 +353,13 @@ export function DirectoryListing({
 
   useKeyboardShortcuts([
     {
+      key: 'n',
+      ctrlKey: true,
+      shiftKey: true,
+      onTrigger: openCreateDirectory,
+      enabled: createDirectoryEnabled,
+    },
+    {
       key: 'c',
       ctrlKey: true,
       onTrigger: copySelection,
@@ -393,11 +410,14 @@ export function DirectoryListing({
   return (
     <>
       <DirectoryToolbar
+        canCreateDirectory={canCreateDirectory}
+        createDirectoryDisabled={!createDirectoryEnabled}
         canUpload={canUpload}
         canUploadFolder={canUploadFolder}
         uploadDisabled={upload.disabled}
         refreshDisabled={loading}
         refreshButton={refreshButton}
+        onCreateDirectory={openCreateDirectory}
         onUploadFile={() => void upload.uploadFile()}
         onUploadFolder={() => void upload.uploadFolder()}
         onRefresh={reload}
@@ -526,6 +546,16 @@ export function DirectoryListing({
               />
             </Menu.Target>
             <Menu.Dropdown>
+              {canCreateDirectory && (
+                <Menu.Item
+                  disabled={!createDirectoryEnabled}
+                  aria-keyshortcuts="Control+Shift+N"
+                  leftSection={<FolderPlus size={16} strokeWidth={1.5} aria-hidden="true" />}
+                  onClick={openCreateDirectory}
+                >
+                  {t('newFolder')}
+                </Menu.Item>
+              )}
               <Menu.Item
                 disabled={!canPaste}
                 aria-keyshortcuts="Control+V"
@@ -577,6 +607,8 @@ export function DirectoryListing({
         dateFormatter={dateFormatter}
         sizeFormatter={sizeFormatter}
         onAuthRequired={onAuthRequired}
+        createDirectoryOpened={createDirectoryOpened}
+        onCloseCreateDirectory={() => setCreateDirectoryOpened(false)}
         renameEntry={actions.renameEntry}
         onCloseRename={actions.closeRename}
         downloadEntries={actions.downloadEntries}

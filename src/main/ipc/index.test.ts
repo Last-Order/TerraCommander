@@ -72,6 +72,12 @@ function setup() {
   const transferPreferences = new TransferPreferences({ read: () => undefined, write() {} });
   vi.spyOn(services.transferPreferences, 'get').mockResolvedValue(transferPreferences);
   const getBrowser = vi.spyOn(services.storageBrowser, 'get').mockResolvedValue(browser);
+  const createDirectory = vi.spyOn(browser, 'createDirectory').mockResolvedValue({
+    ref: { connectionId: 'local', spaceId: 'disk', locator: 'projects' },
+    name: 'projects',
+    kind: 'directory',
+    capabilities: { list: { support: 'supported' } },
+  });
   const deleteEntry = vi.spyOn(browser, 'deleteEntry').mockResolvedValue(undefined);
   const setLanguage = vi.fn((preference: LanguagePreference) => ({
     preference,
@@ -97,6 +103,7 @@ function setup() {
     entry,
     browser,
     getBrowser,
+    createDirectory,
     deleteEntry,
     services,
     transferPreferences,
@@ -135,12 +142,15 @@ it('reads and updates settings via the generic settings IPC without loading stor
   expect(getTasks).not.toHaveBeenCalled();
 });
 
-it('validates task delete and rename requests strictly before initializing task services', async () => {
-  const { event, parent, entry, services, getBrowser, deleteEntry, send } = setup();
+it('validates task delete, rename, and create-directory requests strictly before initializing task services', async () => {
+  const { event, parent, entry, services, getBrowser, createDirectory, deleteEntry, send } =
+    setup();
   const getTasks = vi.spyOn(services.tasks, 'get');
+  const enqueueCreateDirectory = handlers.get(channels.enqueueCreateDirectoryTask)!;
   const enqueueDelete = handlers.get(channels.enqueueDeleteTask)!;
   const enqueueRename = handlers.get(channels.enqueueRenameTask)!;
   const validDelete = { parent, entries: [entry], directoryPath: '/disk' };
+  const validCreateDirectory = { parent, name: 'projects', directoryPath: '/disk' };
 
   for (const args of [
     [],
@@ -160,9 +170,30 @@ it('validates task delete and rename requests strictly before initializing task 
   ]) {
     expect(await enqueueRename(event, ...args)).toEqual({ ok: false, code: 'InvalidArgument' });
   }
+  for (const args of [
+    [],
+    [null],
+    [{ parent, name: '   ', directoryPath: '/disk' }],
+    [{ parent, name: 'a\0b', directoryPath: '/disk' }],
+    [{ parent: { ...parent, connectionId: 'invalid' }, name: 'projects', directoryPath: '/disk' }],
+    [{ ...validCreateDirectory, extra: true }],
+    [validCreateDirectory, 'extra'],
+  ]) {
+    expect(await enqueueCreateDirectory(event, ...args)).toEqual({
+      ok: false,
+      code: 'InvalidArgument',
+    });
+  }
   expect(getTasks).not.toHaveBeenCalled();
   expect(getBrowser).not.toHaveBeenCalled();
 
+  expect(await enqueueCreateDirectory(event, validCreateDirectory)).toEqual({
+    ok: true,
+    value: true,
+  });
+  await vi.waitFor(() =>
+    expect(createDirectory).toHaveBeenCalledExactlyOnceWith({ parent, name: 'projects' }),
+  );
   expect(await enqueueDelete(event, validDelete)).toEqual({ ok: true, value: true });
   await vi.waitFor(() => expect(deleteEntry).toHaveBeenCalledExactlyOnceWith(entry.ref));
   expect(send).toHaveBeenCalledWith(

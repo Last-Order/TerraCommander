@@ -88,9 +88,14 @@ function setup() {
       await pause();
     }),
   };
+  const createDirectory = vi.fn(async ({ name }: { name: string }) => ({
+    ...folderEntry,
+    name,
+  }));
   const renameEntry = vi.fn(async () => ({ ...fileEntry, name: 'final.txt' }));
   const deleteEntry = vi.fn(async () => undefined);
   const browser = {
+    createDirectory,
     renameEntry,
     deleteEntry,
     downloads,
@@ -98,8 +103,49 @@ function setup() {
   const service = new StorageTaskService(browser);
   const events: StorageTaskEvent[] = [];
   service.subscribe((event) => events.push(event));
-  return { service, browser, downloads, renameEntry, deleteEntry, events };
+  return { service, browser, downloads, createDirectory, renameEntry, deleteEntry, events };
 }
+
+it('executes create-directory tasks, prevents concurrent name conflicts, and maps errors', async () => {
+  const { service, createDirectory, events } = setup();
+  const pending = deferred<Entry>();
+  createDirectory.mockImplementationOnce(() => pending.promise);
+
+  expect(service.enqueueCreateDirectory({ parent, name: 'Projects', directoryPath: '/docs' })).toBe(
+    true,
+  );
+  expect(service.enqueueCreateDirectory({ parent, name: 'Projects', directoryPath: '/docs' })).toBe(
+    false,
+  );
+
+  const created = { ...folderEntry, name: 'Projects' };
+  pending.resolve(created);
+  await vi.waitFor(() => expect(service.getSnapshot().tasks[0]?.status).toBe('completed'));
+  expect(createDirectory).toHaveBeenCalledWith({ parent, name: 'Projects' });
+  expect(events).toContainEqual({
+    type: 'directory-changed',
+    change: { kind: 'added', parent, entry: created },
+  });
+
+  createDirectory.mockRejectedValueOnce(new StorageError('InvalidArgument'));
+  expect(service.enqueueCreateDirectory({ parent, name: 'bad', directoryPath: '/docs' })).toBe(
+    true,
+  );
+  await vi.waitFor(() => expect(service.getSnapshot().tasks[1]?.status).toBe('failed'));
+  expect(service.getSnapshot().tasks[1]?.failure).toEqual({
+    code: 'InvalidArgument',
+    message: { key: 'storage:invalidEntryName' },
+  });
+
+  createDirectory.mockRejectedValueOnce(new StorageError('AuthRequired'));
+  expect(service.enqueueCreateDirectory({ parent, name: 'Auth', directoryPath: '/docs' })).toBe(
+    true,
+  );
+  await vi.waitFor(() => expect(service.getSnapshot().tasks[2]?.status).toBe('failed'));
+  expect(events).toContainEqual({ type: 'auth-required', connectionId });
+
+  await service.dispose();
+});
 
 it('executes rename and delete tasks, projects directory changes, and maps validation errors', async () => {
   const { service, renameEntry, deleteEntry, events } = setup();

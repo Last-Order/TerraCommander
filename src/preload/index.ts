@@ -28,6 +28,8 @@ const api: DesktopApi = {
   },
   tasks: {
     getSnapshot: () => ipcRenderer.invoke(channels.getTaskSnapshot),
+    enqueueCreateDirectory: (request) =>
+      ipcRenderer.invoke(channels.enqueueCreateDirectoryTask, request),
     enqueueRename: (request) => ipcRenderer.invoke(channels.enqueueRenameTask, request),
     enqueueDelete: (request) => ipcRenderer.invoke(channels.enqueueDeleteTask, request),
     uploadFile: (request) => ipcRenderer.invoke(channels.uploadFileTask, request),

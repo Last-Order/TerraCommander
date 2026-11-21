@@ -10,6 +10,7 @@ import type { TaskQueueViewClient, TaskQueueViewSnapshot } from '@renderer/tasks
 import type { DirectoryCache } from '../directory/directory-cache';
 import { resultOf, StorageBrowserError } from '../storage-client';
 import type {
+  CreateDirectoryTaskRequest,
   DeleteEntriesRequest,
   PrepareDownloadRequest,
   PrepareDownloadResponse,
@@ -63,6 +64,11 @@ export class StorageTaskClient implements TaskQueueViewClient<
       settled = true;
       unsubscribe();
     };
+  }
+
+  enqueueCreateDirectory(request: CreateDirectoryTaskRequest): Promise<boolean> {
+    const api = this.api;
+    return api ? resultOf(api.enqueueCreateDirectory(request)) : Promise.resolve(false);
   }
 
   enqueueRename(request: RenameTaskRequest): Promise<boolean> {

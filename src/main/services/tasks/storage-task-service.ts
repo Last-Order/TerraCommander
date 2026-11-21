@@ -3,6 +3,7 @@ import { localConnectionId, type BrowserErrorCode } from '@shared/storage-browse
 import { defaultTransferConcurrency } from '@shared/tasks';
 import type {
   CopyTaskRequest,
+  CreateDirectoryTaskRequest,
   DeleteEntriesRequest,
   DeleteTaskRequest,
   MoveTaskRequest,
@@ -61,6 +62,7 @@ import {
 } from './transfer-session-coordinator';
 
 type InternalTaskDefinitions = {
+  'create-directory': { input: CreateDirectoryTaskRequest; result: Entry };
   rename: { input: RenameTaskRequest; result: Entry };
   delete: { input: DeleteTaskRequest; result: void };
   copy: { input: CopyTaskRequest; result: Entry };
@@ -95,6 +97,7 @@ const taskRequestProjectors: {
     input: InternalTaskDefinitions[K]['input'],
   ) => Extract<StorageTaskRequest, { type: K }>;
 } = {
+  'create-directory': (input) => ({ type: 'create-directory', input }),
   rename: (input) => ({ type: 'rename', input }),
   delete: (input) => ({ type: 'delete', input }),
   copy: (input) => ({ type: 'copy', input }),
@@ -190,6 +193,7 @@ export class StorageTaskService {
     };
     this.queue = new TaskQueue<InternalTaskDefinitions, InternalGroupDefinitions, TaskCategory>(
       {
+        'create-directory': this.createCreateDirectoryHandler(),
         rename: this.createRenameHandler(),
         delete: this.createDeleteHandler(),
         copy: this.createCopyHandler(),
@@ -247,6 +251,10 @@ export class StorageTaskService {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  enqueueCreateDirectory(request: CreateDirectoryTaskRequest): boolean {
+    return this.queue.enqueue({ type: 'create-directory', input: request });
   }
 
   enqueueRename(request: RenameTaskRequest): boolean {
@@ -576,6 +584,31 @@ export class StorageTaskService {
     await Promise.allSettled([this.queue.dispose(), ...pendingBatches]);
     this.unsubscribeQueue();
     this.listeners.clear();
+  }
+
+  private createCreateDirectoryHandler(): TaskHandler<
+    CreateDirectoryTaskRequest,
+    Entry,
+    TaskCategory
+  > {
+    return {
+      category: 'operation',
+      conflictKeys: ({ parent, name }) => [`${entryKey(parent)}/${name}`],
+      execute: async ({ parent, name }) => ({
+        status: 'completed',
+        result: await this.browser.createDirectory({ parent, name }),
+      }),
+      onSuccess: ({ parent }, result) => {
+        this.emitDirectoryChanged({ kind: 'added', parent, entry: result });
+      },
+      toFailure: (error) =>
+        toTaskFailure(error, { invalidArgumentKey: 'storage:invalidEntryName' }),
+      onFailure: (input, failure) => {
+        if (failure.code === 'AuthRequired') {
+          this.emit({ type: 'auth-required', connectionId: input.parent.connectionId });
+        }
+      },
+    };
   }
 
   private createRenameHandler(): TaskHandler<RenameTaskRequest, Entry, TaskCategory> {

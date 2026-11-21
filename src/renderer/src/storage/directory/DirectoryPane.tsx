@@ -63,6 +63,7 @@ export function DirectoryPane({
         cacheable={trail.length === 1}
         version={version}
         directoryPath={trail.map(({ name }) => formatStorageLabel(name, t)).join(' / ')}
+        canCreateDirectory={current.capabilities?.createDirectory?.support !== 'unsupported'}
         canUpload={
           current.ref.connectionId !== localConnectionId &&
           current.capabilities?.write?.support !== 'unsupported'

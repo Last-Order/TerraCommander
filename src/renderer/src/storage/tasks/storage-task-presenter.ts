@@ -19,6 +19,12 @@ function presentRenameTask(input: RenameTaskRequest): TaskRowModel {
 
 export const presentStorageTask: TaskPresenter<StorageTaskItem> = (task) => {
   switch (task.request.type) {
+    case 'create-directory':
+      return {
+        typeLabel: { key: 'storage:newFolder' },
+        title: [{ text: task.request.input.name }],
+        summary: task.request.input.directoryPath,
+      };
     case 'rename':
       return presentRenameTask(task.request.input);
     case 'delete':

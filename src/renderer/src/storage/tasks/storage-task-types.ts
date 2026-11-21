@@ -1,4 +1,5 @@
 export type {
+  CreateDirectoryTaskRequest,
   DeleteEntriesRequest,
   DeleteTaskRequest,
   DownloadTaskDisplayInput,

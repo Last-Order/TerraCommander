@@ -103,6 +103,12 @@ export interface TaskGroupViewItem<Request = unknown> {
   preparation: TaskGroupPreparation;
 }
 
+export interface CreateDirectoryTaskRequest {
+  parent: EntryRef;
+  name: string;
+  directoryPath: string;
+}
+
 export interface RenameTaskRequest {
   parent: EntryRef;
   entry: Entry;
@@ -177,6 +183,7 @@ export interface UploadTaskDisplayInput extends UploadFileRequest {
 }
 
 export type StorageTaskRequest =
+  | { type: 'create-directory'; input: CreateDirectoryTaskRequest }
   | { type: 'rename'; input: RenameTaskRequest }
   | { type: 'delete'; input: DeleteTaskRequest }
   | { type: 'copy'; input: CopyTaskRequest }
@@ -273,6 +280,7 @@ export interface TransferSettings {
 
 export interface TasksApi {
   getSnapshot(): Promise<BrowserResult<StorageTaskSnapshot>>;
+  enqueueCreateDirectory(request: CreateDirectoryTaskRequest): Promise<BrowserResult<boolean>>;
   enqueueRename(request: RenameTaskRequest): Promise<BrowserResult<boolean>>;
   enqueueDelete(request: DeleteEntriesRequest): Promise<BrowserResult<boolean>>;
   uploadFile(request: UploadFileRequest): Promise<BrowserResult<void>>;

@@ -21,6 +21,7 @@ export const channels = {
   setSetting: 'settings:set',
   chooseDownloadDirectory: 'downloads:choose-directory',
   getTaskSnapshot: 'tasks:snapshot',
+  enqueueCreateDirectoryTask: 'tasks:enqueue-create-directory',
   enqueueRenameTask: 'tasks:enqueue-rename',
   enqueueDeleteTask: 'tasks:enqueue-delete',
   pasteEntriesTask: 'tasks:paste-entries',

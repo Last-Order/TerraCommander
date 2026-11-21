@@ -1,15 +1,18 @@
 import type { ReactNode, RefObject } from 'react';
 import { ActionIcon, Menu } from '@mantine/core';
-import { FileUp, FolderUp, RefreshCw, Upload } from 'lucide-react';
+import { FileUp, FolderPlus, FolderUp, Plus, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import classes from './DirectoryListing.module.css';
 
 interface DirectoryToolbarProps {
+  canCreateDirectory: boolean;
+  createDirectoryDisabled: boolean;
   canUpload: boolean;
   canUploadFolder: boolean;
   uploadDisabled: boolean;
   refreshDisabled: boolean;
   refreshButton: RefObject<HTMLButtonElement | null>;
+  onCreateDirectory: () => void;
   onUploadFile: () => void;
   onUploadFolder: () => void;
   onRefresh: () => void;
@@ -17,26 +20,34 @@ interface DirectoryToolbarProps {
 }
 
 export function DirectoryToolbar({
+  canCreateDirectory,
+  createDirectoryDisabled,
   canUpload,
   canUploadFolder,
   uploadDisabled,
   refreshDisabled,
   refreshButton,
+  onCreateDirectory,
   onUploadFile,
   onUploadFolder,
   onRefresh,
   children,
 }: DirectoryToolbarProps) {
   const { t } = useTranslation('storage');
+  const canAdd = canCreateDirectory || canUpload;
 
   return (
     <header className={classes.directoryHeader}>
       {children}
       <div className={classes.directoryActions}>
-        {canUpload && (
-          <UploadButton
+        {canAdd && (
+          <AddButton
+            canCreateDirectory={canCreateDirectory}
+            createDirectoryDisabled={createDirectoryDisabled}
+            canUpload={canUpload}
             canUploadFolder={canUploadFolder}
-            disabled={uploadDisabled}
+            uploadDisabled={uploadDisabled}
+            onCreateDirectory={onCreateDirectory}
             onUploadFile={onUploadFile}
             onUploadFolder={onUploadFolder}
           />
@@ -58,51 +69,75 @@ export function DirectoryToolbar({
   );
 }
 
-interface UploadButtonProps {
+interface AddButtonProps {
+  canCreateDirectory: boolean;
+  createDirectoryDisabled: boolean;
+  canUpload: boolean;
   canUploadFolder: boolean;
-  disabled: boolean;
+  uploadDisabled: boolean;
+  onCreateDirectory: () => void;
   onUploadFile: () => void;
   onUploadFolder: () => void;
 }
 
-function UploadButton({
+function AddButton({
+  canCreateDirectory,
+  createDirectoryDisabled,
+  canUpload,
   canUploadFolder,
-  disabled,
+  uploadDisabled,
+  onCreateDirectory,
   onUploadFile,
   onUploadFolder,
-}: UploadButtonProps) {
+}: AddButtonProps) {
   const { t } = useTranslation('storage');
-  const button = (
-    <ActionIcon
-      type="button"
-      variant="subtle"
-      color="gray"
-      aria-label={t('upload')}
-      title={t('upload')}
-      disabled={disabled}
-      onClick={canUploadFolder ? undefined : onUploadFile}
-    >
-      <Upload size={16} strokeWidth={1.5} aria-hidden="true" />
-    </ActionIcon>
-  );
-  if (!canUploadFolder) return button;
+  const disabled =
+    (!canCreateDirectory || createDirectoryDisabled) && (!canUpload || uploadDisabled);
 
   return (
     <Menu position="bottom-end" withinPortal>
-      <Menu.Target>{button}</Menu.Target>
+      <Menu.Target>
+        <ActionIcon
+          type="button"
+          variant="subtle"
+          color="gray"
+          aria-label={t('addEntry')}
+          title={t('addEntry')}
+          disabled={disabled}
+        >
+          <Plus size={16} strokeWidth={1.5} aria-hidden="true" />
+        </ActionIcon>
+      </Menu.Target>
       <Menu.Dropdown>
-        <Menu.Item
-          leftSection={<FileUp size={16} strokeWidth={1.5} aria-hidden="true" />}
-          onClick={onUploadFile}
-        >
-          {t('uploadFile')}
-        </Menu.Item>
-        <Menu.Item
-          leftSection={<FolderUp size={16} strokeWidth={1.5} aria-hidden="true" />}
-          onClick={onUploadFolder}
-        >
-          {t('uploadFolder')}
-        </Menu.Item>
+        {canCreateDirectory && (
+          <Menu.Item
+            disabled={createDirectoryDisabled}
+            aria-keyshortcuts="Control+Shift+N"
+            leftSection={<FolderPlus size={16} strokeWidth={1.5} aria-hidden="true" />}
+            onClick={onCreateDirectory}
+          >
+            {t('newFolder')}
+          </Menu.Item>
+        )}
+        {canCreateDirectory && canUpload && <Menu.Divider />}
+        {canUpload && (
+          <Menu.Item
+            disabled={uploadDisabled}
+            leftSection={<FileUp size={16} strokeWidth={1.5} aria-hidden="true" />}
+            onClick={onUploadFile}
+          >
+            {t('uploadFile')}
+          </Menu.Item>
+        )}
+        {canUpload && canUploadFolder && (
+          <Menu.Item
+            disabled={uploadDisabled}
+            leftSection={<FolderUp size={16} strokeWidth={1.5} aria-hidden="true" />}
+            onClick={onUploadFolder}
+          >
+            {t('uploadFolder')}
+          </Menu.Item>
+        )}
       </Menu.Dropdown>
     </Menu>
   );

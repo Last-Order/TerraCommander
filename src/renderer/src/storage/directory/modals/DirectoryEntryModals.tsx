@@ -1,4 +1,5 @@
 import type { Entry, EntryRef } from '@shared/storage';
+import { CreateDirectoryModal } from './CreateDirectoryModal';
 import { EntryDeleteModal } from './EntryDeleteModal';
 import { EntryDownloadModal } from './EntryDownloadModal';
 import { EntryInformationModal, type EntrySelection } from './EntryInformationModal';
@@ -10,6 +11,8 @@ interface DirectoryEntryModalsProps {
   dateFormatter: Intl.DateTimeFormat;
   sizeFormatter: Intl.NumberFormat;
   onAuthRequired: () => void;
+  createDirectoryOpened: boolean;
+  onCloseCreateDirectory: () => void;
   renameEntry: Entry | null;
   onCloseRename: () => void;
   downloadEntries: Entry[] | null;
@@ -26,6 +29,8 @@ export function DirectoryEntryModals({
   dateFormatter,
   sizeFormatter,
   onAuthRequired,
+  createDirectoryOpened,
+  onCloseCreateDirectory,
   renameEntry,
   onCloseRename,
   downloadEntries,
@@ -37,6 +42,13 @@ export function DirectoryEntryModals({
 }: DirectoryEntryModalsProps) {
   return (
     <>
+      {createDirectoryOpened && (
+        <CreateDirectoryModal
+          parent={parent}
+          directoryPath={directoryPath}
+          onClose={onCloseCreateDirectory}
+        />
+      )}
       {renameEntry && (
         <EntryRenameModal
           entry={renameEntry}

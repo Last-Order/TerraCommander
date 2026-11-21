@@ -6,6 +6,7 @@ export const zhCN = {
     cancel: '取消',
     close: '关闭',
     save: '保存',
+    create: '创建',
   },
   settings: {
     title: '设置',
@@ -68,6 +69,9 @@ export const zhCN = {
     copyPreparationProgress: '已发现 {{files}} 个文件 · 已准备 {{folders}} 个文件夹',
     crossSourcePasteUnsupported: '暂不支持跨账号或跨存储源粘贴。',
     pasteSelfContainmentError: '不能将文件夹粘贴到其自身或子文件夹中。',
+    addEntry: '添加',
+    newFolder: '新建文件夹',
+    folderName: '文件夹名称',
     renameEntry: '重命名',
     downloadEntry: '下载…',
     upload: '上传…',

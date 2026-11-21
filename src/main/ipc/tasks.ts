@@ -31,6 +31,12 @@ const noArguments = z.tuple([]);
 const taskIdSchema = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 const confirmationIdSchema = z.uuid();
 
+const createDirectoryRequestSchema = z.strictObject({
+  parent: refSchema,
+  name: entryNameSchema,
+  directoryPath: pathSchema,
+});
+
 const renameRequestSchema = z.strictObject({
   parent: refSchema,
   entry: taskEntrySchema,
@@ -123,6 +129,11 @@ export function registerTaskIpc(
   }
 
   handleTask(channels.getTaskSnapshot, noArguments, (tasks) => tasks.getSnapshot());
+  handleTask(
+    channels.enqueueCreateDirectoryTask,
+    z.tuple([createDirectoryRequestSchema]),
+    (tasks, _window, request) => tasks.enqueueCreateDirectory(request),
+  );
   handleTask(
     channels.enqueueRenameTask,
     z.tuple([renameRequestSchema]),
