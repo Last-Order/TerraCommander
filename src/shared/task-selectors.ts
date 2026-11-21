@@ -33,7 +33,7 @@ export function topLevelEntries<
       status: presentGroupStatus(group),
       group,
     })),
-  ].sort((left, right) => left.id - right.id);
+  ].sort((left, right) => right.id - left.id);
 }
 
 export function isActiveTask({ status }: { status: TaskStatus }): boolean {
