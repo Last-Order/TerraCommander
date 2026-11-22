@@ -1,15 +1,10 @@
 import { Menu } from '@mantine/core';
 import { Copy, Download, Info, Scissors, SquarePen, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import type { EntryCapabilities } from './entry-capabilities';
 
 interface DirectoryEntryMenuProps {
-  canCopy: boolean;
-  canCut: boolean;
-  canDownload: boolean;
-  canRename: boolean;
-  renamePending: boolean;
-  canDelete: boolean;
-  selectionBusy: boolean;
+  capabilities: EntryCapabilities;
   onCopy: () => void;
   onCut: () => void;
   onDownload: () => void;
@@ -19,13 +14,7 @@ interface DirectoryEntryMenuProps {
 }
 
 export function DirectoryEntryMenu({
-  canCopy,
-  canCut,
-  canDownload,
-  canRename,
-  renamePending,
-  canDelete,
-  selectionBusy,
+  capabilities,
   onCopy,
   onCut,
   onDownload,
@@ -34,6 +23,8 @@ export function DirectoryEntryMenu({
   onDelete,
 }: DirectoryEntryMenuProps) {
   const { t } = useTranslation('storage');
+  const { canCopy, canCut, canDownload, canRename, renamePending, canDelete, selectionBusy } =
+    capabilities;
   return (
     <Menu.Dropdown>
       {canCopy && (

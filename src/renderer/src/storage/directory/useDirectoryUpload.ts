@@ -1,18 +1,19 @@
 import { useState, type DragEvent } from 'react';
 import { errorKey, type StorageErrorKey } from '../storage-client';
+import { useStorageWorkspace } from '../storage-workspace-context';
 import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
 import { useCurrentDirectory } from './current-directory-context';
 
 interface DirectoryUploadOptions {
   blocked: boolean;
-  onAuthRequired: () => void;
 }
 
 function hasDroppedFiles(dataTransfer: DataTransfer | null) {
   return Array.from(dataTransfer?.types ?? []).includes('Files');
 }
 
-export function useDirectoryUpload({ blocked, onAuthRequired }: DirectoryUploadOptions) {
+export function useDirectoryUpload({ blocked }: DirectoryUploadOptions) {
+  const { onAuthRequired } = useStorageWorkspace();
   const queue = useStorageTaskQueue();
   const { ref: parent, path: directoryPath, canUpload } = useCurrentDirectory();
   const [pending, setPending] = useState(false);
@@ -76,3 +77,5 @@ export function useDirectoryUpload({ blocked, onAuthRequired }: DirectoryUploadO
     uploadFolder: () => startUpload(() => queue.uploadFolder({ parent, directoryPath })),
   };
 }
+
+export type DirectoryUpload = ReturnType<typeof useDirectoryUpload>;

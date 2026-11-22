@@ -1,34 +1,24 @@
-import { useLayoutEffect, type RefObject } from 'react';
+import { useLayoutEffect } from 'react';
 import { ActionIcon, TextInput, Transition } from '@mantine/core';
 import { useReducedMotion } from '@mantine/hooks';
 import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import listingClasses from './DirectoryListing.module.css';
 import classes from './DirectorySearch.module.css';
+import type { DirectorySearchController } from './useDirectorySearch';
 
 interface DirectorySearchProps {
-  opened: boolean;
-  inputRef: RefObject<HTMLInputElement | null>;
-  query: string;
-  index: number;
-  total: number;
-  onChange: (query: string) => void;
-  onNavigate: (direction: -1 | 1) => void;
+  search: Pick<
+    DirectorySearchController,
+    'opened' | 'inputRef' | 'query' | 'index' | 'total' | 'changeQuery' | 'navigate'
+  >;
   onClose: () => void;
 }
 
-export function DirectorySearch({
-  opened,
-  inputRef,
-  query,
-  index,
-  total,
-  onChange,
-  onNavigate,
-  onClose,
-}: DirectorySearchProps) {
+export function DirectorySearch({ search, onClose }: DirectorySearchProps) {
   const { t } = useTranslation('storage');
   const reduceMotion = useReducedMotion();
+  const { opened, inputRef, query, index, total, changeQuery, navigate } = search;
 
   useLayoutEffect(() => {
     if (opened) inputRef.current?.focus();
@@ -66,7 +56,7 @@ export function DirectorySearch({
               leftSection={<Search size={16} strokeWidth={1.5} aria-hidden="true" />}
               leftSectionPointerEvents="none"
               value={query}
-              onChange={(event) => onChange(event.currentTarget.value)}
+              onChange={(event) => changeQuery(event.currentTarget.value)}
               onKeyDown={(event) => {
                 if (
                   event.key !== 'Enter' ||
@@ -77,7 +67,7 @@ export function DirectorySearch({
                 )
                   return;
                 event.preventDefault();
-                onNavigate(event.shiftKey ? -1 : 1);
+                navigate(event.shiftKey ? -1 : 1);
               }}
             />
             {query && (
@@ -115,7 +105,7 @@ export function DirectorySearch({
                   aria-keyshortcuts={shortcut}
                   title={`${t(label)} (${shortcut})`}
                   onClick={() => {
-                    onNavigate(direction);
+                    navigate(direction);
                     inputRef.current?.focus();
                   }}
                 >

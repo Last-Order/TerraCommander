@@ -3,9 +3,11 @@ import { notifications } from '@mantine/notifications';
 import { useTranslation } from 'react-i18next';
 import type { Entry } from '@shared/storage';
 import { errorKey, StorageBrowserError } from '../storage-client';
+import { useStorageWorkspace } from '../storage-workspace-context';
 import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
 import { useCurrentDirectory } from './current-directory-context';
 import { directoryKey } from './directory-cache';
+import type { DirectoryPasteConflictModal } from './modals/DirectoryEntryModals';
 import { useStorageClipboard, validatePaste } from './storage-clipboard';
 
 const copyEntriesNotification = 'directory-copy-entries';
@@ -13,7 +15,6 @@ const pasteStatusNotification = 'directory-paste-status';
 
 interface DirectoryClipboardOptions {
   blocked: boolean;
-  onAuthRequired: () => void;
 }
 
 interface PasteConflictState {
@@ -23,8 +24,9 @@ interface PasteConflictState {
   busy: boolean;
 }
 
-export function useDirectoryClipboard({ blocked, onAuthRequired }: DirectoryClipboardOptions) {
+export function useDirectoryClipboard({ blocked }: DirectoryClipboardOptions) {
   const { t } = useTranslation(['storage', 'errors']);
+  const { onAuthRequired } = useStorageWorkspace();
   const queue = useStorageTaskQueue();
   const {
     ref: parent,
@@ -184,16 +186,23 @@ export function useDirectoryClipboard({ blocked, onAuthRequired }: DirectoryClip
     void queue.cancelDownloadConfirmation(id).catch(() => {});
   };
 
+  const pasteConflictModal: DirectoryPasteConflictModal | null = pasteConflict
+    ? {
+        busy: pasteConflict.busy,
+        conflicts: pasteConflict.conflicts,
+        onConfirm: confirmPasteConflict,
+        onCancel: cancelPasteConflict,
+      }
+    : null;
+
   return {
     canPaste,
     cutLocators,
     isCutActive,
-    pasteConflict,
+    pasteConflict: pasteConflictModal,
     copy,
     cut,
     clear,
     paste,
-    confirmPasteConflict,
-    cancelPasteConflict,
   };
 }

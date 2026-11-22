@@ -1,17 +1,20 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import type { Entry, EntryRef } from '@shared/storage';
+import type { Entry } from '@shared/storage';
 import { errorKey, resultOf, StorageBrowserError, type StorageErrorKey } from '../storage-client';
+import { useStorageWorkspace } from '../storage-workspace-context';
+import { useCurrentDirectory } from './current-directory-context';
 import {
   addDirectoryEntry,
   directoryKey,
   removeDirectoryEntry,
   replaceRenamedEntry,
-  type DirectoryCache,
   type DirectoryEntries,
 } from './directory-cache';
 
+export type DirectoryListingPhase = 'loading' | 'ready' | 'refreshing' | 'error';
+
 type ListingState =
-  | { phase: 'loading' | 'ready' | 'refreshing'; entries: DirectoryEntries }
+  | { phase: Exclude<DirectoryListingPhase, 'error'>; entries: DirectoryEntries }
   | {
       phase: 'error';
       entries: DirectoryEntries;
@@ -20,11 +23,8 @@ type ListingState =
     };
 
 interface ListingOptions {
-  parent: EntryRef;
-  cache: DirectoryCache;
   cacheable: boolean;
   version: number;
-  onAuthRequired: () => void;
 }
 
 const emptyEntries: DirectoryEntries = new Map();
@@ -35,13 +35,9 @@ function listingSnapshot(listing: ListingState): DirectoryEntries | undefined {
   return listing.entries;
 }
 
-export function useDirectoryListing({
-  parent,
-  cache,
-  cacheable,
-  version,
-  onAuthRequired,
-}: ListingOptions) {
+export function useDirectoryListing({ cacheable, version }: ListingOptions) {
+  const { directoryCache: cache, onAuthRequired } = useStorageWorkspace();
+  const { ref: parent } = useCurrentDirectory();
   const [listing, setListing] = useState<ListingState>(() => {
     const cached = cacheable ? cache.peek(parent) : undefined;
     return cached

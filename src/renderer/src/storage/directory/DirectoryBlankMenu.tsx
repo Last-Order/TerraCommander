@@ -1,9 +1,9 @@
 import { Menu } from '@mantine/core';
 import { ClipboardPaste, FolderPlus, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useCurrentDirectory } from './current-directory-context';
 
-export interface DirectoryBlankMenuDropdownProps {
-  canCreateDirectory: boolean;
+export interface DirectoryBlankActions {
   createDirectoryEnabled: boolean;
   canPaste: boolean;
   refreshDisabled: boolean;
@@ -12,16 +12,18 @@ export interface DirectoryBlankMenuDropdownProps {
   onRefresh: () => void;
 }
 
-export function DirectoryBlankMenuDropdown({
-  canCreateDirectory,
-  createDirectoryEnabled,
-  canPaste,
-  refreshDisabled,
-  onCreateDirectory,
-  onPaste,
-  onRefresh,
-}: DirectoryBlankMenuDropdownProps) {
+export function DirectoryBlankMenuDropdown({ actions }: { actions: DirectoryBlankActions }) {
   const { t } = useTranslation('storage');
+  const { canCreateDirectory } = useCurrentDirectory();
+  const {
+    createDirectoryEnabled,
+    canPaste,
+    refreshDisabled,
+    onCreateDirectory,
+    onPaste,
+    onRefresh,
+  } = actions;
+
   return (
     <Menu.Dropdown>
       {canCreateDirectory && (
@@ -55,16 +57,13 @@ export function DirectoryBlankMenuDropdown({
   );
 }
 
-interface DirectoryBlankMenuProps extends DirectoryBlankMenuDropdownProps {
+interface DirectoryBlankMenuProps {
   position: { x: number; y: number } | null;
+  actions: DirectoryBlankActions;
   onClose: () => void;
 }
 
-export function DirectoryBlankMenu({
-  position,
-  onClose,
-  ...dropdownProps
-}: DirectoryBlankMenuProps) {
+export function DirectoryBlankMenu({ position, actions, onClose }: DirectoryBlankMenuProps) {
   return (
     <Menu
       opened={position !== null}
@@ -88,7 +87,7 @@ export function DirectoryBlankMenu({
           }}
         />
       </Menu.Target>
-      <DirectoryBlankMenuDropdown {...dropdownProps} />
+      <DirectoryBlankMenuDropdown actions={actions} />
     </Menu>
   );
 }

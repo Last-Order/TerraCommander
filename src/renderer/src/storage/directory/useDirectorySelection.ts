@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
-import type { EntryRef } from '@shared/storage';
-import { directoryKey, type DirectoryCache, type DirectoryEntries } from './directory-cache';
+import { useStorageWorkspace } from '../storage-workspace-context';
+import { useCurrentDirectory } from './current-directory-context';
+import { isDirectoryBlankTarget } from './directory-blank-target';
+import { directoryKey, type DirectoryEntries } from './directory-cache';
 import type { DirectoryRow, DirectorySelectionModifiers } from './directory-types';
 
 interface SelectionState {
@@ -11,18 +13,12 @@ interface SelectionState {
 interface SelectionOptions {
   rows: readonly DirectoryRow[];
   completedEntries: DirectoryEntries | undefined;
-  cache: DirectoryCache;
-  parent: EntryRef;
   scrollElement: HTMLDivElement | null;
 }
 
-export function useDirectorySelection({
-  rows,
-  completedEntries,
-  cache,
-  parent,
-  scrollElement,
-}: SelectionOptions) {
+export function useDirectorySelection({ rows, completedEntries, scrollElement }: SelectionOptions) {
+  const { directoryCache: cache } = useStorageWorkspace();
+  const { ref: parent } = useCurrentDirectory();
   const [selection, setSelection] = useState<SelectionState>(() => ({
     locators: new Set(),
     anchor: null,
@@ -104,9 +100,7 @@ export function useDirectorySelection({
     if (!scrollElement) return;
     const clearOnBlankClick = (event: MouseEvent) => {
       if (event.ctrlKey || event.shiftKey || event.metaKey) return;
-      const { target } = event;
-      if (!(target instanceof Element)) return;
-      if (target.closest('tr[data-index], thead, [data-directory-search]')) return;
+      if (!isDirectoryBlankTarget(event.target)) return;
       selectOnly(null);
     };
     scrollElement.addEventListener('click', clearOnBlankClick);

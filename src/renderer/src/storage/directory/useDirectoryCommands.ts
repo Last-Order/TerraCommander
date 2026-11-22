@@ -3,7 +3,10 @@ import { notifications } from '@mantine/notifications';
 import { useTranslation } from 'react-i18next';
 import type { Entry } from '@shared/storage';
 import { useKeyboardShortcuts } from '@renderer/shortcuts/useKeyboardShortcuts';
+import { useCurrentDirectory } from './current-directory-context';
+import type { DirectoryBlankActions } from './DirectoryBlankMenu';
 import type { EntryCapabilities } from './entry-capabilities';
+import type { DirectoryListingPhase } from './useDirectoryListing';
 
 const selectAllLoadingNotification = 'directory-select-all-loading';
 
@@ -34,10 +37,7 @@ interface DirectoryCommandSearch {
 }
 
 interface DirectoryCommandsOptions {
-  phase: 'loading' | 'ready' | 'refreshing' | 'error';
-  loading: boolean;
-  hasError: boolean;
-  canCreateDirectory: boolean;
+  phase: DirectoryListingPhase;
   refresh: () => void;
   selectAll: () => void;
   capabilities: EntryCapabilities;
@@ -45,16 +45,12 @@ interface DirectoryCommandsOptions {
   modals: DirectoryCommandModals;
   clipboard: DirectoryCommandClipboard;
   search: DirectoryCommandSearch;
-  searchInput: RefObject<HTMLInputElement | null>;
   moreButton: RefObject<HTMLButtonElement | null>;
   onNavigateUp?: (() => void) | undefined;
 }
 
 export function useDirectoryCommands({
   phase,
-  loading,
-  hasError,
-  canCreateDirectory,
   refresh,
   selectAll,
   capabilities,
@@ -62,23 +58,21 @@ export function useDirectoryCommands({
   modals,
   clipboard,
   search,
-  searchInput,
   moreButton,
   onNavigateUp,
 }: DirectoryCommandsOptions) {
   const { t } = useTranslation('storage');
+  const { canCreateDirectory } = useCurrentDirectory();
+  const loading = phase === 'loading' || phase === 'refreshing';
+  const hasError = phase === 'error';
 
-  const reload = () => {
+  const runAfterClosingMenu = (action: () => void) => () => {
     menu.closeMenu();
-    refresh();
+    action();
   };
 
-  const openSearch = () => {
-    menu.closeMenu();
-    search.open();
-    searchInput.current?.focus();
-    searchInput.current?.select();
-  };
+  const reload = runAfterClosingMenu(refresh);
+  const openSearch = runAfterClosingMenu(search.open);
 
   const closeSearch = () => {
     search.close();
@@ -120,10 +114,9 @@ export function useDirectoryCommands({
     clipboard.cut(capabilities.selectedEntries);
   };
 
-  const pasteSelection = () => {
-    menu.closeMenu();
+  const pasteSelection = runAfterClosingMenu(() => {
     void clipboard.paste();
-  };
+  });
 
   const navigateUp = () => {
     if (!onNavigateUp) return;
@@ -188,13 +181,20 @@ export function useDirectoryCommands({
       : []),
   ]);
 
-  return {
+  const blankActions: DirectoryBlankActions = {
     createDirectoryEnabled,
+    canPaste: clipboard.canPaste,
+    refreshDisabled: loading,
+    onCreateDirectory: openCreateDirectory,
+    onPaste: pasteSelection,
+    onRefresh: reload,
+  };
+
+  return {
+    blankActions,
     reload,
     closeSearch,
-    openCreateDirectory,
     copySelection,
     cutSelection,
-    pasteSelection,
   };
 }

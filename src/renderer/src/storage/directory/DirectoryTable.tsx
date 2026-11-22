@@ -6,6 +6,7 @@ import type { Entry } from '@shared/storage';
 import classes from './DirectoryTable.module.css';
 import { DirectoryEntryRow } from './DirectoryEntryRow';
 import { isDirectoryNavigationKey } from './directory-navigation';
+import { useDirectorySortStore } from './directory-sort';
 import { useDirectoryVirtualizer } from './useDirectoryVirtualizer';
 import type {
   DirectoryRevealTarget,
@@ -52,13 +53,11 @@ interface DirectoryTableProps {
   scrollElement: HTMLDivElement | null;
   rows: readonly DirectoryRow[];
   revealTarget?: DirectoryRevealTarget | null;
-  sort: DirectorySort | null;
   canSort: boolean;
   loadingWithoutEntries: boolean;
   navigationBlocked?: boolean | undefined;
   selectedLocators: ReadonlySet<string>;
   cutLocators?: ReadonlySet<string> | undefined;
-  onSort: (field: DirectorySort['field']) => void;
   onSelect: (locator: string, modifiers: DirectorySelectionModifiers) => void;
   onContextMenu: (entry: Entry) => void;
   onOpen: (entry: Entry) => void;
@@ -68,18 +67,18 @@ export function DirectoryTable({
   scrollElement,
   rows,
   revealTarget = null,
-  sort,
   canSort,
   loadingWithoutEntries,
   navigationBlocked = false,
   selectedLocators,
   cutLocators,
-  onSort,
   onSelect,
   onContextMenu,
   onOpen,
 }: DirectoryTableProps) {
   const { t, i18n } = useTranslation('storage');
+  const sort = useDirectorySortStore((state) => state.sort);
+  const onSort = useDirectorySortStore((state) => state.toggleSort);
   const locale = i18n.resolvedLanguage;
   const dateFormatter = useMemo(
     () => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }),

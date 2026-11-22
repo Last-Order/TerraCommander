@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { DirectoryRow } from './directory-types';
 
 interface DirectorySearchState {
@@ -11,6 +11,7 @@ export function useDirectorySearch(
   rows: readonly DirectoryRow[],
   onMatch: (locator: string | null) => void,
 ) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState<DirectorySearchState>({
     opened: false,
     query: '',
@@ -39,6 +40,13 @@ export function useDirectorySearch(
     () => (!search.opened || search.locator === null ? null : { locator: search.locator }),
     [search],
   );
+  const open = () => {
+    setSearch((previous) =>
+      previous.opened ? previous : { opened: true, query: '', locator: null },
+    );
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  };
   const navigate = (direction: -1 | 1) => {
     if (!search.opened || matches.length === 0) return;
     const next = (index + direction + matches.length) % matches.length;
@@ -47,16 +55,16 @@ export function useDirectorySearch(
 
   return {
     opened: search.opened,
+    inputRef,
     query: search.query,
     index,
     total: matches.length,
     revealTarget,
-    open: () =>
-      setSearch((previous) =>
-        previous.opened ? previous : { opened: true, query: '', locator: null },
-      ),
+    open,
     close: () => setSearch((previous) => ({ ...previous, opened: false })),
     changeQuery: (query: string) => setSearch({ opened: true, query, locator: null }),
     navigate,
   };
 }
+
+export type DirectorySearchController = ReturnType<typeof useDirectorySearch>;
