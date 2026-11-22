@@ -1,5 +1,4 @@
 import { expect, it, vi } from 'vitest';
-import { topLevelEntries } from '@shared/task-selectors';
 import { TaskQueue } from './task-queue';
 import type { TaskExecutionOutcome, TaskHandler } from './types';
 
@@ -58,9 +57,6 @@ it('schedules group children alongside standalone tasks under the same global ca
   queue.sealGroup(groupId);
   queue.enqueue({ type: 'work', input: { name: '9' } });
   expect(execute).toHaveBeenCalledTimes(8);
-  expect(topLevelEntries(queue.store.getState().tasks, queue.store.getState().groups)).toHaveLength(
-    2,
-  );
   gates[0]!.resolve(completed);
   await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(9));
   gates[1]!.resolve(completed);

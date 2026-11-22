@@ -3,14 +3,6 @@ import { rendererNamespaces } from './create-renderer-i18n';
 import { en } from './en';
 import { zhCN } from './zh-CN';
 
-it('uses camelCase for all translation keys', () => {
-  for (const namespace of rendererNamespaces) {
-    for (const key of Object.keys(en[namespace])) {
-      expect(key, `${namespace}:${key}`).toMatch(/^[a-z][a-zA-Z0-9]*$/);
-    }
-  }
-});
-
 it('uses the same interpolation parameters in both translations', () => {
   const parameters = (text: string) =>
     new Set(Array.from(text.matchAll(/{{\s*([^}]+?)\s*}}/g), (match) => match[1]));

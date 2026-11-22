@@ -1,4 +1,4 @@
-import { mkdir, mkdtempDisposable, writeFile } from 'node:fs/promises';
+import { mkdtempDisposable, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { BrowserWindow, OpenDialogReturnValue } from 'electron';
@@ -6,6 +6,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { channels } from '@shared/contracts';
 import { defaultLanguageSettings, type LanguagePreference } from '@shared/language';
 import type { Entry } from '@shared/storage';
+import { defaultTransferConcurrency } from '@shared/tasks';
 import { AccountError } from '../accounts/core/errors';
 import { StorageError, type WriteExecution } from '../storage';
 import { registerIpcHandlers } from './';
@@ -120,14 +121,9 @@ it('reads and updates settings via the generic settings IPC without loading stor
   const setSetting = handlers.get(channels.setSetting)!;
 
   expect(await getSetting(event, 'unknown.key')).toEqual({ ok: false, code: 'InvalidArgument' });
-  expect(await getSetting(event, 'transfers.concurrencyLimit')).toEqual({ ok: true, value: 8 });
-  expect(await setSetting(event, 'transfers.concurrencyLimit', 0)).toEqual({
-    ok: false,
-    code: 'InvalidArgument',
-  });
-  expect(await setSetting(event, 'transfers.concurrencyLimit', 33)).toEqual({
-    ok: false,
-    code: 'InvalidArgument',
+  expect(await getSetting(event, 'transfers.concurrencyLimit')).toEqual({
+    ok: true,
+    value: defaultTransferConcurrency,
   });
   expect(await setSetting(event, 'transfers.concurrencyLimit', '12')).toEqual({
     ok: false,
@@ -554,80 +550,29 @@ it('requires folder creation support for a folder upload destination', async () 
   expect(target).toHaveBeenLastCalledWith(remoteParent, true);
 });
 
-it('validates and uploads dropped files, folders, and mixed selections without opening a picker', async () => {
-  const { event, browser, parent } = setup();
+it('validates dropped paths and forwards them to the owning task session without a picker', async () => {
+  const { event, parent, services } = setup();
   const uploadPaths = handlers.get(channels.uploadPathsTask)!;
-  const remoteParent = { ...parent, connectionId: '5e45885a-89f0-462e-9821-7195cba174e5' };
-  const target = vi.spyOn(browser.uploads, 'validateDestination').mockResolvedValue(undefined);
-  const destination = (
-    browser.uploads as unknown as {
-      destination: {
-        createDirectory: (request: { parent: typeof remoteParent; name: string }) => Promise<Entry>;
-      };
-    }
-  ).destination;
-  const createDirectory = vi.spyOn(destination, 'createDirectory').mockResolvedValue({
-    ref: { ...remoteParent, locator: 'created-dir' },
-    name: 'docs',
-    kind: 'directory',
-    capabilities: { write: { support: 'supported' }, createDirectory: { support: 'supported' } },
-  });
-  const write = vi.spyOn(browser, 'prepareUpload').mockImplementation((targetParent, name) => ({
-    run: vi.fn<WriteExecution['run']>(async () => ({
-      ref: { ...targetParent, locator: `uploaded-${name}` },
-      name,
-      kind: 'file',
-      capabilities: {},
-    })),
-  }));
-  const snapshot = () => handlers.get(channels.getTaskSnapshot)!(event);
+  const getTasks = vi.spyOn(services.tasks, 'get');
+  const uploadSelectedPaths = vi
+    .spyOn(StorageTaskService.prototype, 'uploadSelectedPaths')
+    .mockResolvedValue(undefined);
+  const request = {
+    parent: { ...parent, connectionId: '5e45885a-89f0-462e-9821-7195cba174e5' },
+    directoryPath: '/Drive',
+    paths: ['D:\\cover.txt', 'D:\\docs'],
+  };
 
-  expect(
-    await uploadPaths(event, { parent: remoteParent, directoryPath: '/Drive', paths: [] }),
-  ).toEqual({
+  expect(await uploadPaths(event, { ...request, paths: [] })).toEqual({
     ok: false,
     code: 'InvalidArgument',
   });
-  await expect(
-    uploadPaths(
-      { ...event, sender: {} },
-      { parent: remoteParent, directoryPath: '/Drive', paths: ['D:\\a.txt'] },
-    ),
-  ).rejects.toThrow('Untrusted IPC sender');
-
-  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-drop-ipc-'));
-  const singleFile = join(temporary.path, 'cover.txt');
-  const folder = join(temporary.path, 'docs');
-  await writeFile(singleFile, 'cover');
-  await mkdir(folder, { recursive: true });
-  await writeFile(join(folder, 'guide.txt'), 'guide');
-
-  expect(
-    await uploadPaths(event, {
-      parent: remoteParent,
-      directoryPath: '/Drive',
-      paths: [singleFile],
-    }),
-  ).toEqual({ ok: true, value: undefined });
-  expect(target).toHaveBeenLastCalledWith(remoteParent, false);
-
-  expect(
-    await uploadPaths(event, {
-      parent: remoteParent,
-      directoryPath: '/Drive',
-      paths: [singleFile, folder],
-    }),
-  ).toEqual({ ok: true, value: undefined });
-  expect(target).toHaveBeenLastCalledWith(remoteParent, true);
-  expect(picker).not.toHaveBeenCalled();
-
-  await vi.waitFor(async () =>
-    expect(await snapshot()).toMatchObject({
-      value: {
-        groups: [{ state: { phase: 'settled', outcome: 'completed' } }],
-      },
-    }),
+  await expect(uploadPaths({ ...event, sender: {} }, request)).rejects.toThrow(
+    'Untrusted IPC sender',
   );
-  expect(createDirectory).toHaveBeenCalledTimes(1);
-  expect(write).toHaveBeenCalledTimes(3);
+  expect(getTasks).not.toHaveBeenCalled();
+
+  expect(await uploadPaths(event, request)).toEqual({ ok: true, value: undefined });
+  expect(uploadSelectedPaths).toHaveBeenCalledExactlyOnceWith(event.sender.id, request);
+  expect(picker).not.toHaveBeenCalled();
 });

@@ -90,30 +90,35 @@ it('rejects a file created after preparation before opening the source', async (
   await service.dispose();
 });
 
-it.each(['network', 'length'])(
-  'removes an incomplete new file after %s failure',
-  async (failure) => {
-    await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-download-'));
-    const dispose = vi.fn(async () => {});
-    const { service, request } = fixture(temporary.path, async () => ({
-      stream: Readable.from(
-        (async function* () {
-          yield Buffer.from('partial');
-          if (failure === 'network') throw new StorageError('NetworkError');
-        })(),
-      ),
-      length: 100,
-      dispose,
-    }));
-    const prepared = await prepareExecution(service, 1, request);
-    await expect(service.run(1, prepared.id, () => {})).rejects.toMatchObject({
-      code: failure === 'network' ? 'NetworkError' : 'OutcomeUnknown',
-    });
-    expect(await readdir(temporary.path)).toEqual([]);
-    expect(dispose).toHaveBeenCalledOnce();
-    await service.dispose();
-  },
-);
+it.each([
+  { failure: 'network', replace: false },
+  { failure: 'length', replace: false },
+  { failure: 'network', replace: true },
+  { failure: 'length', replace: true },
+])('cleans up after $failure failure with replace=$replace', async ({ failure, replace }) => {
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-download-'));
+  const path = join(temporary.path, entry.name);
+  if (replace) await writeFile(path, 'old');
+  const dispose = vi.fn(async () => {});
+  const { service, request } = fixture(temporary.path, async () => ({
+    stream: Readable.from(
+      (async function* () {
+        yield Buffer.from('partial');
+        if (failure === 'network') throw new StorageError('NetworkError');
+      })(),
+    ),
+    length: 100,
+    dispose,
+  }));
+  const prepared = await prepareExecution(service, 1, { ...request, replace });
+  await expect(service.run(1, prepared.id, () => {})).rejects.toMatchObject({
+    code: failure === 'network' ? 'NetworkError' : 'OutcomeUnknown',
+  });
+  expect(await readdir(temporary.path)).toEqual(replace ? [entry.name] : []);
+  if (replace) expect(await readFile(path, 'utf8')).toBe('old');
+  expect(dispose).toHaveBeenCalledOnce();
+  await service.dispose();
+});
 
 it.each(['failed', 'completed'])(
   'preserves an external replacement and rejects the %s download',
@@ -138,31 +143,6 @@ it.each(['failed', 'completed'])(
     await service.dispose();
   },
 );
-
-it.each(['network', 'length'])('preserves an existing file on %s failure', async (failure) => {
-  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-download-'));
-  const path = join(temporary.path, entry.name);
-  await writeFile(path, 'old');
-  const dispose = vi.fn(async () => {});
-  const { service, request } = fixture(temporary.path, async () => ({
-    stream: Readable.from(
-      (async function* () {
-        yield Buffer.from('partial');
-        if (failure === 'network') throw new StorageError('NetworkError');
-      })(),
-    ),
-    length: 100,
-    dispose,
-  }));
-  const prepared = await prepareExecution(service, 1, { ...request, replace: true });
-  await expect(service.run(1, prepared.id, () => {})).rejects.toMatchObject({
-    code: failure === 'network' ? 'NetworkError' : 'OutcomeUnknown',
-  });
-  expect(await readFile(path, 'utf8')).toBe('old');
-  expect(await readdir(temporary.path)).toEqual([entry.name]);
-  expect(dispose).toHaveBeenCalledOnce();
-  await service.dispose();
-});
 
 it.each([false, true])(
   'cancels active reads, cleans owned output, and releases the target; replace: %s',

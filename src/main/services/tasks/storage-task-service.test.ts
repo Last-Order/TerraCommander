@@ -514,10 +514,11 @@ it('uploads mixed files and folders as a task group, emits directory changes, an
   service.subscribe((event) => events.push(event));
 
   try {
-    await service.uploadPaths(1, { parent, directoryPath: '/Drive' }, async () => [
-      rootFile,
-      folder,
-    ]);
+    await service.uploadSelectedPaths(1, {
+      parent,
+      directoryPath: '/Drive',
+      paths: [rootFile, folder],
+    });
 
     await vi.waitFor(() => {
       const snapshot = service.getSnapshot();
@@ -526,6 +527,7 @@ it('uploads mixed files and folders as a task group, emits directory changes, an
 
     const createdDocsRef = { ...parent, locator: 'created-dir-1' };
     expect(createDirectory).toHaveBeenCalledTimes(1);
+    expect(prepareUpload).toHaveBeenCalledWith(parent, 'cover.txt', expect.anything());
     expect(events).toContainEqual({
       type: 'directory-changed',
       change: {
