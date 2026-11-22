@@ -36,15 +36,16 @@ export function DirectoryBlankMenuDropdown({ actions }: { actions: DirectoryBlan
           {t('newFolder')}
         </Menu.Item>
       )}
-      <Menu.Item
-        disabled={!canPaste}
-        aria-keyshortcuts="Control+V"
-        leftSection={<ClipboardPaste size={16} strokeWidth={1.5} aria-hidden="true" />}
-        onClick={onPaste}
-      >
-        {t('pasteEntry')}
-      </Menu.Item>
-      <Menu.Divider />
+      {canPaste && (
+        <Menu.Item
+          aria-keyshortcuts="Control+V"
+          leftSection={<ClipboardPaste size={16} strokeWidth={1.5} aria-hidden="true" />}
+          onClick={onPaste}
+        >
+          {t('pasteEntry')}
+        </Menu.Item>
+      )}
+      {(canCreateDirectory || canPaste) && <Menu.Divider />}
       <Menu.Item
         disabled={refreshDisabled}
         aria-keyshortcuts="F5"
