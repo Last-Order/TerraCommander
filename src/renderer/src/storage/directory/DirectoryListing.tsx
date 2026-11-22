@@ -1,10 +1,7 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Menu, VisuallyHidden } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
-import { useStore } from 'zustand';
 import type { Entry } from '@shared/storage';
-import { selectPendingEntryEffects } from '../tasks/pending-entry-effects';
-import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
 import { useCurrentDirectory } from './current-directory-context';
 import { isDirectoryBlankTarget } from './directory-blank-target';
 import { buildDirectoryRows } from './directory-rows';
@@ -22,6 +19,7 @@ import { DirectoryEntryModals } from './modals/DirectoryEntryModals';
 import { useDirectoryClipboard } from './useDirectoryClipboard';
 import { useDirectoryCommands } from './useDirectoryCommands';
 import { useDirectoryContextMenu } from './useDirectoryContextMenu';
+import { useDirectoryRenames } from './useDirectoryEffects';
 import { useDirectoryEntryModals } from './useDirectoryEntryModals';
 import { useDirectoryListing } from './useDirectoryListing';
 import { useDirectorySearch } from './useDirectorySearch';
@@ -56,38 +54,35 @@ export function DirectoryListing({
   const loading = phase === 'loading' || phase === 'refreshing';
   const loadingWithoutEntries = phase === 'loading' && entries.size === 0;
 
-  const queue = useStorageTaskQueue();
-  const tasks = useStore(queue.store, (state) => state.tasks);
-  const groups = useStore(queue.store, (state) => state.groups);
-  const pendingEntries = useMemo(
-    () => selectPendingEntryEffects(tasks, groups, entries, parent),
-    [tasks, groups, entries, parent],
-  );
+  const optimisticNames = useDirectoryRenames(parent);
 
   const rows = useMemo(
     () =>
-      buildDirectoryRows(entries, pendingEntries, snapshot ? sort : null, i18n.resolvedLanguage),
-    [entries, pendingEntries, snapshot, sort, i18n.resolvedLanguage],
+      buildDirectoryRows(entries, optimisticNames, snapshot ? sort : null, i18n.resolvedLanguage),
+    [entries, optimisticNames, snapshot, sort, i18n.resolvedLanguage],
   );
 
-  const { selectedLocators, selectEntry, selectAll, selectOnly, selectForContextMenu } =
-    useDirectorySelection({
-      rows,
-      completedEntries: phase === 'ready' ? entries : undefined,
-      scrollElement,
-    });
-  const capabilities = useMemo(
-    () => resolveEntryCapabilities(entries, selectedLocators, pendingEntries),
-    [entries, selectedLocators, pendingEntries],
-  );
+  const {
+    selectedLocators,
+    selectedEntries,
+    selectEntry,
+    selectAll,
+    selectOnly,
+    selectForContextMenu,
+  } = useDirectorySelection({
+    entries,
+    ready: phase === 'ready',
+    rows,
+    scrollElement,
+  });
+  const capabilities = useMemo(() => resolveEntryCapabilities(selectedEntries), [selectedEntries]);
   const menu = useDirectoryContextMenu({
     entries,
     phase,
     selectForContextMenu,
   });
   const modals = useDirectoryEntryModals({
-    entries,
-    selectedLocators,
+    selectedEntries,
     capabilities,
     menuEntry: menu.menuEntry,
     onOpenModal: menu.closeMenu,
@@ -110,6 +105,7 @@ export function DirectoryListing({
     phase,
     refresh,
     selectAll,
+    selectedEntries,
     capabilities,
     menu,
     modals,
@@ -174,6 +170,8 @@ export function DirectoryListing({
                 onOpen={onOpen}
               />
               <DirectoryEntryMenu
+                opened={menu.entryMenuOpened}
+                selectedEntries={selectedEntries}
                 capabilities={capabilities}
                 onCopy={commands.copySelection}
                 onCut={commands.cutSelection}

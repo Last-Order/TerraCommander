@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { notifications } from '@mantine/notifications';
 import { useTranslation } from 'react-i18next';
-import type { Entry } from '@shared/storage';
+import { entryKey, type Entry } from '@shared/storage';
 import { errorKey, StorageBrowserError } from '../storage-client';
 import { useStorageWorkspace } from '../storage-workspace-context';
 import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
 import { useCurrentDirectory } from './current-directory-context';
-import { directoryKey } from './directory-cache';
 import type { DirectoryPasteConflictModal } from './modals/DirectoryEntryModals';
 import { useStorageClipboard, validatePaste } from './storage-clipboard';
 
@@ -58,7 +57,7 @@ export function useDirectoryClipboard({ blocked }: DirectoryClipboardOptions) {
 
   const cutLocators = useMemo(() => {
     if (!clipboard || clipboard.mode !== 'cut') return undefined;
-    if (directoryKey(clipboard.sourceParent) !== directoryKey(parent)) return undefined;
+    if (entryKey(clipboard.sourceParent) !== entryKey(parent)) return undefined;
     return new Set(clipboard.entries.map((entry) => entry.ref.locator));
   }, [clipboard, parent]);
 

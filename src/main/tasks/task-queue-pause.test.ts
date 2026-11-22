@@ -218,3 +218,21 @@ it('preserves completion over a late pause and recovers from a rejected pause re
   expect(onSuccess).toHaveBeenCalledOnce();
   expect(queue.canPause(task(1))).toBe(false);
 });
+
+it('ignores redundant control reports when availability has not changed', async () => {
+  const { queue, executions } = setup();
+  queue.enqueue({ type: 'transfer', input: 'file' });
+  const execution = executions[0];
+  if (!execution) throw new Error('Missing execution');
+
+  const listener = vi.fn();
+  const unsubscribe = queue.store.subscribe(listener);
+  execution.context.reportControls({ cancellable: true, pausable: true });
+  expect(listener).not.toHaveBeenCalled();
+
+  execution.context.reportControls({ cancellable: true, pausable: false });
+  expect(listener).toHaveBeenCalledTimes(1);
+
+  unsubscribe();
+  execution.pending.resolve({ status: 'completed', result: undefined });
+});

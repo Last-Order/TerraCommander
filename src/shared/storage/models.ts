@@ -17,6 +17,10 @@ export interface EntryRef {
   locator: string;
 }
 
+export function entryKey({ connectionId, spaceId, locator }: EntryRef): string {
+  return JSON.stringify([connectionId, spaceId, locator]);
+}
+
 export const storageLabelKeys = ['thisPc', 'localFileSystem', 'myDrive'] as const;
 export type StorageLabel = string | { messageKey: (typeof storageLabelKeys)[number] };
 

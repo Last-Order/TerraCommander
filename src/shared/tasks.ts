@@ -240,9 +240,21 @@ export type StorageTaskGroupRequest =
 export type StorageTaskItem = TaskViewItem<StorageTaskRequest>;
 export type StorageTaskGroupItem = TaskGroupViewItem<StorageTaskGroupRequest>;
 
+export interface PendingEntryRename {
+  parent: EntryRef;
+  entry: EntryRef;
+  name: string;
+}
+
+export interface StorageDirectoryEffects {
+  busyEntries: readonly EntryRef[];
+  renames: readonly PendingEntryRename[];
+}
+
 export interface StorageTaskSnapshot {
   tasks: readonly StorageTaskItem[];
   groups: readonly StorageTaskGroupItem[];
+  directoryEffects: StorageDirectoryEffects;
 }
 
 export type StorageDirectoryChange =
@@ -253,6 +265,13 @@ export type StorageDirectoryChange =
 
 export type StorageTaskEvent =
   | { type: 'snapshot'; snapshot: StorageTaskSnapshot }
+  | { type: 'task-progress'; taskId: number; progress: TaskProgress }
+  | {
+      type: 'group-progress';
+      groupId: number;
+      progress: TaskProgress;
+      preparationProgress?: TaskProgress | undefined;
+    }
   | { type: 'directory-changed'; change: StorageDirectoryChange }
   | { type: 'auth-required'; connectionId: string };
 

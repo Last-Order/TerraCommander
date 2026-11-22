@@ -122,6 +122,7 @@ export function DirectoryTable({
     };
   }, [tableRef]);
 
+  const disabledTitle = t('entryWriteLocked');
   const virtualRows = virtualizer.getVirtualItems();
   const lastRowEnd = (virtualRows.at(-1)?.end ?? scrollMargin) - scrollMargin;
   const paddingBottom = Math.max(0, virtualizer.getTotalSize() - lastRowEnd);
@@ -132,6 +133,7 @@ export function DirectoryTable({
       index={index}
       selected={selectedLocators.has(row.entry.ref.locator)}
       cut={cutLocators?.has(row.entry.ref.locator) ?? false}
+      disabledTitle={disabledTitle}
       dateFormatter={dateFormatter}
       sizeFormatter={sizeFormatter}
       measure={enabled ? virtualizer.measureElement : undefined}

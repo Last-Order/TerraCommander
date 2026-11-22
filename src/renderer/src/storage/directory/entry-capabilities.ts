@@ -1,80 +1,69 @@
 import type { Entry } from '@shared/storage';
 import { localConnectionId } from '@shared/storage-browser';
-import type { PendingEntryEffect } from '../tasks/pending-entry-effects';
 
 export interface EntryCapabilities {
-  selectedEntries: Entry[];
-  renamableEntry: Entry | undefined;
   canCopy: boolean;
   canCut: boolean;
   canDownload: boolean;
   canRename: boolean;
   canDelete: boolean;
-  renamePending: boolean;
-  selectionBusy: boolean;
 }
 
-export function canDeleteEntry(entry: Entry | undefined): boolean {
-  if (entry?.kind !== 'file' && entry?.kind !== 'link' && entry?.kind !== 'directory') {
-    return false;
-  }
-  return entry.capabilities.remove?.support !== 'unsupported';
-}
-
-export function resolveEntryCapabilities(
-  entries: ReadonlyMap<string, Entry>,
-  selectedLocators: ReadonlySet<string>,
-  pendingEntries: ReadonlyMap<string, PendingEntryEffect>,
-): EntryCapabilities {
-  const [selectedLocator] = selectedLocators;
-  const selectedEntry =
-    selectedLocators.size === 1 && selectedLocator !== undefined
-      ? entries.get(selectedLocator)
-      : undefined;
-  const renamableEntry =
-    selectedEntry?.capabilities.rename?.support !== 'unsupported' ? selectedEntry : undefined;
-  const renamePending =
-    renamableEntry !== undefined && pendingEntries.get(renamableEntry.ref.locator)?.busy === true;
-
-  const selectedEntries = [...selectedLocators].flatMap((locator) => {
-    const entry = entries.get(locator);
-    return entry ? [entry] : [];
-  });
-  const selectionBusy = selectedEntries.some(
-    (entry) => pendingEntries.get(entry.ref.locator)?.busy === true,
+function canDeleteEntry(entry: Entry): boolean {
+  return (
+    (entry.kind === 'file' || entry.kind === 'link' || entry.kind === 'directory') &&
+    entry.capabilities.remove?.support !== 'unsupported'
   );
+}
 
-  const canDelete =
-    selectedEntries.length > 0 && selectedEntries.every((entry) => canDeleteEntry(entry));
-  const canDownload =
-    selectedEntries.length > 0 &&
-    selectedEntries.every(
-      (entry) =>
-        entry.ref.connectionId !== localConnectionId &&
-        (entry.kind === 'file'
-          ? entry.capabilities.read?.support !== 'unsupported'
-          : entry.kind === 'directory' && entry.capabilities.list?.support !== 'unsupported'),
-    );
-  const canCopy =
-    selectedEntries.length > 0 &&
-    selectedEntries.every((entry) => entry.kind === 'file' || entry.kind === 'directory');
-  const canCut =
-    selectedEntries.length > 0 &&
-    selectedEntries.every(
-      (entry) =>
-        (entry.kind === 'file' || entry.kind === 'directory' || entry.kind === 'link') &&
-        (entry.capabilities.moveWithin?.support !== 'unsupported' || canDeleteEntry(entry)),
-    );
+function canDownloadEntry(entry: Entry): boolean {
+  if (entry.ref.connectionId === localConnectionId) return false;
+  if (entry.kind === 'file') return entry.capabilities.read?.support !== 'unsupported';
+  return entry.kind === 'directory' && entry.capabilities.list?.support !== 'unsupported';
+}
 
+function canCopyEntry(entry: Entry): boolean {
+  return entry.kind === 'file' || entry.kind === 'directory';
+}
+
+function canCutEntry(entry: Entry): boolean {
+  return (
+    (entry.kind === 'file' || entry.kind === 'directory' || entry.kind === 'link') &&
+    (entry.capabilities.moveWithin?.support !== 'unsupported' || canDeleteEntry(entry))
+  );
+}
+
+export function resolveEntryCapabilities(selectedEntries: readonly Entry[]): EntryCapabilities {
+  if (selectedEntries.length === 0) {
+    return {
+      canCopy: false,
+      canCut: false,
+      canDownload: false,
+      canRename: false,
+      canDelete: false,
+    };
+  }
+
+  let canDelete = true;
+  let canDownload = true;
+  let canCopy = true;
+  let canCut = true;
+
+  for (const entry of selectedEntries) {
+    if (canDelete && !canDeleteEntry(entry)) canDelete = false;
+    if (canDownload && !canDownloadEntry(entry)) canDownload = false;
+    if (canCopy && !canCopyEntry(entry)) canCopy = false;
+    if (canCut && !canCutEntry(entry)) canCut = false;
+    if (!canDelete && !canDownload && !canCopy && !canCut) break;
+  }
+
+  const singleEntry = selectedEntries.length === 1 ? selectedEntries[0] : undefined;
   return {
-    selectedEntries,
-    renamableEntry,
     canCopy,
     canCut,
     canDownload,
-    canRename: renamableEntry !== undefined,
+    canRename:
+      singleEntry !== undefined && singleEntry.capabilities.rename?.support !== 'unsupported',
     canDelete,
-    renamePending,
-    selectionBusy,
   };
 }

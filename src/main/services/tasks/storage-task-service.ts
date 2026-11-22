@@ -1,4 +1,4 @@
-import type { Entry } from '@shared/storage';
+import { entryKey, type Entry } from '@shared/storage';
 import { localConnectionId, type BrowserErrorCode } from '@shared/storage-browser';
 import { defaultTransferConcurrency } from '@shared/tasks';
 import type {
@@ -48,7 +48,8 @@ import {
   removeMovedSources,
   type CopyDiscoveryItem,
 } from './copy-paste';
-import { entryKey, queueOwnerId, toTaskFailure } from './task-errors';
+import { projectDirectoryEffects } from './directory-effects';
+import { toTaskFailure } from './task-errors';
 import {
   createDownloadTransferConfig,
   createTransferHandler,
@@ -57,6 +58,7 @@ import {
   type InternalUploadInput,
 } from './transfer-handler';
 import {
+  queueOwnerId,
   TransferSessionCoordinator,
   type TransferSourceCleanup,
 } from './transfer-session-coordinator';
@@ -229,7 +231,28 @@ export class StorageTaskService {
         this.enqueueUploadGroup(request, prepared, sourceCleanup),
       emitDirectoryChanged: (change) => this.emitDirectoryChanged(change),
     });
-    this.unsubscribeQueue = this.queue.store.subscribe(() => {
+    this.unsubscribeQueue = this.queue.store.subscribe((state, _previous, change) => {
+      if (change.kind === 'task-progress') {
+        const task = state.tasks.find((item) => item.id === change.taskId);
+        if (task?.progress) {
+          this.emit({ type: 'task-progress', taskId: task.id, progress: task.progress });
+          return;
+        }
+      }
+      if (change.kind === 'group-progress') {
+        const group = state.groups.find((item) => item.id === change.groupId);
+        if (group) {
+          this.emit({
+            type: 'group-progress',
+            groupId: group.id,
+            progress: group.progress,
+            ...(group.preparation.progress !== undefined
+              ? { preparationProgress: group.preparation.progress }
+              : {}),
+          });
+          return;
+        }
+      }
       this.emit({ type: 'snapshot', snapshot: this.getSnapshot() });
     });
   }
@@ -239,6 +262,7 @@ export class StorageTaskService {
     return {
       tasks: state.tasks.map((task) => this.projectTask(task)),
       groups: state.groups.map((group) => this.projectGroup(group)),
+      directoryEffects: projectDirectoryEffects(state.tasks, state.groups),
     };
   }
 

@@ -1,9 +1,13 @@
 import { Menu } from '@mantine/core';
 import { Copy, Download, Info, Scissors, SquarePen, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import type { Entry } from '@shared/storage';
 import type { EntryCapabilities } from './entry-capabilities';
+import { useSelectionBusy } from './useDirectoryEffects';
 
 interface DirectoryEntryMenuProps {
+  opened: boolean;
+  selectedEntries: readonly Entry[];
   capabilities: EntryCapabilities;
   onCopy: () => void;
   onCut: () => void;
@@ -14,6 +18,8 @@ interface DirectoryEntryMenuProps {
 }
 
 export function DirectoryEntryMenu({
+  opened,
+  selectedEntries,
   capabilities,
   onCopy,
   onCut,
@@ -23,8 +29,8 @@ export function DirectoryEntryMenu({
   onDelete,
 }: DirectoryEntryMenuProps) {
   const { t } = useTranslation('storage');
-  const { canCopy, canCut, canDownload, canRename, renamePending, canDelete, selectionBusy } =
-    capabilities;
+  const { canCopy, canCut, canDownload, canRename, canDelete } = capabilities;
+  const selectionBusy = useSelectionBusy(selectedEntries, opened);
   return (
     <Menu.Dropdown>
       {canCopy && (
@@ -57,7 +63,7 @@ export function DirectoryEntryMenu({
       )}
       {canRename && (
         <Menu.Item
-          disabled={renamePending}
+          disabled={selectionBusy}
           aria-keyshortcuts="F2"
           leftSection={<SquarePen size={16} strokeWidth={1.5} aria-hidden="true" />}
           onClick={onRename}

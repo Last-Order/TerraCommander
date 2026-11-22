@@ -12,6 +12,7 @@ import type {
   TaskHandlers,
   TaskMembership,
   TaskProgress,
+  TaskQueueChange,
   TaskQueueOptions,
   TaskQueueSnapshot,
   TaskRequest,
@@ -22,6 +23,7 @@ import type {
 type StoreListener<Definitions extends TaskDefinitions, Groups extends TaskGroupDefinitions> = (
   state: TaskQueueSnapshot<Definitions, Groups>,
   previous: TaskQueueSnapshot<Definitions, Groups>,
+  change: TaskQueueChange,
 ) => void;
 
 /** Domain-neutral priority queue with bounded category concurrency and cooperative cancellation. */
@@ -69,7 +71,7 @@ export class TaskQueue<
       nextId: () => ++this.nextId,
       getTasks: () => this.state.tasks,
       getGroups: () => this.state.groups,
-      setGroups: (groups) => this.setState({ groups }),
+      setGroups: (groups, change) => this.setState({ groups }, change),
       subscribe: (listener) => this.store.subscribe(listener),
       enqueue: (request, membership) => this.enqueue(request, membership),
       invokeHook: (id, hook) => this.invokeHook(id, hook),
@@ -346,6 +348,7 @@ export class TaskQueue<
       | ((
           current: TaskQueueSnapshot<Definitions, Groups>,
         ) => Partial<TaskQueueSnapshot<Definitions, Groups>>),
+    change: TaskQueueChange = { kind: 'snapshot' },
   ): void {
     const previous = this.state;
     const patch = typeof updater === 'function' ? updater(previous) : updater;
@@ -353,22 +356,25 @@ export class TaskQueue<
       tasks: patch.tasks ?? previous.tasks,
       groups: patch.groups ?? previous.groups,
     };
-    for (const listener of [...this.listeners]) listener(this.state, previous);
+    for (const listener of [...this.listeners]) listener(this.state, previous, change);
   }
 
-  private update(task: QueueTask<Definitions>): void {
+  private update(task: QueueTask<Definitions>, change?: TaskQueueChange): void {
     const previous = this.state.tasks.find((item) => item.id === task.id);
-    this.setState(({ tasks }) => ({
-      tasks: tasks.map((item): QueueTask<Definitions> => {
-        if (item.id !== task.id) return item;
-        if (item.groupId === undefined && item.memberKey === undefined) return task;
-        return {
-          ...task,
-          ...(item.groupId !== undefined ? { groupId: item.groupId } : {}),
-          ...(item.memberKey !== undefined ? { memberKey: item.memberKey } : {}),
-        } as QueueTask<Definitions>;
+    this.setState(
+      ({ tasks }) => ({
+        tasks: tasks.map((item): QueueTask<Definitions> => {
+          if (item.id !== task.id) return item;
+          if (item.groupId === undefined && item.memberKey === undefined) return task;
+          return {
+            ...task,
+            ...(item.groupId !== undefined ? { groupId: item.groupId } : {}),
+            ...(item.memberKey !== undefined ? { memberKey: item.memberKey } : {}),
+          } as QueueTask<Definitions>;
+        }),
       }),
-    }));
+      change,
+    );
     if (previous?.status !== task.status) this.groupCoordinator.sync();
   }
 
@@ -377,17 +383,21 @@ export class TaskQueue<
     changes: Partial<Extract<TaskState<unknown>, { status: 'running' }>> & {
       progress?: TaskProgress;
     },
+    change?: TaskQueueChange,
   ): void {
     if (task.status !== 'running') return;
-    this.update({
-      id: task.id,
-      request: task.request,
-      status: 'running',
-      controls: task.controls,
-      ...(task.controlRequest ? { controlRequest: task.controlRequest } : {}),
-      ...(task.progress ? { progress: task.progress } : {}),
-      ...changes,
-    });
+    this.update(
+      {
+        id: task.id,
+        request: task.request,
+        status: 'running',
+        controls: task.controls,
+        ...(task.controlRequest ? { controlRequest: task.controlRequest } : {}),
+        ...(task.progress ? { progress: task.progress } : {}),
+        ...changes,
+      },
+      change,
+    );
   }
 
   private async invokeHook(taskId: number, hook: () => void | Promise<void>): Promise<void> {
@@ -424,12 +434,17 @@ export class TaskQueue<
         reportProgress: (progress) => {
           const current = this.state.tasks.find(({ id }) => id === task.id);
           if (current?.status === 'running' && this.executions.get(task.id) === execution) {
-            this.updateRunning(current, { progress });
+            this.updateRunning(current, { progress }, { kind: 'task-progress', taskId: task.id });
           }
         },
         reportControls: (controls) => {
           const current = this.state.tasks.find(({ id }) => id === task.id);
-          if (current?.status === 'running' && this.executions.get(task.id) === execution)
+          if (
+            current?.status === 'running' &&
+            this.executions.get(task.id) === execution &&
+            (current.controls.cancellable !== controls.cancellable ||
+              current.controls.pausable !== controls.pausable)
+          )
             this.updateRunning(current, { controls });
         },
       });

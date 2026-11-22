@@ -12,7 +12,17 @@ import { DownloadError } from '../downloads/download-paths';
 import type { DownloadWork, PreparedDownloadBatch } from '../downloads/download-types';
 import type { StorageBrowser } from '../storage/storage-browser';
 import type { PreparedUploadBatch, UploadWork } from '../uploads/upload-types';
-import { queueOwnerId, releaseQuietly, toBrowserErrorCode } from './task-errors';
+import { toBrowserErrorCode } from './task-errors';
+
+export const queueOwnerId = 0;
+
+async function releaseQuietly(action: () => Promise<void>, message: string): Promise<void> {
+  try {
+    await action();
+  } catch {
+    console.error(message);
+  }
+}
 
 export interface TransferSourceCleanup {
   sourceParent: EntryRef;

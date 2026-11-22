@@ -8,6 +8,7 @@ import { TaskQueueDock } from '../tasks/TaskQueueDock';
 import { StorageSetupModal, type SetupIntent } from './connections/StorageSetupModal';
 import { StorageSidebar } from './connections/StorageSidebar';
 import { DirectoryCache } from './directory/directory-cache';
+import { DirectoryEffectsStore } from './directory/directory-effects';
 import { DirectoryPane, EmptyDirectoryPane } from './directory/DirectoryPane';
 import { errorKey, resultOf } from './storage-client';
 import { StorageWorkspaceContext } from './storage-workspace-context';
@@ -25,6 +26,7 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
   const [dialog, setDialog] = useState<SetupIntent | null>(null);
   const [location, setLocation] = useState<{ space: Space; generation: number } | null>(null);
   const [directoryCache] = useState(() => new DirectoryCache());
+  const [directoryEffects] = useState(() => new DirectoryEffectsStore());
 
   const refresh = useCallback(() => {
     void mutate();
@@ -39,13 +41,14 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
   const workspace = useMemo(
     () => ({
       directoryCache,
+      directoryEffects,
       onAuthRequired: refresh,
       reauthorize,
     }),
-    [directoryCache, refresh, reauthorize],
+    [directoryCache, directoryEffects, refresh, reauthorize],
   );
   const [queue] = useState(
-    () => new StorageTaskClient({ directoryCache, onAuthRequired: refresh }),
+    () => new StorageTaskClient({ directoryCache, directoryEffects, onAuthRequired: refresh }),
   );
   useEffect(() => queue.connect(), [queue]);
 

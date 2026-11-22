@@ -1,4 +1,4 @@
-import type { Entry, EntryRef } from '@shared/storage';
+import { entryKey, type Entry, type EntryRef } from '@shared/storage';
 
 export type DirectoryEntries = ReadonlyMap<string, Entry>;
 
@@ -39,10 +39,6 @@ export function replaceRenamedEntry(entries: DirectoryEntries, locator: string, 
 const maxDirectories = 16;
 const maxEntries = 20_000;
 
-export function directoryKey({ connectionId, spaceId, locator }: EntryRef): string {
-  return JSON.stringify([connectionId, spaceId, locator]);
-}
-
 export class DirectoryCache {
   private readonly directories = new Map<
     string,
@@ -56,11 +52,11 @@ export class DirectoryCache {
   private entryCount = 0;
 
   peek(ref: EntryRef): DirectoryEntries | undefined {
-    return this.directories.get(directoryKey(ref))?.entries;
+    return this.directories.get(entryKey(ref))?.entries;
   }
 
   get(ref: EntryRef): DirectoryEntries | undefined {
-    const key = directoryKey(ref);
+    const key = entryKey(ref);
     const directory = this.directories.get(key);
     if (directory) {
       this.directories.delete(key);
@@ -70,7 +66,7 @@ export class DirectoryCache {
   }
 
   save(ref: EntryRef, entries: DirectoryEntries): void {
-    const key = directoryKey(ref);
+    const key = entryKey(ref);
     this.delete(key);
     if (entries.size > maxEntries) return;
 

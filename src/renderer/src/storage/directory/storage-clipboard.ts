@@ -1,8 +1,7 @@
 import { create } from 'zustand';
-import type { Capabilities, Entry, EntryRef } from '@shared/storage';
+import { entryKey, type Capabilities, type Entry, type EntryRef } from '@shared/storage';
 import { localConnectionId } from '@shared/storage-browser';
 import type { PasteMode } from '@shared/tasks';
-import { directoryKey } from './directory-cache';
 
 export interface StorageClipboard {
   mode: PasteMode;
@@ -30,10 +29,7 @@ export function validatePaste({
   targetAncestors: readonly EntryRef[];
   targetCapabilities?: Capabilities | undefined;
 }): PasteValidationResult {
-  if (
-    clipboard.mode === 'cut' &&
-    directoryKey(clipboard.sourceParent) === directoryKey(targetParent)
-  ) {
+  if (clipboard.mode === 'cut' && entryKey(clipboard.sourceParent) === entryKey(targetParent)) {
     return { status: 'clear-cut' };
   }
 

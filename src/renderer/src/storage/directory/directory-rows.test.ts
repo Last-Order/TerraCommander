@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import type { Entry } from '@shared/storage';
-import type { PendingEntryEffect } from '../tasks/pending-entry-effects';
 import { buildDirectoryRows } from './directory-rows';
 
 function entry(locator: string, overrides: Partial<Entry> = {}): Entry {
@@ -14,7 +13,7 @@ function entry(locator: string, overrides: Partial<Entry> = {}): Entry {
 }
 
 describe('buildDirectoryRows', () => {
-  it('maps pending renames, busy state, timestamps, and omits directory sizes', () => {
+  it('maps optimistic renames, timestamps, and omits directory sizes', () => {
     const entries = new Map<string, Entry>([
       [
         'dir',
@@ -27,24 +26,20 @@ describe('buildDirectoryRows', () => {
       ],
       ['file', entry('file', { name: 'notes.txt', size: 128, modifiedAt: 'not-a-date' })],
     ]);
-    const pending = new Map<string, PendingEntryEffect>([
-      ['file', { busy: true, optimisticName: 'renamed.txt' }],
-    ]);
+    const optimisticNames = new Map<string, string>([['file', 'renamed.txt']]);
 
-    const rows = buildDirectoryRows(entries, pending, null, 'en');
+    const rows = buildDirectoryRows(entries, optimisticNames, null, 'en');
 
     expect(rows).toEqual([
       {
         entry: entries.get('dir'),
         name: 'folder',
-        disabled: false,
         modifiedAt: Date.parse('2026-01-02T03:04:05.000Z'),
         size: undefined,
       },
       {
         entry: entries.get('file'),
         name: 'renamed.txt',
-        disabled: true,
         modifiedAt: undefined,
         size: 128,
       },

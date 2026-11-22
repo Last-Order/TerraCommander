@@ -155,3 +155,8 @@ export interface TaskQueueSnapshot<
   tasks: readonly QueueTask<Definitions>[];
   groups: readonly TaskGroup<Groups>[];
 }
+
+export type TaskQueueChange =
+  | { kind: 'snapshot' }
+  | { kind: 'task-progress'; taskId: number }
+  | { kind: 'group-progress'; groupId: number };

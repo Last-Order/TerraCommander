@@ -1,7 +1,13 @@
 import { useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { ChevronRight, FolderOpen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { Capabilities, EntryRef, Space, StorageLabel } from '@shared/storage';
+import {
+  entryKey,
+  type Capabilities,
+  type EntryRef,
+  type Space,
+  type StorageLabel,
+} from '@shared/storage';
 import { formatStorageLabel } from '../storage-labels';
 import { useStorageWorkspace } from '../storage-workspace-context';
 import {
@@ -11,7 +17,6 @@ import {
 } from './current-directory-context';
 import classes from './DirectoryPane.module.css';
 import { DirectoryListing } from './DirectoryListing';
-import { directoryKey } from './directory-cache';
 
 interface Location {
   ref: EntryRef;
@@ -35,9 +40,7 @@ export function DirectoryPane({ space }: DirectoryProps) {
       cache.subscribeRenames(({ previous, entry }) => {
         if (entry.kind !== 'directory') return;
         setTrail((locations) => {
-          const index = locations.findIndex(
-            ({ ref }) => directoryKey(ref) === directoryKey(previous),
-          );
+          const index = locations.findIndex(({ ref }) => entryKey(ref) === entryKey(previous));
           if (index < 0) return locations;
           const updated = [...locations];
           updated[index] = entry;
@@ -65,7 +68,7 @@ export function DirectoryPane({ space }: DirectoryProps) {
     <main className={classes.directory}>
       <CurrentDirectoryContext.Provider value={currentDirectory}>
         <DirectoryListing
-          key={`${directoryKey(current.ref)}:${version}`}
+          key={`${entryKey(current.ref)}:${version}`}
           cacheable={trail.length === 1}
           version={version}
           onOpen={(entry) => setTrail([...trail, entry])}

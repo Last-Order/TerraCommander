@@ -1,9 +1,9 @@
 import { memo } from 'react';
 import { ChevronRight, File, Folder, Link2, LockKeyhole, type LucideIcon } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
 import type { Entry } from '@shared/storage';
 import type { DirectoryRow, DirectorySelectionModifiers } from './directory-types';
 import classes from './DirectoryTable.module.css';
+import { useEntryBusy } from './useDirectoryEffects';
 import { formatSize } from '@renderer/format/size';
 
 const entryIcons: Record<Entry['kind'], LucideIcon> = {
@@ -17,6 +17,7 @@ interface DirectoryEntryRowProps extends DirectoryRow {
   index: number;
   selected: boolean;
   cut: boolean;
+  disabledTitle: string;
   dateFormatter: Intl.DateTimeFormat;
   sizeFormatter: Intl.NumberFormat;
   measure: ((element: HTMLTableRowElement | null) => void) | undefined;
@@ -28,12 +29,12 @@ interface DirectoryEntryRowProps extends DirectoryRow {
 export const DirectoryEntryRow = memo(function DirectoryEntryRow({
   entry,
   name,
-  disabled,
   modifiedAt,
   size,
   index,
   selected,
   cut,
+  disabledTitle,
   dateFormatter,
   sizeFormatter,
   measure,
@@ -41,7 +42,7 @@ export const DirectoryEntryRow = memo(function DirectoryEntryRow({
   onContextMenu,
   onOpen,
 }: DirectoryEntryRowProps) {
-  const { t } = useTranslation('storage');
+  const disabled = useEntryBusy(entry.ref);
   const { locator } = entry.ref;
   const isDirectory = entry.kind === 'directory';
   const Icon = entryIcons[entry.kind];
@@ -75,7 +76,7 @@ export const DirectoryEntryRow = memo(function DirectoryEntryRow({
           className={classes.entry}
           data-kind={entry.kind}
           aria-pressed={selected}
-          title={disabled ? t('entryWriteLocked') : undefined}
+          title={disabled ? disabledTitle : undefined}
           onKeyDown={(event) => {
             if (isDirectory && event.key === 'Enter') {
               event.preventDefault();

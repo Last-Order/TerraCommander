@@ -1,11 +1,10 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import type { Entry } from '@shared/storage';
+import { entryKey, type Entry } from '@shared/storage';
 import { errorKey, resultOf, StorageBrowserError, type StorageErrorKey } from '../storage-client';
 import { useStorageWorkspace } from '../storage-workspace-context';
 import { useCurrentDirectory } from './current-directory-context';
 import {
   addDirectoryEntry,
-  directoryKey,
   removeDirectoryEntry,
   replaceRenamedEntry,
   type DirectoryEntries,
@@ -129,7 +128,7 @@ export function useDirectoryListing({ cacheable, version }: ListingOptions) {
   useLayoutEffect(
     () =>
       cache.subscribeAdditions(({ parent: changedParent, entry }) => {
-        if (directoryKey(changedParent) !== directoryKey(parent)) return;
+        if (entryKey(changedParent) !== entryKey(parent)) return;
         currentRequest.current?.additions.set(entry.ref.locator, entry);
         setListing((current) => {
           const entries = addDirectoryEntry(current.entries, entry);
@@ -145,7 +144,7 @@ export function useDirectoryListing({ cacheable, version }: ListingOptions) {
   useLayoutEffect(
     () =>
       cache.subscribeRemovals(({ parent: changedParent, ref }) => {
-        if (directoryKey(changedParent) !== directoryKey(parent)) return;
+        if (entryKey(changedParent) !== entryKey(parent)) return;
         currentRequest.current?.additions.delete(ref.locator);
         if (currentRequest.current !== null || snapshot === undefined) {
           void load(removeDirectoryEntry(entries, ref.locator));
@@ -162,7 +161,7 @@ export function useDirectoryListing({ cacheable, version }: ListingOptions) {
   useLayoutEffect(
     () =>
       cache.subscribeRenames((change) => {
-        if (directoryKey(change.parent) !== directoryKey(parent)) return;
+        if (entryKey(change.parent) !== entryKey(parent)) return;
         const { previous, entry } = change;
         const additions = currentRequest.current?.additions;
         if (additions?.delete(previous.locator)) additions.set(entry.ref.locator, entry);

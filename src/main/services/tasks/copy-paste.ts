@@ -1,11 +1,11 @@
 import { isAbsolute, relative } from 'node:path';
-import type { Entry, EntryRef } from '@shared/storage';
+import { entryKey, type Entry, type EntryRef } from '@shared/storage';
 import { localConnectionId, type BrowserErrorCode } from '@shared/storage-browser';
 import type { PasteEntriesRequest, StorageDirectoryChange } from '@shared/tasks';
 import { StorageError } from '@main/storage';
 import type { TaskDefinitions, TaskGroupPreparationContext } from '@main/tasks/types';
 import type { StorageBrowser } from '../storage/storage-browser';
-import { entryKey, toBrowserErrorCode, toTaskFailure } from './task-errors';
+import { toBrowserErrorCode, toTaskFailure } from './task-errors';
 
 export interface CopyDiscoveryItem {
   sourceEntry: Entry;
@@ -76,7 +76,7 @@ export function isSubpath(parentPath: string, childPath: string): boolean {
   return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
 }
 
-export async function listAllNames(
+async function listAllNames(
   browser: StorageBrowser,
   parent: EntryRef,
   caseInsensitive = false,

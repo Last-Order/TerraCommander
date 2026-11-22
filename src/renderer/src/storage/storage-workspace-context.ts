@@ -1,8 +1,10 @@
 import { createContext, useContext } from 'react';
 import type { DirectoryCache } from './directory/directory-cache';
+import type { DirectoryEffectsStore } from './directory/directory-effects';
 
 export interface StorageWorkspaceContextValue {
   directoryCache: DirectoryCache;
+  directoryEffects: DirectoryEffectsStore;
   onAuthRequired: () => void;
   reauthorize: (connectionId: string) => void;
 }

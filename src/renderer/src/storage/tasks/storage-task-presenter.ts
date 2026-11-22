@@ -1,13 +1,9 @@
+import type { RenameTaskRequest, StorageTaskGroupItem, StorageTaskItem } from '@shared/tasks';
 import type {
   TaskGroupPresenter,
   TaskPresenter,
   TaskRowModel,
 } from '@renderer/tasks/task-row-model';
-import type {
-  RenameTaskRequest,
-  StorageTaskGroupItem,
-  StorageTaskItem,
-} from './storage-task-types';
 
 function presentRenameTask(input: RenameTaskRequest): TaskRowModel {
   return {

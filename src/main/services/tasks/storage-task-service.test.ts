@@ -560,3 +560,93 @@ it('uploads mixed files and folders as a task group, emits directory changes, an
     await uploads.dispose();
   }
 });
+
+it('emits lightweight task-progress events for progress ticks and includes directoryEffects on snapshots', async () => {
+  const { service, downloads, events } = setup();
+  const finish = deferred<DownloadRunResult>();
+  let reportProgress: ((progress: DownloadProgress) => void) | undefined;
+  downloads.run.mockImplementationOnce(async (_owner, id, onProgress, attempt) => {
+    reportProgress = onProgress;
+    onProgress({
+      id,
+      attempt: attempt ?? 'test-attempt',
+      stage: 'downloading',
+      completedBytes: 10,
+      totalBytes: 100,
+      controls: { cancellable: true, pausable: true },
+    });
+    return finish.promise;
+  });
+
+  try {
+    await service.prepareDownload(1, {
+      parent,
+      entries: [fileEntry],
+      directory: 'D:\\Downloads',
+      directoryPath: '/Drive',
+    });
+
+    await vi.waitFor(() => expect(service.getSnapshot().tasks[0]?.controls.canPause).toBe(true));
+    expect(service.getSnapshot().directoryEffects).toEqual({
+      busyEntries: [fileEntry.ref],
+      renames: [],
+    });
+
+    const beforeTicks = events.length;
+    reportProgress?.({
+      id: 'exec-1',
+      attempt: 'test-attempt',
+      stage: 'downloading',
+      completedBytes: 40,
+      totalBytes: 100,
+      bytesPerSecond: 2048,
+      controls: { cancellable: true, pausable: true },
+    });
+    reportProgress?.({
+      id: 'exec-1',
+      attempt: 'test-attempt',
+      stage: 'downloading',
+      completedBytes: 80,
+      totalBytes: 100,
+      bytesPerSecond: 4096,
+      controls: { cancellable: true, pausable: true },
+    });
+
+    const tickEvents = events.slice(beforeTicks);
+    expect(tickEvents).toEqual([
+      {
+        type: 'task-progress',
+        taskId: 1,
+        progress: {
+          kind: 'determinate',
+          completed: 40,
+          total: 100,
+          unit: 'bytes',
+          stage: { key: 'storage:downloadReceiving' },
+          bytesPerSecond: 2048,
+        },
+      },
+      {
+        type: 'task-progress',
+        taskId: 1,
+        progress: {
+          kind: 'determinate',
+          completed: 80,
+          total: 100,
+          unit: 'bytes',
+          stage: { key: 'storage:downloadReceiving' },
+          bytesPerSecond: 4096,
+        },
+      },
+    ]);
+
+    finish.resolve({ status: 'completed' });
+    await vi.waitFor(() => expect(service.getSnapshot().tasks[0]?.status).toBe('completed'));
+    expect(service.getSnapshot().directoryEffects).toEqual({
+      busyEntries: [],
+      renames: [],
+    });
+  } finally {
+    await service.dispose();
+  }
+});

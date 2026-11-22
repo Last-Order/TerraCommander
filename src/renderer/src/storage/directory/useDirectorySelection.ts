@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { entryKey, type Entry } from '@shared/storage';
 import { useStorageWorkspace } from '../storage-workspace-context';
 import { useCurrentDirectory } from './current-directory-context';
 import { isDirectoryBlankTarget } from './directory-blank-target';
-import { directoryKey, type DirectoryEntries } from './directory-cache';
+import type { DirectoryEntries } from './directory-cache';
 import type { DirectoryRow, DirectorySelectionModifiers } from './directory-types';
 
 interface SelectionState {
@@ -11,36 +12,43 @@ interface SelectionState {
 }
 
 interface SelectionOptions {
+  entries: DirectoryEntries;
+  ready: boolean;
   rows: readonly DirectoryRow[];
-  completedEntries: DirectoryEntries | undefined;
   scrollElement: HTMLDivElement | null;
 }
 
-export function useDirectorySelection({ rows, completedEntries, scrollElement }: SelectionOptions) {
+export function useDirectorySelection({ entries, ready, rows, scrollElement }: SelectionOptions) {
   const { directoryCache: cache } = useStorageWorkspace();
   const { ref: parent } = useCurrentDirectory();
   const [selection, setSelection] = useState<SelectionState>(() => ({
     locators: new Set(),
     anchor: null,
   }));
+  const [prunedEntries, setPrunedEntries] = useState<DirectoryEntries | undefined>(() =>
+    ready ? entries : undefined,
+  );
 
-  if (completedEntries) {
-    const remaining = [...selection.locators].filter((locator) => completedEntries.has(locator));
-    const anchor =
-      selection.anchor !== null && completedEntries.has(selection.anchor) ? selection.anchor : null;
-    if (remaining.length < selection.locators.size || anchor !== selection.anchor) {
-      setSelection({
-        locators:
-          remaining.length < selection.locators.size ? new Set(remaining) : selection.locators,
-        anchor,
-      });
+  if (ready && prunedEntries !== entries) {
+    setPrunedEntries(entries);
+    if (selection.locators.size > 0 || selection.anchor !== null) {
+      const remaining = [...selection.locators].filter((locator) => entries.has(locator));
+      const anchor =
+        selection.anchor !== null && entries.has(selection.anchor) ? selection.anchor : null;
+      if (remaining.length < selection.locators.size || anchor !== selection.anchor) {
+        setSelection({
+          locators:
+            remaining.length < selection.locators.size ? new Set(remaining) : selection.locators,
+          anchor,
+        });
+      }
     }
   }
 
   useLayoutEffect(
     () =>
       cache.subscribeRenames((change) => {
-        if (directoryKey(change.parent) !== directoryKey(parent)) return;
+        if (entryKey(change.parent) !== entryKey(parent)) return;
         const previous = change.previous.locator;
         const locator = change.entry.ref.locator;
         setSelection((current) => {
@@ -113,8 +121,18 @@ export function useDirectorySelection({ rows, completedEntries, scrollElement }:
     }));
   }, []);
 
+  const selectedEntries = useMemo(() => {
+    const selected: Entry[] = [];
+    for (const locator of selection.locators) {
+      const entry = entries.get(locator);
+      if (entry) selected.push(entry);
+    }
+    return selected;
+  }, [entries, selection.locators]);
+
   return {
     selectedLocators: selection.locators,
+    selectedEntries,
     selectEntry,
     selectAll,
     selectOnly,

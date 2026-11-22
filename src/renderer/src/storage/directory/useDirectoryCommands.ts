@@ -3,6 +3,7 @@ import { notifications } from '@mantine/notifications';
 import { useTranslation } from 'react-i18next';
 import type { Entry } from '@shared/storage';
 import { useKeyboardShortcuts } from '@renderer/shortcuts/useKeyboardShortcuts';
+import { useStorageWorkspace } from '../storage-workspace-context';
 import { useCurrentDirectory } from './current-directory-context';
 import type { DirectoryBlankActions } from './DirectoryBlankMenu';
 import type { EntryCapabilities } from './entry-capabilities';
@@ -40,6 +41,7 @@ interface DirectoryCommandsOptions {
   phase: DirectoryListingPhase;
   refresh: () => void;
   selectAll: () => void;
+  selectedEntries: readonly Entry[];
   capabilities: EntryCapabilities;
   menu: DirectoryCommandMenu;
   modals: DirectoryCommandModals;
@@ -53,6 +55,7 @@ export function useDirectoryCommands({
   phase,
   refresh,
   selectAll,
+  selectedEntries,
   capabilities,
   menu,
   modals,
@@ -62,6 +65,7 @@ export function useDirectoryCommands({
   onNavigateUp,
 }: DirectoryCommandsOptions) {
   const { t } = useTranslation('storage');
+  const { directoryEffects } = useStorageWorkspace();
   const { canCreateDirectory } = useCurrentDirectory();
   const loading = phase === 'loading' || phase === 'refreshing';
   const hasError = phase === 'error';
@@ -105,13 +109,13 @@ export function useDirectoryCommands({
   const copySelection = () => {
     if (!capabilities.canCopy) return;
     menu.closeMenu();
-    clipboard.copy(capabilities.selectedEntries);
+    clipboard.copy(selectedEntries);
   };
 
   const cutSelection = () => {
-    if (!capabilities.canCut || capabilities.selectionBusy) return;
+    if (!capabilities.canCut || directoryEffects.hasBusyEntries(selectedEntries)) return;
     menu.closeMenu();
-    clipboard.cut(capabilities.selectedEntries);
+    clipboard.cut(selectedEntries);
   };
 
   const pasteSelection = runAfterClosingMenu(() => {
@@ -154,7 +158,7 @@ export function useDirectoryCommands({
       key: 'x',
       ctrlKey: true,
       onTrigger: cutSelection,
-      enabled: capabilities.canCut && !capabilities.selectionBusy,
+      enabled: capabilities.canCut,
     },
     {
       key: 'v',
@@ -165,12 +169,12 @@ export function useDirectoryCommands({
     {
       key: 'F2',
       onTrigger: modals.showRename,
-      enabled: capabilities.canRename && !capabilities.renamePending,
+      enabled: capabilities.canRename,
     },
     {
       key: 'Delete',
       onTrigger: modals.showDelete,
-      enabled: capabilities.canDelete && !capabilities.selectionBusy,
+      enabled: capabilities.canDelete,
     },
     { key: 'F5', onTrigger: reload, enabled: !loading, allowInEditable: true },
     { key: 'f', ctrlKey: true, onTrigger: openSearch, allowInEditable: true },

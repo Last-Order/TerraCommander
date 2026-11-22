@@ -13,6 +13,7 @@ import type {
   TaskGroupRequest,
   TaskGroupState,
   TaskMembership,
+  TaskQueueChange,
   TaskRequest,
 } from './types';
 
@@ -32,7 +33,7 @@ interface GroupCoordinatorDeps<
   nextId(): number;
   getTasks(): readonly QueueTask<Definitions>[];
   getGroups(): readonly TaskGroup<Groups>[];
-  setGroups(groups: readonly TaskGroup<Groups>[]): void;
+  setGroups(groups: readonly TaskGroup<Groups>[], change?: TaskQueueChange): void;
   subscribe(listener: () => void): () => void;
   enqueue(request: TaskRequest<Definitions>, membership: TaskMembership): boolean;
   invokeHook(id: number, hook: () => void | Promise<void>): Promise<void>;
@@ -157,7 +158,7 @@ export class TaskGroupCoordinator<
     return { finishedGroupIds };
   }
 
-  sync(): void {
+  sync(change: TaskQueueChange = { kind: 'snapshot' }): void {
     const tasksByGroup = this.deps.getTasks();
     const settle: number[] = [];
     const groups = this.deps.getGroups().map((previous) => {
@@ -185,7 +186,7 @@ export class TaskGroupCoordinator<
       }
       return group;
     });
-    this.deps.setGroups(groups);
+    this.deps.setGroups(groups, settle.length > 0 ? { kind: 'snapshot' } : change);
     for (const id of settle) {
       const pending = this.settleGroup(id).finally(() => this.settlements.delete(id));
       this.settlements.set(id, pending);
@@ -226,7 +227,7 @@ export class TaskGroupCoordinator<
           reportProgress: (progress) => {
             if (!active()) return;
             record.preparation = { ...record.preparation, progress };
-            this.sync();
+            this.sync({ kind: 'group-progress', groupId: id });
           },
           reportIssue: (issue) => {
             if (!active()) return;

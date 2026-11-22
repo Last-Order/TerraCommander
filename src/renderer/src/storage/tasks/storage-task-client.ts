@@ -1,17 +1,9 @@
 import { createStore } from 'zustand/vanilla';
 import type {
-  PasteEntriesRequest,
-  PasteEntriesResponse,
-  TasksApi,
-  UploadFileRequest,
-  UploadPathsRequest,
-} from '@shared/tasks';
-import type { TaskQueueViewClient, TaskQueueViewSnapshot } from '@renderer/tasks/task-types';
-import type { DirectoryCache } from '../directory/directory-cache';
-import { resultOf, StorageBrowserError } from '../storage-client';
-import type {
   CreateDirectoryTaskRequest,
   DeleteEntriesRequest,
+  PasteEntriesRequest,
+  PasteEntriesResponse,
   PrepareDownloadRequest,
   PrepareDownloadResponse,
   RenameTaskRequest,
@@ -19,7 +11,16 @@ import type {
   StorageTaskEvent,
   StorageTaskGroupItem,
   StorageTaskItem,
-} from './storage-task-types';
+  StorageTaskSnapshot,
+  TaskProgress,
+  TasksApi,
+  UploadFileRequest,
+  UploadPathsRequest,
+} from '@shared/tasks';
+import type { TaskQueueViewClient, TaskQueueViewSnapshot } from '@renderer/tasks/task-types';
+import type { DirectoryCache } from '../directory/directory-cache';
+import type { DirectoryEffectsStore } from '../directory/directory-effects';
+import { resultOf, StorageBrowserError } from '../storage-client';
 
 function ignoreCommandFailure(): void {
   // Task failures and state changes flow back through snapshot events.
@@ -38,11 +39,20 @@ export class StorageTaskClient implements TaskQueueViewClient<
   );
 
   private readonly directoryCache: DirectoryCache;
+  private readonly directoryEffects: DirectoryEffectsStore;
   private readonly onAuthRequired: () => void;
+  private readonly tasksApi?: TasksApi | undefined;
 
-  constructor(options: { directoryCache: DirectoryCache; onAuthRequired: () => void }) {
+  constructor(options: {
+    directoryCache: DirectoryCache;
+    directoryEffects: DirectoryEffectsStore;
+    onAuthRequired: () => void;
+    api?: TasksApi | undefined;
+  }) {
     this.directoryCache = options.directoryCache;
+    this.directoryEffects = options.directoryEffects;
     this.onAuthRequired = options.onAuthRequired;
+    this.tasksApi = options.api;
   }
 
   connect(): () => void {
@@ -57,7 +67,7 @@ export class StorageTaskClient implements TaskQueueViewClient<
     });
     void resultOf(api.getSnapshot())
       .then((snapshot) => {
-        if (!settled && !liveSnapshotSeen) this.store.setState(snapshot);
+        if (!settled && !liveSnapshotSeen) this.applySnapshot(snapshot);
       })
       .catch(ignoreCommandFailure);
     return () => {
@@ -151,13 +161,19 @@ export class StorageTaskClient implements TaskQueueViewClient<
   }
 
   private get api(): TasksApi | undefined {
-    return window.desktop?.tasks;
+    return this.tasksApi ?? window.desktop?.tasks;
   }
 
   private handleEvent(event: StorageTaskEvent): void {
     switch (event.type) {
       case 'snapshot':
-        this.store.setState(event.snapshot);
+        this.applySnapshot(event.snapshot);
+        return;
+      case 'task-progress':
+        this.applyTaskProgress(event.taskId, event.progress);
+        return;
+      case 'group-progress':
+        this.applyGroupProgress(event.groupId, event.progress, event.preparationProgress);
         return;
       case 'directory-changed':
         this.applyDirectoryChange(event.change);
@@ -165,6 +181,42 @@ export class StorageTaskClient implements TaskQueueViewClient<
       case 'auth-required':
         this.onAuthRequired();
     }
+  }
+
+  private applySnapshot(snapshot: StorageTaskSnapshot): void {
+    this.store.setState({ tasks: snapshot.tasks, groups: snapshot.groups });
+    this.directoryEffects.apply(snapshot.directoryEffects);
+  }
+
+  private applyTaskProgress(taskId: number, progress: TaskProgress): void {
+    this.store.setState((state) => {
+      const index = state.tasks.findIndex((task) => task.id === taskId);
+      if (index < 0) return state;
+      const tasks = [...state.tasks];
+      tasks[index] = { ...tasks[index]!, progress };
+      return { tasks };
+    });
+  }
+
+  private applyGroupProgress(
+    groupId: number,
+    progress: TaskProgress,
+    preparationProgress?: TaskProgress,
+  ): void {
+    this.store.setState((state) => {
+      const index = state.groups.findIndex((group) => group.id === groupId);
+      if (index < 0) return state;
+      const group = state.groups[index]!;
+      const groups = [...state.groups];
+      groups[index] = {
+        ...group,
+        progress,
+        ...(preparationProgress !== undefined
+          ? { preparation: { ...group.preparation, progress: preparationProgress } }
+          : {}),
+      };
+      return { groups };
+    });
   }
 
   private applyDirectoryChange(change: StorageDirectoryChange): void {

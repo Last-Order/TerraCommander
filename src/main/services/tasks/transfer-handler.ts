@@ -1,4 +1,4 @@
-import type { Entry, EntryRef } from '@shared/storage';
+import { entryKey, type Entry, type EntryRef } from '@shared/storage';
 import { localConnectionId } from '@shared/storage-browser';
 import type {
   DownloadTaskDisplayInput,
@@ -10,7 +10,8 @@ import type { TaskHandler } from '@main/tasks/types';
 import type { DownloadWorkRef } from '../downloads/download-types';
 import type { StorageBrowser } from '../storage/storage-browser';
 import type { UploadWorkRef } from '../uploads/upload-types';
-import { entryKey, queueOwnerId, toBrowserErrorCode, toTaskFailure } from './task-errors';
+import { toBrowserErrorCode, toTaskFailure } from './task-errors';
+import { queueOwnerId } from './transfer-session-coordinator';
 
 export interface SourceCleanupTarget {
   parent: EntryRef;

@@ -1,13 +1,24 @@
 import type { Entry } from '@shared/storage';
-import type { PendingEntryEffect } from '../tasks/pending-entry-effects';
 import type { DirectoryRow, DirectorySort } from './directory-types';
+
+const collators = new Map<string, Intl.Collator>();
+
+function getCollator(locale?: string): Intl.Collator {
+  const key = locale ?? '';
+  let collator = collators.get(key);
+  if (!collator) {
+    collator = new Intl.Collator(locale, { numeric: true, sensitivity: 'base' });
+    collators.set(key, collator);
+  }
+  return collator;
+}
 
 export function sortDirectoryRows(
   rows: DirectoryRow[],
   { field, direction }: DirectorySort,
   locale?: string,
 ) {
-  const { compare } = new Intl.Collator(locale, { numeric: true, sensitivity: 'base' });
+  const { compare } = getCollator(locale);
   const order = direction === 'ascending' ? 1 : -1;
 
   rows.sort((a, b) => {
@@ -22,17 +33,15 @@ export function sortDirectoryRows(
 
 export function buildDirectoryRows(
   entries: ReadonlyMap<string, Entry>,
-  pendingEntries: ReadonlyMap<string, PendingEntryEffect>,
+  optimisticNames: ReadonlyMap<string, string>,
   sort: DirectorySort | null,
   locale?: string,
 ): DirectoryRow[] {
   const rows = Array.from(entries.values(), (entry): DirectoryRow => {
     const modifiedAt = Date.parse(entry.modifiedAt ?? '');
-    const pending = pendingEntries.get(entry.ref.locator);
     return {
       entry,
-      name: pending?.optimisticName ?? entry.name,
-      disabled: pending?.busy === true,
+      name: optimisticNames.get(entry.ref.locator) ?? entry.name,
       modifiedAt: Number.isFinite(modifiedAt) ? modifiedAt : undefined,
       size: entry.kind === 'directory' ? undefined : entry.size,
     };

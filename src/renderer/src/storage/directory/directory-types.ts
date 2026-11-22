@@ -8,7 +8,6 @@ export interface DirectorySort {
 export interface DirectoryRow {
   entry: Entry;
   name: string;
-  disabled: boolean;
   modifiedAt: number | undefined;
   size: number | undefined;
 }
