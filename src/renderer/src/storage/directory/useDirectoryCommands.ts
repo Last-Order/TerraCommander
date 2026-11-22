@@ -46,7 +46,7 @@ interface DirectoryCommandsOptions {
   clipboard: DirectoryCommandClipboard;
   search: DirectoryCommandSearch;
   searchInput: RefObject<HTMLInputElement | null>;
-  refreshButton: RefObject<HTMLButtonElement | null>;
+  moreButton: RefObject<HTMLButtonElement | null>;
   onNavigateUp?: (() => void) | undefined;
 }
 
@@ -63,7 +63,7 @@ export function useDirectoryCommands({
   clipboard,
   search,
   searchInput,
-  refreshButton,
+  moreButton,
   onNavigateUp,
 }: DirectoryCommandsOptions) {
   const { t } = useTranslation('storage');
@@ -82,7 +82,7 @@ export function useDirectoryCommands({
 
   const closeSearch = () => {
     search.close();
-    refreshButton.current?.focus();
+    moreButton.current?.focus();
   };
 
   const selectAllEntries = () => {

@@ -1,18 +1,24 @@
 import type { ReactNode, RefObject } from 'react';
 import { ActionIcon, Menu } from '@mantine/core';
-import { FileUp, FolderPlus, FolderUp, Plus, RefreshCw } from 'lucide-react';
+import { Ellipsis, FileUp, FolderPlus, FolderUp, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useCurrentDirectory } from './current-directory-context';
+import {
+  DirectoryBlankMenuDropdown,
+  type DirectoryBlankMenuDropdownProps,
+} from './DirectoryBlankMenu';
 import classes from './DirectoryListing.module.css';
 
 interface DirectoryToolbarProps {
   createDirectoryDisabled: boolean;
   uploadDisabled: boolean;
+  canPaste: boolean;
   refreshDisabled: boolean;
-  refreshButton: RefObject<HTMLButtonElement | null>;
+  moreButton: RefObject<HTMLButtonElement | null>;
   onCreateDirectory: () => void;
   onUploadFile: () => void;
   onUploadFolder: () => void;
+  onPaste: () => void;
   onRefresh: () => void;
   children: ReactNode;
 }
@@ -20,15 +26,16 @@ interface DirectoryToolbarProps {
 export function DirectoryToolbar({
   createDirectoryDisabled,
   uploadDisabled,
+  canPaste,
   refreshDisabled,
-  refreshButton,
+  moreButton,
   onCreateDirectory,
   onUploadFile,
   onUploadFolder,
+  onPaste,
   onRefresh,
   children,
 }: DirectoryToolbarProps) {
-  const { t } = useTranslation('storage');
   const { canCreateDirectory, canUpload } = useCurrentDirectory();
   const canAdd = canCreateDirectory || canUpload;
 
@@ -45,20 +52,47 @@ export function DirectoryToolbar({
             onUploadFolder={onUploadFolder}
           />
         )}
-        <ActionIcon
-          ref={refreshButton}
-          variant="subtle"
-          color="gray"
-          aria-label={t('refreshDirectory')}
-          aria-keyshortcuts="F5"
-          title={`${t('refreshDirectory')} (F5)`}
-          disabled={refreshDisabled}
-          onClick={onRefresh}
-        >
-          <RefreshCw size={16} strokeWidth={1.5} aria-hidden="true" />
-        </ActionIcon>
+        <MoreButton
+          buttonRef={moreButton}
+          canCreateDirectory={canCreateDirectory}
+          createDirectoryEnabled={!createDirectoryDisabled}
+          canPaste={canPaste}
+          refreshDisabled={refreshDisabled}
+          onCreateDirectory={onCreateDirectory}
+          onPaste={onPaste}
+          onRefresh={onRefresh}
+        />
       </div>
     </header>
+  );
+}
+
+interface MoreButtonProps extends DirectoryBlankMenuDropdownProps {
+  buttonRef: RefObject<HTMLButtonElement | null>;
+}
+
+function MoreButton({ buttonRef, ...dropdownProps }: MoreButtonProps) {
+  const { t } = useTranslation('storage');
+  const { canCreateDirectory, createDirectoryEnabled, canPaste, refreshDisabled } = dropdownProps;
+  const disabled = (!canCreateDirectory || !createDirectoryEnabled) && !canPaste && refreshDisabled;
+
+  return (
+    <Menu position="bottom-end" withinPortal>
+      <Menu.Target>
+        <ActionIcon
+          ref={buttonRef}
+          type="button"
+          variant="subtle"
+          color="gray"
+          aria-label={t('moreActions')}
+          title={t('moreActions')}
+          disabled={disabled}
+        >
+          <Ellipsis size={16} strokeWidth={1.5} aria-hidden="true" />
+        </ActionIcon>
+      </Menu.Target>
+      <DirectoryBlankMenuDropdown {...dropdownProps} />
+    </Menu>
   );
 }
 

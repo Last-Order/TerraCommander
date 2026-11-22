@@ -1,27 +1,70 @@
 import { Menu } from '@mantine/core';
-import { ClipboardPaste, FolderPlus } from 'lucide-react';
+import { ClipboardPaste, FolderPlus, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-interface DirectoryBlankMenuProps {
-  position: { x: number; y: number } | null;
+export interface DirectoryBlankMenuDropdownProps {
   canCreateDirectory: boolean;
   createDirectoryEnabled: boolean;
   canPaste: boolean;
+  refreshDisabled: boolean;
   onCreateDirectory: () => void;
   onPaste: () => void;
+  onRefresh: () => void;
+}
+
+export function DirectoryBlankMenuDropdown({
+  canCreateDirectory,
+  createDirectoryEnabled,
+  canPaste,
+  refreshDisabled,
+  onCreateDirectory,
+  onPaste,
+  onRefresh,
+}: DirectoryBlankMenuDropdownProps) {
+  const { t } = useTranslation('storage');
+  return (
+    <Menu.Dropdown>
+      {canCreateDirectory && (
+        <Menu.Item
+          disabled={!createDirectoryEnabled}
+          aria-keyshortcuts="Control+Shift+N"
+          leftSection={<FolderPlus size={16} strokeWidth={1.5} aria-hidden="true" />}
+          onClick={onCreateDirectory}
+        >
+          {t('newFolder')}
+        </Menu.Item>
+      )}
+      <Menu.Item
+        disabled={!canPaste}
+        aria-keyshortcuts="Control+V"
+        leftSection={<ClipboardPaste size={16} strokeWidth={1.5} aria-hidden="true" />}
+        onClick={onPaste}
+      >
+        {t('pasteEntry')}
+      </Menu.Item>
+      <Menu.Divider />
+      <Menu.Item
+        disabled={refreshDisabled}
+        aria-keyshortcuts="F5"
+        leftSection={<RefreshCw size={16} strokeWidth={1.5} aria-hidden="true" />}
+        onClick={onRefresh}
+      >
+        {t('refreshDirectory')}
+      </Menu.Item>
+    </Menu.Dropdown>
+  );
+}
+
+interface DirectoryBlankMenuProps extends DirectoryBlankMenuDropdownProps {
+  position: { x: number; y: number } | null;
   onClose: () => void;
 }
 
 export function DirectoryBlankMenu({
   position,
-  canCreateDirectory,
-  createDirectoryEnabled,
-  canPaste,
-  onCreateDirectory,
-  onPaste,
   onClose,
+  ...dropdownProps
 }: DirectoryBlankMenuProps) {
-  const { t } = useTranslation('storage');
   return (
     <Menu
       opened={position !== null}
@@ -45,26 +88,7 @@ export function DirectoryBlankMenu({
           }}
         />
       </Menu.Target>
-      <Menu.Dropdown>
-        {canCreateDirectory && (
-          <Menu.Item
-            disabled={!createDirectoryEnabled}
-            aria-keyshortcuts="Control+Shift+N"
-            leftSection={<FolderPlus size={16} strokeWidth={1.5} aria-hidden="true" />}
-            onClick={onCreateDirectory}
-          >
-            {t('newFolder')}
-          </Menu.Item>
-        )}
-        <Menu.Item
-          disabled={!canPaste}
-          aria-keyshortcuts="Control+V"
-          leftSection={<ClipboardPaste size={16} strokeWidth={1.5} aria-hidden="true" />}
-          onClick={onPaste}
-        >
-          {t('pasteEntry')}
-        </Menu.Item>
-      </Menu.Dropdown>
+      <DirectoryBlankMenuDropdown {...dropdownProps} />
     </Menu>
   );
 }

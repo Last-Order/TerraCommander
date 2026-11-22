@@ -50,7 +50,7 @@ export function DirectoryListing({
   const sort = useDirectorySortStore((state) => state.sort);
   const changeSort = useDirectorySortStore((state) => state.toggleSort);
   const searchInput = useRef<HTMLInputElement>(null);
-  const refreshButton = useRef<HTMLButtonElement>(null);
+  const moreButton = useRef<HTMLButtonElement>(null);
 
   const { entries, phase, snapshot, error, refresh } = useDirectoryListing({
     parent,
@@ -131,7 +131,7 @@ export function DirectoryListing({
     clipboard,
     search,
     searchInput,
-    refreshButton,
+    moreButton,
     onNavigateUp,
   });
 
@@ -150,11 +150,13 @@ export function DirectoryListing({
       <DirectoryToolbar
         createDirectoryDisabled={!commands.createDirectoryEnabled}
         uploadDisabled={upload.disabled}
+        canPaste={clipboard.canPaste}
         refreshDisabled={loading}
-        refreshButton={refreshButton}
+        moreButton={moreButton}
         onCreateDirectory={commands.openCreateDirectory}
         onUploadFile={() => void upload.uploadFile()}
         onUploadFolder={() => void upload.uploadFolder()}
+        onPaste={commands.pasteSelection}
         onRefresh={commands.reload}
       >
         {children}
@@ -259,8 +261,10 @@ export function DirectoryListing({
             canCreateDirectory={canCreateDirectory}
             createDirectoryEnabled={commands.createDirectoryEnabled}
             canPaste={clipboard.canPaste}
+            refreshDisabled={loading}
             onCreateDirectory={commands.openCreateDirectory}
             onPaste={commands.pasteSelection}
+            onRefresh={commands.reload}
             onClose={menu.closeMenu}
           />
         </div>
