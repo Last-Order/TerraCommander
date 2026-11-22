@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Capabilities, Entry, EntryRef } from '@shared/storage';
+import type { Entry, EntryRef } from '@shared/storage';
 import { localConnectionId } from '@shared/storage-browser';
 import { validatePaste, type StorageClipboard } from './storage-clipboard';
 
@@ -7,13 +7,8 @@ function ref(connectionId: string, locator: string, spaceId = 'space-1'): EntryR
   return { connectionId, spaceId, locator };
 }
 
-function entry(
-  kind: 'file' | 'directory',
-  connectionId: string,
-  locator: string,
-  name = locator,
-): Entry {
-  return { kind, ref: ref(connectionId, locator), name, capabilities: {} };
+function entry(kind: 'file' | 'directory', connectionId: string, locator: string): Entry {
+  return { kind, ref: ref(connectionId, locator), name: locator, capabilities: {} };
 }
 
 function clipboard(
@@ -25,96 +20,95 @@ function clipboard(
 }
 
 describe('validatePaste', () => {
-  it('clears a cut clipboard when pasting into the same directory', () => {
+  it('clears a cut clipboard on same-directory paste while allowing same-directory copy', () => {
     const parent = ref(localConnectionId, 'dir-a');
-    const result = validatePaste({
-      clipboard: clipboard('cut', parent, [entry('file', localConnectionId, 'file-1')]),
-      targetParent: parent,
-      targetAncestors: [parent],
-    });
-    expect(result).toEqual({ status: 'clear-cut' });
+    const file = entry('file', localConnectionId, 'file-1');
+
+    expect(
+      validatePaste({
+        clipboard: clipboard('cut', parent, [file]),
+        targetParent: parent,
+        targetAncestors: [parent],
+      }),
+    ).toEqual({ status: 'clear-cut' });
+
+    expect(
+      validatePaste({
+        clipboard: clipboard('copy', parent, [file]),
+        targetParent: parent,
+        targetAncestors: [parent],
+      }),
+    ).toEqual({ status: 'ok' });
   });
 
-  it('allows copying into the same directory', () => {
-    const parent = ref(localConnectionId, 'dir-a');
-    const result = validatePaste({
-      clipboard: clipboard('copy', parent, [entry('file', localConnectionId, 'file-1')]),
-      targetParent: parent,
-      targetAncestors: [parent],
-    });
-    expect(result).toEqual({ status: 'ok' });
-  });
-
-  it('rejects pasting between two different remote connections', () => {
-    const sourceParent = ref('drive-1', 'root');
+  it('rejects pasting between two remote connections while allowing local-to-remote transfers', () => {
     const targetParent = ref('drive-2', 'root');
-    const result = validatePaste({
-      clipboard: clipboard('copy', sourceParent, [entry('file', 'drive-1', 'file-1')]),
-      targetParent,
-      targetAncestors: [targetParent],
-    });
-    expect(result).toEqual({ status: 'rejected', reason: 'crossSource' });
-  });
 
-  it('allows pasting between local and remote connections', () => {
-    const sourceParent = ref(localConnectionId, 'root');
-    const targetParent = ref('drive-1', 'root');
-    const result = validatePaste({
-      clipboard: clipboard('copy', sourceParent, [entry('file', localConnectionId, 'file-1')]),
-      targetParent,
-      targetAncestors: [targetParent],
-    });
-    expect(result).toEqual({ status: 'ok' });
+    expect(
+      validatePaste({
+        clipboard: clipboard('copy', ref('drive-1', 'root'), [entry('file', 'drive-1', 'file-1')]),
+        targetParent,
+        targetAncestors: [targetParent],
+      }),
+    ).toEqual({ status: 'rejected', reason: 'crossSource' });
+
+    expect(
+      validatePaste({
+        clipboard: clipboard('copy', ref(localConnectionId, 'root'), [
+          entry('file', localConnectionId, 'file-1'),
+        ]),
+        targetParent,
+        targetAncestors: [targetParent],
+      }),
+    ).toEqual({ status: 'ok' });
   });
 
   it('rejects pasting a directory into itself or its descendant', () => {
     const root = ref(localConnectionId, 'root');
     const dir = ref(localConnectionId, 'dir-a');
     const child = ref(localConnectionId, 'dir-a/child');
-    const result = validatePaste({
-      clipboard: clipboard('copy', root, [entry('directory', localConnectionId, 'dir-a')]),
-      targetParent: child,
-      targetAncestors: [root, dir, child],
-    });
-    expect(result).toEqual({ status: 'rejected', reason: 'selfContainment' });
+
+    expect(
+      validatePaste({
+        clipboard: clipboard('copy', root, [entry('directory', localConnectionId, 'dir-a')]),
+        targetParent: child,
+        targetAncestors: [root, dir, child],
+      }),
+    ).toEqual({ status: 'rejected', reason: 'selfContainment' });
   });
 
-  it('rejects pasting into a remote target without write capability', () => {
-    const sourceParent = ref(localConnectionId, 'root');
-    const targetParent = ref('drive-1', 'root');
-    const capabilities: Capabilities = { write: { support: 'unsupported' } };
-    const result = validatePaste({
-      clipboard: clipboard('copy', sourceParent, [entry('file', localConnectionId, 'file-1')]),
-      targetParent,
-      targetAncestors: [targetParent],
-      targetCapabilities: capabilities,
-    });
-    expect(result).toEqual({ status: 'rejected', reason: 'permissionDenied' });
-  });
+  it('enforces remote write and createDirectory capabilities', () => {
+    const remoteRoot = ref('drive-1', 'root');
+    const remoteSub = ref('drive-1', 'sub');
+    const remoteFolder = entry('directory', 'drive-1', 'folder-1');
 
-  it('rejects copying a directory to a remote target without createDirectory capability', () => {
-    const sourceParent = ref('drive-1', 'root');
-    const targetParent = ref('drive-1', 'sub');
-    const capabilities: Capabilities = { createDirectory: { support: 'unsupported' } };
-    const result = validatePaste({
-      clipboard: clipboard('copy', sourceParent, [entry('directory', 'drive-1', 'folder-1')]),
-      targetParent,
-      targetAncestors: [sourceParent, targetParent],
-      targetCapabilities: capabilities,
-    });
-    expect(result).toEqual({ status: 'rejected', reason: 'unsupported' });
-  });
+    expect(
+      validatePaste({
+        clipboard: clipboard('copy', ref(localConnectionId, 'root'), [
+          entry('file', localConnectionId, 'file-1'),
+        ]),
+        targetParent: remoteRoot,
+        targetAncestors: [remoteRoot],
+        targetCapabilities: { write: { support: 'unsupported' } },
+      }),
+    ).toEqual({ status: 'rejected', reason: 'permissionDenied' });
 
-  it('allows cutting a directory within the same remote connection without createDirectory capability', () => {
-    const sourceParent = ref('drive-1', 'root');
-    const targetParent = ref('drive-1', 'sub');
-    const capabilities: Capabilities = { createDirectory: { support: 'unsupported' } };
-    const result = validatePaste({
-      clipboard: clipboard('cut', sourceParent, [entry('directory', 'drive-1', 'folder-1')]),
-      targetParent,
-      targetAncestors: [sourceParent, targetParent],
-      targetCapabilities: capabilities,
-    });
-    expect(result).toEqual({ status: 'ok' });
+    expect(
+      validatePaste({
+        clipboard: clipboard('copy', remoteRoot, [remoteFolder]),
+        targetParent: remoteSub,
+        targetAncestors: [remoteRoot, remoteSub],
+        targetCapabilities: { createDirectory: { support: 'unsupported' } },
+      }),
+    ).toEqual({ status: 'rejected', reason: 'unsupported' });
+
+    expect(
+      validatePaste({
+        clipboard: clipboard('cut', remoteRoot, [remoteFolder]),
+        targetParent: remoteSub,
+        targetAncestors: [remoteRoot, remoteSub],
+        targetCapabilities: { createDirectory: { support: 'unsupported' } },
+      }),
+    ).toEqual({ status: 'ok' });
   });
 });

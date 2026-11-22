@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Capabilities, Entry } from '@shared/storage';
 import { localConnectionId } from '@shared/storage-browser';
 import type { PendingEntryEffect } from '../tasks/pending-entry-effects';
-import { canDeleteEntry, resolveEntryCapabilities } from './entry-capabilities';
+import { resolveEntryCapabilities } from './entry-capabilities';
 
 function makeEntry(
   kind: Entry['kind'],
@@ -25,26 +25,10 @@ function entryMap(...items: Entry[]): Map<string, Entry> {
   return new Map(items.map((item) => [item.ref.locator, item]));
 }
 
-describe('canDeleteEntry', () => {
-  it('allows files, directories, and links unless remove is unsupported', () => {
-    expect(canDeleteEntry(makeEntry('file', 'a'))).toBe(true);
-    expect(canDeleteEntry(makeEntry('directory', 'b'))).toBe(true);
-    expect(canDeleteEntry(makeEntry('link', 'c'))).toBe(true);
-    expect(
-      canDeleteEntry(
-        makeEntry('file', 'd', { capabilities: { remove: { support: 'unsupported' } } }),
-      ),
-    ).toBe(false);
-    expect(canDeleteEntry(undefined)).toBe(false);
-  });
-});
-
 describe('resolveEntryCapabilities', () => {
   it('disables all actions when nothing is selected or locators are missing', () => {
     const entries = entryMap(makeEntry('file', 'a'));
-    const result = resolveEntryCapabilities(entries, new Set(['missing']), new Map());
-
-    expect(result).toEqual({
+    expect(resolveEntryCapabilities(entries, new Set(['missing']), new Map())).toEqual({
       selectedEntries: [],
       renamableEntry: undefined,
       canCopy: false,
@@ -57,7 +41,7 @@ describe('resolveEntryCapabilities', () => {
     });
   });
 
-  it('enables download for remote files/directories but not local entries', () => {
+  it('enables download only when every selected entry is remote and readable', () => {
     const remoteFile = makeEntry('file', 'remote-file');
     const localFile = makeEntry('file', 'local-file', { connectionId: localConnectionId });
     const entries = entryMap(remoteFile, localFile);
@@ -80,17 +64,19 @@ describe('resolveEntryCapabilities', () => {
     const entries = entryMap(fileA, fileB);
     const pending = new Map<string, PendingEntryEffect>([['a', { busy: true }]]);
 
-    const single = resolveEntryCapabilities(entries, new Set(['a']), pending);
-    expect(single.canRename).toBe(true);
-    expect(single.renamableEntry).toBe(fileA);
-    expect(single.renamePending).toBe(true);
-    expect(single.selectionBusy).toBe(true);
+    expect(resolveEntryCapabilities(entries, new Set(['a']), pending)).toMatchObject({
+      canRename: true,
+      renamableEntry: fileA,
+      renamePending: true,
+      selectionBusy: true,
+    });
 
-    const multiple = resolveEntryCapabilities(entries, new Set(['a', 'b']), pending);
-    expect(multiple.canRename).toBe(false);
-    expect(multiple.renamableEntry).toBeUndefined();
-    expect(multiple.renamePending).toBe(false);
-    expect(multiple.selectionBusy).toBe(true);
+    expect(resolveEntryCapabilities(entries, new Set(['a', 'b']), pending)).toMatchObject({
+      canRename: false,
+      renamableEntry: undefined,
+      renamePending: false,
+      selectionBusy: true,
+    });
   });
 
   it('allows cutting when either moveWithin or remove is supported, and blocks copying links', () => {
@@ -108,13 +94,16 @@ describe('resolveEntryCapabilities', () => {
     });
     const entries = entryMap(link, pinned);
 
-    const linkResult = resolveEntryCapabilities(entries, new Set(['shortcut']), new Map());
-    expect(linkResult.canCopy).toBe(false);
-    expect(linkResult.canCut).toBe(true);
-    expect(linkResult.canDownload).toBe(false);
+    expect(resolveEntryCapabilities(entries, new Set(['shortcut']), new Map())).toMatchObject({
+      canCopy: false,
+      canCut: true,
+      canDownload: false,
+      canDelete: true,
+    });
 
-    const pinnedResult = resolveEntryCapabilities(entries, new Set(['pinned']), new Map());
-    expect(pinnedResult.canCut).toBe(false);
-    expect(pinnedResult.canDelete).toBe(false);
+    expect(resolveEntryCapabilities(entries, new Set(['pinned']), new Map())).toMatchObject({
+      canCut: false,
+      canDelete: false,
+    });
   });
 });
