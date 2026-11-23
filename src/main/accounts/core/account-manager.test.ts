@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { deferred } from '@main/testing/deferred';
 import type { AccountProviderDescriptor } from '@shared/accounts';
 import { createAccountServices } from '../runtime/account-services';
 import { FakeAccountCipher, MemoryAccountStore } from '../testing/fixtures';
-import { deferred } from '@main/testing/deferred';
 import { KeyAccountProvider } from '../testing/key-account-provider';
 import { AccountError } from './errors';
 import type {

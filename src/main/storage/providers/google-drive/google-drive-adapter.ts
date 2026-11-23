@@ -1,4 +1,9 @@
 import { z } from 'zod';
+import type { ByteSource, OperationContext } from '@main/storage/core/contracts';
+import { StorageError, throwIfAborted } from '@main/storage/core/errors';
+import { parse } from '@main/storage/core/validation';
+import type { AdapterFactory, StorageAdapter } from '@main/storage/ports/adapter';
+import type { StorageLogger } from '@main/storage/ports/services';
 import type {
   Capabilities,
   CapabilityScope,
@@ -13,11 +18,6 @@ import type {
   WriteTarget,
 } from '@shared/storage';
 import { matchesGoogleDriveAuthorization, type GoogleDriveAuthorization } from './authorization';
-import type { ByteSource, OperationContext } from '@main/storage/core/contracts';
-import { StorageError, throwIfAborted } from '@main/storage/core/errors';
-import { parse } from '@main/storage/core/validation';
-import type { AdapterFactory, StorageAdapter } from '@main/storage/ports/adapter';
-import type { StorageLogger } from '@main/storage/ports/services';
 import { logGoogleDriveFailure } from './google-drive-diagnostics';
 import { driveFailure } from './google-drive-errors';
 import { readGoogleDriveContent } from './google-drive-read';

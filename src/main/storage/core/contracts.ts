@@ -1,4 +1,5 @@
 import type { Readable } from 'node:stream';
+import type { OperationContext, OperationProgress } from '@main/common/operation-context';
 import type {
   ByteRange,
   Entry,
@@ -8,7 +9,6 @@ import type {
   WriteTarget,
   DiscardResult,
 } from '@shared/storage/models';
-import type { OperationContext, OperationProgress } from '@main/common/operation-context';
 
 export type { OperationContext, OperationProgress };
 

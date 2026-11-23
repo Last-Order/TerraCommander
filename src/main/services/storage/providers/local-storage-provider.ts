@@ -1,6 +1,4 @@
 import { realpath, stat } from 'node:fs/promises';
-import type { Space } from '@shared/storage';
-import { emptyLocalConnection, localConnectionId } from '@shared/storage-browser';
 import { StorageError } from '@main/storage';
 import {
   localAdapterFactory,
@@ -8,6 +6,8 @@ import {
   localSpace,
   locateLocalEntry,
 } from '@main/storage/providers/local/local-adapter';
+import type { Space } from '@shared/storage';
+import { emptyLocalConnection, localConnectionId } from '@shared/storage-browser';
 import type { StoragePreferences } from '../storage-preferences';
 import type { LocalStorageProviderIntegration } from '../storage-provider';
 

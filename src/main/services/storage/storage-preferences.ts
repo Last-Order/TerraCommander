@@ -1,8 +1,8 @@
 import { isAbsolute } from 'node:path';
 import { z } from 'zod';
-import type { Space } from '@shared/storage';
 import { StorageError } from '@main/storage/core/errors';
 import { spaceSchema } from '@main/storage/core/validation';
+import type { Space } from '@shared/storage';
 
 const snapshotVersion = 2;
 const savedSpaceSchema = z.strictObject({

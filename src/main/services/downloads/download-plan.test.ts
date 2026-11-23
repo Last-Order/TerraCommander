@@ -11,11 +11,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Readable } from 'node:stream';
 import { expect, it, vi } from 'vitest';
-import type { DownloadPlanItem, PreparedDownloadBatch } from './download-types';
-import type { Entry } from '@shared/storage';
 import { StorageError } from '@main/storage/core/errors';
+import type { Entry } from '@shared/storage';
 import { DownloadService } from './download-service';
 import type { DownloadSource } from './download-transfer';
+import type { DownloadPlanItem, PreparedDownloadBatch } from './download-types';
 
 function entry(locator: string, name: string, kind: Entry['kind'] = 'file'): Entry {
   return {

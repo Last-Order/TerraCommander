@@ -1,3 +1,13 @@
+import { StorageError } from '@main/storage';
+import { TaskQueue } from '@main/tasks/task-queue';
+import type {
+  QueueTask,
+  TaskGroup,
+  TaskGroupHooks,
+  TaskGroupPreparationContext,
+  TaskGroupRequest,
+  TaskHandler,
+} from '@main/tasks/types';
 import { entryKey, type Entry } from '@shared/storage';
 import { localConnectionId, type BrowserErrorCode } from '@shared/storage-browser';
 import { defaultTransferConcurrency } from '@shared/tasks';
@@ -23,16 +33,6 @@ import type {
   UploadFileRequest,
   UploadPathsRequest,
 } from '@shared/tasks';
-import { StorageError } from '@main/storage';
-import { TaskQueue } from '@main/tasks/task-queue';
-import type {
-  QueueTask,
-  TaskGroup,
-  TaskGroupHooks,
-  TaskGroupPreparationContext,
-  TaskGroupRequest,
-  TaskHandler,
-} from '@main/tasks/types';
 import { DownloadError } from '../downloads/download-paths';
 import type {
   DownloadPlanItem,

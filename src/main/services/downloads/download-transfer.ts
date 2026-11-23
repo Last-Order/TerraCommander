@@ -1,4 +1,6 @@
-import type { DownloadProgress, DownloadRequest, DownloadRunResult } from './download-types';
+import { AccountError } from '@main/accounts/core/errors';
+import type { OperationContext, ReadHandle } from '@main/storage/core/contracts';
+import { normalizeStorageError, StorageError, throwIfAborted } from '@main/storage/core/errors';
 import type {
   ContentChecksum,
   Entry,
@@ -7,12 +9,10 @@ import type {
   ListRequest,
   ReadOptions,
 } from '@shared/storage';
-import type { OperationContext, ReadHandle } from '@main/storage/core/contracts';
-import { normalizeStorageError, StorageError, throwIfAborted } from '@main/storage/core/errors';
-import { AccountError } from '@main/accounts/core/errors';
 import { DownloadOutput } from './download-output';
 import { downloadDirectory, DownloadError, downloadFailure } from './download-paths';
 import { DownloadProgressReporter } from './download-progress-reporter';
+import type { DownloadProgress, DownloadRequest, DownloadRunResult } from './download-types';
 
 export interface DownloadSource {
   stat(ref: EntryRef, context: OperationContext): Promise<Entry>;

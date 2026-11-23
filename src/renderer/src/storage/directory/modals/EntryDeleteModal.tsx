@@ -1,8 +1,8 @@
-import { useEffect, useRef } from 'react';
 import { Button, Group, Modal, Stack, Text } from '@mantine/core';
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { Entry } from '@shared/storage';
 import { useStorageTaskQueue } from '@renderer/storage/tasks/storage-task-queue-context';
+import type { Entry } from '@shared/storage';
 import { useCurrentDirectory } from '../current-directory-context';
 import classes from './EntryDeleteModal.module.css';
 

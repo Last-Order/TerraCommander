@@ -1,8 +1,8 @@
-import { useEffect, type RefObject } from 'react';
 import { notifications } from '@mantine/notifications';
+import { useEffect, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { Entry } from '@shared/storage';
 import { useKeyboardShortcuts } from '@renderer/shortcuts/useKeyboardShortcuts';
+import type { Entry } from '@shared/storage';
 import { useStorageWorkspace } from '../storage-workspace-context';
 import { useCurrentDirectory } from './current-directory-context';
 import type { DirectoryBlankActions } from './DirectoryContextMenu';

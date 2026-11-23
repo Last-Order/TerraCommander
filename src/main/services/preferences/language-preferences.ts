@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AccountError } from '@main/accounts/core/errors';
 import {
   fallbackLanguage,
   languagePreferences,
@@ -6,7 +7,6 @@ import {
   type LanguagePreference,
   type LanguageSettings,
 } from '@shared/language';
-import { AccountError } from '@main/accounts/core/errors';
 
 export const languagePreferenceSchema = z.enum(languagePreferences);
 

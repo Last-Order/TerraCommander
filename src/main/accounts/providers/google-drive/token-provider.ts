@@ -1,10 +1,10 @@
-import type { AccountSummary } from '@shared/accounts';
-import type { OperationContext } from '@main/common/operation-context';
-import type { GoogleDriveCredentials } from './credentials';
-import type { GoogleAccountRepository } from './account-repository';
 import { accountError, assertNotCancelled, AccountError } from '@main/accounts/core/errors';
-import { requireDriveScope, type GoogleAccountRecord, type SavedCredentials } from './models';
 import { waitForAccountOperation } from '@main/accounts/core/operations';
+import type { OperationContext } from '@main/common/operation-context';
+import type { AccountSummary } from '@shared/accounts';
+import type { GoogleAccountRepository } from './account-repository';
+import type { GoogleDriveCredentials } from './credentials';
+import { requireDriveScope, type GoogleAccountRecord, type SavedCredentials } from './models';
 import type { GoogleAccountGateway, GoogleTokenSet } from './ports';
 
 interface TokenSession {

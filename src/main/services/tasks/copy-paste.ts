@@ -1,9 +1,9 @@
 import { isAbsolute, relative } from 'node:path';
+import { StorageError } from '@main/storage';
+import type { TaskDefinitions, TaskGroupPreparationContext } from '@main/tasks/types';
 import { entryKey, type Entry, type EntryRef } from '@shared/storage';
 import { localConnectionId, type BrowserErrorCode } from '@shared/storage-browser';
 import type { PasteEntriesRequest, StorageDirectoryChange } from '@shared/tasks';
-import { StorageError } from '@main/storage';
-import type { TaskDefinitions, TaskGroupPreparationContext } from '@main/tasks/types';
 import type { StorageBrowser } from '../storage/storage-browser';
 import { toBrowserErrorCode, toTaskFailure } from './task-errors';
 

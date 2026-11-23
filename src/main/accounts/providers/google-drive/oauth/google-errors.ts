@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { AccountErrorCode } from '@shared/accounts';
 import { assertNotCancelled, AccountError } from '@main/accounts/core/errors';
+import type { AccountErrorCode } from '@shared/accounts';
 
 const providerFailureSchema = z.object({
   code: z.union([z.string(), z.number()]).optional(),

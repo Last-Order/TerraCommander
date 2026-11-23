@@ -1,11 +1,11 @@
-import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
-import { jsonFingerprint } from '@main/common/canonical-json';
-import { matchesGoogleDriveAuthorization } from './credential-resolver';
+import { z } from 'zod';
 import { AccountError } from '@main/accounts/core/errors';
+import { jsonFingerprint } from '@main/common/canonical-json';
+import { deferred } from '@main/testing/deferred';
+import { matchesGoogleDriveAuthorization } from './credential-resolver';
 import type { GoogleAuthorizationGrant } from './ports';
 import { accountFixture, authorizationGrant } from './testing/fixtures';
-import { deferred } from '@main/testing/deferred';
 
 describe('Google Drive account lifecycle', () => {
   it('deduplicates a login and keeps connection fingerprints stable when labels or tokens change', async () => {

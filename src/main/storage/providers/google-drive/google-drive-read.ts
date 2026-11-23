@@ -1,8 +1,8 @@
 import { Readable } from 'node:stream';
-import type { ByteRange } from '@shared/storage';
 import type { OperationContext, ReadHandle } from '@main/storage/core/contracts';
 import { StorageError, throwIfAborted } from '@main/storage/core/errors';
 import type { StorageLogger } from '@main/storage/ports/services';
+import type { ByteRange } from '@shared/storage';
 import type { GoogleDriveAuthorization } from './authorization';
 import { logGoogleDriveFailure } from './google-drive-diagnostics';
 import { driveFailure } from './google-drive-errors';

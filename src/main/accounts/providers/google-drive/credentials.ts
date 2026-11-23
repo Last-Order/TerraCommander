@@ -1,13 +1,13 @@
-import type { OperationContext } from '@main/common/operation-context';
-import type { CredentialStorePort } from '@main/accounts/core/ports';
 import { AccountError } from '@main/accounts/core/errors';
+import { parseAccountData } from '@main/accounts/core/models';
+import type { CredentialStorePort } from '@main/accounts/core/ports';
+import type { OperationContext } from '@main/common/operation-context';
 import {
   googleCredentialBinding,
   savedCredentialsSchema,
   type GoogleAccountRecord,
   type SavedCredentials,
 } from './models';
-import { parseAccountData } from '@main/accounts/core/models';
 
 type GoogleCredentialBinding = Pick<
   GoogleAccountRecord,

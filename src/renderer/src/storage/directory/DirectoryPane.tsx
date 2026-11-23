@@ -1,5 +1,5 @@
-import { useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { ChevronRight, FolderOpen } from 'lucide-react';
+import { useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   entryKey,
@@ -15,8 +15,8 @@ import {
   CurrentDirectoryContext,
   type CurrentDirectoryContextValue,
 } from './current-directory-context';
-import classes from './DirectoryPane.module.css';
 import { DirectoryListing } from './DirectoryListing';
+import classes from './DirectoryPane.module.css';
 
 interface Location {
   ref: EntryRef;

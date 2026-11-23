@@ -1,5 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
+import { StorageError, throwIfAborted } from '@main/storage/core/errors';
+import type { EntryRef } from '@shared/storage';
+import { downloadTargetInfo } from './download-directories';
+import { allocateDownloadNames, downloadPathKey, downloadPathsOverlap } from './download-names';
+import { checkDownloadTarget } from './download-output';
+import { downloadDirectory, DownloadError, validateDownloadName } from './download-paths';
+import { DownloadPlan } from './download-plan';
+import { type DownloadTransfer, type DownloadSource } from './download-transfer';
 import type {
   DownloadProgress,
   DownloadRequest,
@@ -10,14 +18,6 @@ import type {
   PreparedDownloadBatch,
   DownloadWorkRef,
 } from './download-types';
-import { StorageError, throwIfAborted } from '@main/storage/core/errors';
-import { checkDownloadTarget } from './download-output';
-import { downloadDirectory, DownloadError, validateDownloadName } from './download-paths';
-import { type DownloadTransfer, type DownloadSource } from './download-transfer';
-import { DownloadPlan } from './download-plan';
-import { downloadTargetInfo } from './download-directories';
-import { allocateDownloadNames, downloadPathKey, downloadPathsOverlap } from './download-names';
-import type { EntryRef } from '@shared/storage';
 
 interface DownloadRecord {
   owner: number;

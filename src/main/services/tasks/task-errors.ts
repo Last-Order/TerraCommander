@@ -1,7 +1,7 @@
-import { browserErrorKey, type BrowserErrorCode } from '@shared/storage-browser';
-import type { TaskFailure } from '@shared/tasks';
 import { AccountError } from '@main/accounts/core/errors';
 import { normalizeStorageError } from '@main/storage';
+import { browserErrorKey, type BrowserErrorCode } from '@shared/storage-browser';
+import type { TaskFailure } from '@shared/tasks';
 import { DownloadError } from '../downloads/download-paths';
 
 export function toBrowserErrorCode(error: unknown): BrowserErrorCode {

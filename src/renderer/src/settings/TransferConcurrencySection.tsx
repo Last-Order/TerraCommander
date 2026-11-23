@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, NumberInput, Stack, Text } from '@mantine/core';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { maxTransferConcurrency, minTransferConcurrency } from '@shared/tasks';
 import { errorKey, resultOf, type StorageErrorKey } from '../storage/storage-client';

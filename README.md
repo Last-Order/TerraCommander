@@ -70,4 +70,3 @@ npm run dev
 | `npm run build`              | Type-check and build production bundles                      |
 | `npm run pack`               | Build an unpacked desktop application in `dist/`             |
 | `npm run dist`               | Build Windows release packages (NSIS installer & portable)   |
-

@@ -5,11 +5,10 @@ import {
   OAuth2Client,
 } from 'google-auth-library';
 import { z } from 'zod';
-import type { OperationContext } from '@main/common/operation-context';
 import { assertNotCancelled, AccountError } from '@main/accounts/core/errors';
-import { googleRequestError } from './google-errors';
-import { GOOGLE_DRIVE_SCOPES } from '../models';
 import { parseAccountData } from '@main/accounts/core/models';
+import type { OperationContext } from '@main/common/operation-context';
+import { GOOGLE_DRIVE_SCOPES } from '../models';
 import type {
   GoogleAccountGateway,
   GoogleAccountProfile,
@@ -19,6 +18,7 @@ import type {
   GoogleCodeExchange,
   GoogleTokenSet,
 } from '../ports';
+import { googleRequestError } from './google-errors';
 
 const tokenResponseSchema = z.object({
   access_token: z.string().min(1),

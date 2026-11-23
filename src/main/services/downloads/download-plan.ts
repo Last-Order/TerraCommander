@@ -1,11 +1,11 @@
 import { dirname, join } from 'node:path';
-import type { DownloadPlanItem, DownloadPlanPage } from './download-types';
-import type { Entry, EntryRef } from '@shared/storage';
 import { StorageError, throwIfAborted } from '@main/storage/core/errors';
+import type { Entry, EntryRef } from '@shared/storage';
 import { DownloadDirectories } from './download-directories';
 import { allocateDownloadNames } from './download-names';
 import { DownloadError, validateDownloadName } from './download-paths';
 import { DownloadTransfer, type DownloadSource } from './download-transfer';
+import type { DownloadPlanItem, DownloadPlanPage } from './download-types';
 
 export interface DownloadPlanRoot {
   entry: Entry;

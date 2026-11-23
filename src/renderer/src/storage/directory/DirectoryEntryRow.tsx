@@ -1,11 +1,11 @@
-import { memo } from 'react';
 import { ChevronRight, File, Folder, Link2, LockKeyhole, type LucideIcon } from 'lucide-react';
+import { memo } from 'react';
+import { formatSize } from '@renderer/format/size';
 import type { Entry } from '@shared/storage';
 import type { DirectoryRow, DirectorySelectionModifiers } from './directory-types';
-import classes from './DirectoryTable.module.css';
 import type { DirectoryContextMenuPosition } from './useDirectoryContextMenu';
 import { useEntryBusy } from './useDirectoryEffects';
-import { formatSize } from '@renderer/format/size';
+import classes from './DirectoryTable.module.css';
 
 const entryIcons: Record<Entry['kind'], LucideIcon> = {
   directory: Folder,

@@ -1,7 +1,7 @@
+import type { AdapterFactory } from '@main/storage';
 import type { AccountSetupRequest, AccountSummary } from '@shared/accounts';
 import type { ConnectionDefinition, Entry, EntryRef, Space } from '@shared/storage';
 import type { StorageConnectionSummary, StorageProvider } from '@shared/storage-browser';
-import type { AdapterFactory } from '@main/storage';
 
 export interface LocalStorageProviderIntegration {
   readonly kind: 'local';

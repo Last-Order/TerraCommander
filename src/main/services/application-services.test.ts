@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createAccountServices } from '../accounts/runtime/account-services';
 import { FakeAccountCipher, MemoryAccountStore } from '../accounts/testing/fixtures';
 import { deferred } from '../testing/deferred';
-import { createAccountServices } from '../accounts/runtime/account-services';
 import { ApplicationServices } from './application-services';
 import { ServiceClosedError } from './lazy-service';
 

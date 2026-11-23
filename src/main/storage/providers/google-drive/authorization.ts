@@ -1,5 +1,5 @@
-import type { ConnectionDefinition } from '@shared/storage';
 import type { OperationContext } from '@main/storage/core/contracts';
+import type { ConnectionDefinition } from '@shared/storage';
 
 export interface GoogleDriveAuthorization {
   readonly provider: 'google-drive';

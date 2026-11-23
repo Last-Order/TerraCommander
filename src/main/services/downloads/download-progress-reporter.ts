@@ -1,5 +1,5 @@
-import type { DownloadProgress } from './download-types';
 import { TransferRateReporter } from '../transfer-rate-reporter';
+import type { DownloadProgress } from './download-types';
 
 /** Samples recent throughput even while the source is stalled. */
 export class DownloadProgressReporter {

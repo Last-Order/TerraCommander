@@ -1,7 +1,7 @@
 import type { AppLanguage } from '@shared/language';
+import type { DownloadPreferences } from './downloads/download-preferences';
 import { LazyService } from './lazy-service';
 import type { StorageBrowser } from './storage/storage-browser';
-import type { DownloadPreferences } from './downloads/download-preferences';
 import type { StorageTaskService } from './tasks/storage-task-service';
 import type { TransferPreferences } from './tasks/transfer-preferences';
 

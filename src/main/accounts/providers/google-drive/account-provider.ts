@@ -1,18 +1,18 @@
-import type { AccountCheck, AccountState, AccountSetupRequest } from '@shared/accounts';
-import type { StructuredLogger } from '@main/common/logger';
-import type { OperationContext } from '@main/common/operation-context';
-import type { AccountGrantWriter } from './grant-writer';
-import type { GoogleAccountRepository } from './account-repository';
-import type { GoogleAuthorizationFlow } from './oauth/authorization-flow';
+import { z } from 'zod';
 import { accountError, assertNotCancelled, AccountError } from '@main/accounts/core/errors';
-import { requireDriveScope, type GoogleAccountRecord } from './models';
 import { parseAccountData } from '@main/accounts/core/models';
 import { accountOperationScope, waitForAccountOperation } from '@main/accounts/core/operations';
+import type { AccountProvider } from '@main/accounts/core/ports';
+import type { StructuredLogger } from '@main/common/logger';
+import type { OperationContext } from '@main/common/operation-context';
+import type { AccountCheck, AccountState, AccountSetupRequest } from '@shared/accounts';
+import type { GoogleAccountRepository } from './account-repository';
+import { GoogleDriveCredentialResolver } from './credential-resolver';
+import type { AccountGrantWriter } from './grant-writer';
+import { requireDriveScope, type GoogleAccountRecord } from './models';
+import type { GoogleAuthorizationFlow } from './oauth/authorization-flow';
 import type { GoogleAccountGateway } from './ports';
 import type { GoogleTokenProvider } from './token-provider';
-import { GoogleDriveCredentialResolver } from './credential-resolver';
-import type { AccountProvider } from '@main/accounts/core/ports';
-import { z } from 'zod';
 
 const browserSetupSchema = z.strictObject({
   method: z.literal('browser'),

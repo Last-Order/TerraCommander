@@ -1,3 +1,4 @@
+import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
 import {
   useCallback,
   useEffect,
@@ -8,7 +9,6 @@ import {
   type FocusEvent,
   type KeyboardEvent,
 } from 'react';
-import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
 import {
   isDirectoryNavigationKey,
   resolveDirectoryNavigationIndex,

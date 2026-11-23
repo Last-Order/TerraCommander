@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { AccountRepository } from './account-repository';
 import type { AccountRecord } from '../core/models';
 import { MemoryAccountStore, TEST_TIME } from '../testing/fixtures';
+import { AccountRepository } from './account-repository';
 
 describe('shared account persistence boundaries', () => {
   it('does not clear malformed or unsupported stored account data', () => {

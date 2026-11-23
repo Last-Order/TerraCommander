@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { channels } from '@shared/contracts';
 import { settingKeys, type AppSettingsMap, type SettingKey } from '@shared/settings';
-import type { TrustedIpc } from './helpers';
 import type { ApplicationServices } from '../services/application-services';
 import { transferConcurrencySchema } from '../services/tasks/transfer-preferences';
 import { StorageError } from '../storage';
+import type { TrustedIpc } from './helpers';
 
 const settingKeySchema = z.enum(settingKeys);
 

@@ -1,5 +1,5 @@
-import type { BrowserErrorCode } from '@shared/storage-browser';
 import type { TaskDefinitions, TaskGroupPreparationContext } from '@main/tasks/types';
+import type { BrowserErrorCode } from '@shared/storage-browser';
 import { toBrowserErrorCode, toTaskFailure } from './task-errors';
 
 export interface BatchDirectoryPage<TItem> {

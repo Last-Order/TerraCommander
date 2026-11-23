@@ -1,11 +1,11 @@
+import { StorageAccess, StorageError, type StorageLogger } from '@main/storage';
+import type { ReopenableByteSource, WriteExecution } from '@main/storage/core/contracts';
 import type { CreateTarget, Entry, EntryRef, Space } from '@shared/storage';
 import type {
   SpaceChoice,
   StorageConnectionSummary,
   StorageProvider,
 } from '@shared/storage-browser';
-import { StorageAccess, StorageError, type StorageLogger } from '@main/storage';
-import type { ReopenableByteSource, WriteExecution } from '@main/storage/core/contracts';
 import type { AccountRuntime } from '../application-services';
 import { DownloadService } from '../downloads/download-service';
 import { UploadService } from '../uploads/upload-service';

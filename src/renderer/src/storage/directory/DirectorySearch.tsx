@@ -1,11 +1,11 @@
-import { useLayoutEffect } from 'react';
 import { ActionIcon, TextInput, Transition } from '@mantine/core';
 import { useReducedMotion } from '@mantine/hooks';
 import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
+import { useLayoutEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { DirectorySearchController } from './useDirectorySearch';
 import listingClasses from './DirectoryListing.module.css';
 import classes from './DirectorySearch.module.css';
-import type { DirectorySearchController } from './useDirectorySearch';
 
 interface DirectorySearchProps {
   search: Pick<

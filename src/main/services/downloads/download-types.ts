@@ -1,5 +1,5 @@
-import type { BrowserErrorCode } from '@shared/storage-browser';
 import type { Entry, EntryRef } from '@shared/storage';
+import type { BrowserErrorCode } from '@shared/storage-browser';
 
 export interface DownloadRequest {
   ref: EntryRef;

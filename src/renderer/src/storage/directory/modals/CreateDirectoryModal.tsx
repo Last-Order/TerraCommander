@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
 import { Button, Group, Modal, Stack, TextInput } from '@mantine/core';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStorageTaskQueue } from '@renderer/storage/tasks/storage-task-queue-context';
 import { useCurrentDirectory } from '../current-directory-context';

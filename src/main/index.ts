@@ -1,6 +1,6 @@
-import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, dialog, session } from 'electron';
 import log from 'electron-log/main';
 import { fallbackLanguage, type AppLanguage } from '@shared/language';

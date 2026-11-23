@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
 import { Alert, Group, Loader, Modal } from '@mantine/core';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { Entry } from '@shared/storage';
 import { formatSize } from '@renderer/format/size';
 import { errorKey, resultOf, type StorageErrorKey } from '@renderer/storage/storage-client';
 import { useStorageWorkspace } from '@renderer/storage/storage-workspace-context';
+import type { Entry } from '@shared/storage';
 import { useCurrentDirectory } from '../current-directory-context';
 import classes from './EntryInformationModal.module.css';
 

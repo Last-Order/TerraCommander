@@ -2,6 +2,9 @@ import { createHash } from 'node:crypto';
 import type { Dirent, Stats } from 'node:fs';
 import { constants, copyFile, lstat, mkdir, readdir, rename, rm, unlink } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, normalize, parse, relative } from 'node:path';
+import type { OperationContext } from '@main/storage/core/contracts';
+import { StorageError, throwIfAborted } from '@main/storage/core/errors';
+import type { AdapterFactory, StorageAdapter } from '@main/storage/ports/adapter';
 import type {
   Capabilities,
   CapabilityScope,
@@ -12,9 +15,6 @@ import type {
   ListRequest,
   Space,
 } from '@shared/storage';
-import type { OperationContext } from '@main/storage/core/contracts';
-import { StorageError, throwIfAborted } from '@main/storage/core/errors';
-import type { AdapterFactory, StorageAdapter } from '@main/storage/ports/adapter';
 import {
   defaultLocalPlatform,
   joinLocalLocator,

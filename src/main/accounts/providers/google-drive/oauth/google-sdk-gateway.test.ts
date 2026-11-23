@@ -1,9 +1,9 @@
 import { gaxios, LoginTicket, OAuth2Client, type VerifyIdTokenOptions } from 'google-auth-library';
 import { describe, expect, it, vi } from 'vitest';
-import { googleRequestError } from './google-errors';
-import { GoogleSdkGateway } from './google-sdk-gateway';
 import { DRIVE_SCOPE } from '../models';
 import { TEST_CLIENT_ID } from '../testing/fixtures';
+import { googleRequestError } from './google-errors';
+import { GoogleSdkGateway } from './google-sdk-gateway';
 
 /** Exercise the real SDK's request construction without contacting Google's endpoints. */
 function gatewayFixture(responses: unknown[]) {

@@ -1,11 +1,11 @@
 import { z } from 'zod';
+import { AccountError } from '@main/accounts/core/errors';
 import {
   defaultTransferConcurrency,
   maxTransferConcurrency,
   minTransferConcurrency,
   type TransferSettings,
 } from '@shared/tasks';
-import { AccountError } from '@main/accounts/core/errors';
 
 export const transferConcurrencySchema = z
   .number()

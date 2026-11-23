@@ -1,6 +1,6 @@
 import type { StructuredLogger } from '@main/common/logger';
-import { AccountManager } from '../core/account-manager';
 import { AccountCredentialResolver } from '../core/account-credential-resolver';
+import { AccountManager } from '../core/account-manager';
 import { AccountProviderRegistry } from '../core/account-provider-registry';
 import type {
   AccountCipher,

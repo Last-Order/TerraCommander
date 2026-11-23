@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { operations, storageLabelKeys } from '@shared/storage/models';
 import { canonicalJson, jsonFingerprint } from '@main/common/canonical-json';
+import { operations, storageLabelKeys } from '@shared/storage/models';
 import { StorageError } from './errors';
 
 export { canonicalJson };

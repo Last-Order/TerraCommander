@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { Button, Group, TextInput } from '@mantine/core';
 import { FolderOpen } from 'lucide-react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { errorKey, resultOf } from '../storage/storage-client';
 import classes from './Downloads.module.css';

@@ -8,8 +8,6 @@ import { defaultLanguageSettings, type LanguagePreference } from '@shared/langua
 import type { Entry } from '@shared/storage';
 import { defaultTransferConcurrency } from '@shared/tasks';
 import { AccountError } from '../accounts/core/errors';
-import { StorageError, type WriteExecution } from '../storage';
-import { registerIpcHandlers } from './';
 import { ApplicationServices } from '../services/application-services';
 import { DownloadPreferences } from '../services/downloads/download-preferences';
 import { createDefaultStorageProviders } from '../services/storage/providers/default-providers';
@@ -17,6 +15,8 @@ import { StorageBrowser } from '../services/storage/storage-browser';
 import { StoragePreferences } from '../services/storage/storage-preferences';
 import { StorageTaskService } from '../services/tasks/storage-task-service';
 import { TransferPreferences } from '../services/tasks/transfer-preferences';
+import { StorageError, type WriteExecution } from '../storage';
+import { registerIpcHandlers } from './';
 
 const handlers = vi.hoisted(() => new Map<string, (...args: unknown[]) => Promise<unknown>>());
 const picker = vi.hoisted(() => vi.fn<() => Promise<OpenDialogReturnValue>>());

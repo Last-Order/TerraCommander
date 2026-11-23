@@ -41,8 +41,8 @@ import {
   spaceSchema,
   writeTargetSchema,
 } from '../core/validation';
-import type { AdapterLease, AdapterRegistry } from '../registry/adapter-registry';
 import type { StorageAdapter } from '../ports/adapter';
+import type { AdapterLease, AdapterRegistry } from '../registry/adapter-registry';
 import { CursorCodec } from './cursors';
 
 const DEFAULT_PAGE_SIZE = 100;

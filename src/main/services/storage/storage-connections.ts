@@ -1,8 +1,8 @@
+import { AccountError } from '@main/accounts/core/errors';
+import { AdapterRegistry, StorageError, type StorageLogger } from '@main/storage';
 import type { AccountSummary } from '@shared/accounts';
 import type { ConnectionDefinition } from '@shared/storage';
 import type { StorageConnectionSummary, StorageProvider } from '@shared/storage-browser';
-import { AccountError } from '@main/accounts/core/errors';
-import { AdapterRegistry, StorageError, type StorageLogger } from '@main/storage';
 import type { AccountRuntime } from '../application-services';
 import type {
   AccountStorageProviderIntegration,

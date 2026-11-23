@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import {
   Modal,
   NativeSelect,
@@ -8,12 +7,13 @@ import {
   useMantineColorScheme,
 } from '@mantine/core';
 import { ArrowDownUp, SlidersHorizontal } from 'lucide-react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { languagePreferences, type LanguagePreference } from '@shared/language';
 import { resultOf } from '../storage/storage-client';
-import classes from './SettingsDialog.module.css';
 import { DownloadSettingsSection } from './DownloadSettingsSection';
 import { TransferConcurrencySection } from './TransferConcurrencySection';
+import classes from './SettingsDialog.module.css';
 
 interface SettingsDialogProps {
   opened: boolean;

@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Readable } from 'node:stream';
 import { expect, it, vi } from 'vitest';
-import type { DownloadRequest } from './download-types';
-import type { Entry } from '@shared/storage';
 import { StorageError } from '@main/storage/core/errors';
+import type { Entry } from '@shared/storage';
 import { DownloadOutput } from './download-output';
 import { DownloadService } from './download-service';
 import type { DownloadSource } from './download-transfer';
+import type { DownloadRequest } from './download-types';
 
 async function fixture(directory: string, replace = false) {
   const content = Buffer.from('0123456789abcdef');

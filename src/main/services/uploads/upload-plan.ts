@@ -1,8 +1,8 @@
 import type { BigIntStats } from 'node:fs';
 import { lstat, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Entry, EntryRef, StorageErrorCode } from '@shared/storage';
 import { StorageError, throwIfAborted } from '@main/storage/core/errors';
+import type { Entry, EntryRef, StorageErrorCode } from '@shared/storage';
 import { prepareLocalUpload } from './local-upload-source';
 import type {
   ResolvedUploadWork,

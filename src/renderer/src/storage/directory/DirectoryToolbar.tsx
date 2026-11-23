@@ -1,11 +1,11 @@
-import type { ReactNode, RefObject } from 'react';
 import { ActionIcon, Menu } from '@mantine/core';
 import { Ellipsis, FileUp, FolderPlus, FolderUp, Plus } from 'lucide-react';
+import type { ReactNode, RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCurrentDirectory } from './current-directory-context';
 import { DirectoryBlankMenuDropdown, type DirectoryBlankActions } from './DirectoryContextMenu';
-import classes from './DirectoryListing.module.css';
 import type { DirectoryUpload } from './useDirectoryUpload';
+import classes from './DirectoryListing.module.css';
 
 type DirectoryToolbarUpload = Pick<DirectoryUpload, 'disabled' | 'uploadFile' | 'uploadFolder'>;
 

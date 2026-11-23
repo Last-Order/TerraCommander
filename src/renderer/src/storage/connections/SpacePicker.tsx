@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { ActionIcon, Alert, Button, Checkbox, Group, Loader, Stack, Text } from '@mantine/core';
 import { RefreshCw } from 'lucide-react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import useSWR from 'swr';
 import type { StorageConnectionSummary } from '@shared/storage-browser';

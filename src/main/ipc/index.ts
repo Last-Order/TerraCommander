@@ -2,8 +2,6 @@ import { app, type BrowserWindow } from 'electron';
 import { z } from 'zod';
 import { channels, type AppInfo } from '@shared/contracts';
 import { localConnectionId } from '@shared/storage-browser';
-import { registerDownloadIpc } from './downloads';
-import { createTrustedIpc } from './helpers';
 import { isTrustedRenderer } from '../security';
 import type { ApplicationServices } from '../services/application-services';
 import {
@@ -12,6 +10,8 @@ import {
 } from '../services/preferences/language-preferences';
 import type { StorageBrowser } from '../services/storage/storage-browser';
 import { entryRefSchema } from '../storage/core/validation';
+import { registerDownloadIpc } from './downloads';
+import { createTrustedIpc } from './helpers';
 import { registerSettingsIpc } from './settings';
 import { registerTaskIpc } from './tasks';
 

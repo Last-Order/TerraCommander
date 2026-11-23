@@ -1,20 +1,20 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Skeleton } from '@mantine/core';
 import { ChevronDown, ChevronsUpDown, ChevronUp, type LucideIcon } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Entry } from '@shared/storage';
-import classes from './DirectoryTable.module.css';
-import { DirectoryEntryRow } from './DirectoryEntryRow';
 import { isDirectoryNavigationKey } from './directory-navigation';
 import { useDirectorySortStore } from './directory-sort';
-import type { DirectoryContextMenuPosition } from './useDirectoryContextMenu';
-import { useDirectoryVirtualizer } from './useDirectoryVirtualizer';
 import type {
   DirectoryRevealTarget,
   DirectoryRow,
   DirectorySelectionModifiers,
   DirectorySort,
 } from './directory-types';
+import { DirectoryEntryRow } from './DirectoryEntryRow';
+import type { DirectoryContextMenuPosition } from './useDirectoryContextMenu';
+import { useDirectoryVirtualizer } from './useDirectoryVirtualizer';
+import classes from './DirectoryTable.module.css';
 
 const entryIconSize = 16;
 const sortIcons: Record<DirectorySort['direction'], LucideIcon> = {

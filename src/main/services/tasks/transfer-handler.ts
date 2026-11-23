@@ -1,3 +1,4 @@
+import type { TaskHandler } from '@main/tasks/types';
 import { entryKey, type Entry, type EntryRef } from '@shared/storage';
 import { localConnectionId } from '@shared/storage-browser';
 import type {
@@ -6,7 +7,6 @@ import type {
   TaskProgress,
   UploadTaskDisplayInput,
 } from '@shared/tasks';
-import type { TaskHandler } from '@main/tasks/types';
 import type { DownloadWorkRef } from '../downloads/download-types';
 import type { StorageBrowser } from '../storage/storage-browser';
 import type { UploadWorkRef } from '../uploads/upload-types';

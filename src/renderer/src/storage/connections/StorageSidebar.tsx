@@ -1,4 +1,3 @@
-import { useId, useState } from 'react';
 import { ActionIcon, Button, Skeleton } from '@mantine/core';
 import {
   ChevronDown,
@@ -10,6 +9,7 @@ import {
   Settings,
   SlidersHorizontal,
 } from 'lucide-react';
+import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Space } from '@shared/storage';
 import type { StorageConnectionSummary } from '@shared/storage-browser';

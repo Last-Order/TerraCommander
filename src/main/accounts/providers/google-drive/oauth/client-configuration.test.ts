@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { readGoogleClientConfiguration } from './client-configuration';
 import { TEST_CLIENT_ID } from '../testing/fixtures';
+import { readGoogleClientConfiguration } from './client-configuration';
 
 describe('Google client configuration', () => {
   it('validates the configured client and permits an omitted secret or unconfigured provider', () => {

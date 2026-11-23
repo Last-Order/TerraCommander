@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ConnectionDefinition } from '@shared/storage/models';
-import type { AdapterServices } from '../ports/adapter';
-import { StorageError } from '../core/errors';
 import { deferred } from '@main/testing/deferred';
+import type { ConnectionDefinition } from '@shared/storage/models';
+import { StorageError } from '../core/errors';
+import type { AdapterServices } from '../ports/adapter';
 import { FixtureAdapter, fixtureServices } from '../testing/fixtures';
 import { AdapterRegistry } from './adapter-registry';
 

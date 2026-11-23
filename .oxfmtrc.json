@@ -3,5 +3,9 @@
   "singleQuote": true,
   "trailingComma": "all",
   "printWidth": 100,
+  "sortImports": {
+    "internalPattern": ["@main/", "@preload/", "@renderer/", "@shared/"],
+    "newlinesBetween": false
+  },
   "ignorePatterns": ["package-lock.json", "node_modules", "out", "dist", "coverage"]
 }

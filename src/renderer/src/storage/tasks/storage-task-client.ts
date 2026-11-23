@@ -1,4 +1,5 @@
 import { createStore } from 'zustand/vanilla';
+import type { TaskQueueViewClient, TaskQueueViewSnapshot } from '@renderer/tasks/task-types';
 import type {
   CreateDirectoryTaskRequest,
   DeleteEntriesRequest,
@@ -17,7 +18,6 @@ import type {
   UploadFileRequest,
   UploadPathsRequest,
 } from '@shared/tasks';
-import type { TaskQueueViewClient, TaskQueueViewSnapshot } from '@renderer/tasks/task-types';
 import type { DirectoryCache } from '../directory/directory-cache';
 import type { DirectoryEffectsStore } from '../directory/directory-effects';
 import { resultOf, StorageBrowserError } from '../storage-client';

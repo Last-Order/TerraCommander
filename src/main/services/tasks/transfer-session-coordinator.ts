@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { StorageError } from '@main/storage';
 import type { Entry, EntryRef } from '@shared/storage';
 import type {
   PrepareDownloadRequest,
@@ -7,7 +8,6 @@ import type {
   UploadFileRequest,
   UploadPathsRequest,
 } from '@shared/tasks';
-import { StorageError } from '@main/storage';
 import { DownloadError } from '../downloads/download-paths';
 import type { DownloadWork, PreparedDownloadBatch } from '../downloads/download-types';
 import type { StorageBrowser } from '../storage/storage-browser';

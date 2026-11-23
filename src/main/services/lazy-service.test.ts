@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { LazyService, ServiceClosedError } from './lazy-service';
 import { deferred } from '../testing/deferred';
+import { LazyService, ServiceClosedError } from './lazy-service';
 
 describe('lazy service lifecycle', () => {
   it('does not create an unused service, including during shutdown', async () => {

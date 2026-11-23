@@ -3,8 +3,8 @@ import { TaskDisplayContext, type TaskMessageTranslator } from './task-display-c
 import type { TaskGroupPresenter, TaskPresenter } from './task-row-model';
 import type { TaskGroupViewItem, TaskQueueViewClient, TaskViewItem } from './task-types';
 import { TaskQueuePanel } from './TaskQueuePanel';
-import classes from './TaskQueueDock.module.css';
 import { WorkspaceStatusBar } from './WorkspaceStatusBar';
+import classes from './TaskQueueDock.module.css';
 
 export function TaskQueueDock<TTask extends TaskViewItem, TGroup extends TaskGroupViewItem>({
   children,

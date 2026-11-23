@@ -1,9 +1,9 @@
 import { Readable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
-import type { ByteSource } from './contracts';
-import { byteSource, connectFixture, fixtureRef, readHandle } from '../testing/fixtures';
 import { deferred } from '@main/testing/deferred';
 import { StorageAccess } from '../access/storage-access';
+import { byteSource, connectFixture, fixtureRef, readHandle } from '../testing/fixtures';
+import type { ByteSource } from './contracts';
 import { managedRead, scopeSource } from './streams';
 
 describe('stream lifecycle', () => {

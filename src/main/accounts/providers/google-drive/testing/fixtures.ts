@@ -1,9 +1,9 @@
+import { FakeAccountCipher, MemoryAccountStore, TEST_TIME } from '@main/accounts/testing/fixtures';
 import type { StructuredLogger } from '@main/common/logger';
 import type { OperationContext } from '@main/common/operation-context';
 import { createGoogleDriveProvider } from '../create-provider';
-import { googleDriveDescriptor } from '../descriptor';
 import { isGoogleDriveAuthorization } from '../credential-resolver';
-import { FakeAccountCipher, MemoryAccountStore, TEST_TIME } from '@main/accounts/testing/fixtures';
+import { googleDriveDescriptor } from '../descriptor';
 export { TEST_TIME } from '@main/accounts/testing/fixtures';
 import { vi } from 'vitest';
 import { createAccountServices } from '@main/accounts/runtime/account-services';

@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import type { Entry } from '@shared/storage';
 import type {
   AdapterWriteSession,
   OperationContext,
@@ -7,6 +6,7 @@ import type {
   SessionWriteContext,
 } from '@main/storage/core/contracts';
 import { normalizeStorageError, StorageError, throwIfAborted } from '@main/storage/core/errors';
+import type { Entry } from '@shared/storage';
 import type { GoogleDriveAuthorization } from './authorization';
 import { driveFailure } from './google-drive-errors';
 

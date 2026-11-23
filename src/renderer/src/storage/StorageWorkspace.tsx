@@ -12,10 +12,10 @@ import { DirectoryEffectsStore } from './directory/directory-effects';
 import { DirectoryPane, EmptyDirectoryPane } from './directory/DirectoryPane';
 import { errorKey, resultOf } from './storage-client';
 import { StorageWorkspaceContext } from './storage-workspace-context';
-import classes from './StorageWorkspace.module.css';
 import { StorageTaskClient } from './tasks/storage-task-client';
 import { presentStorageTask, presentStorageTaskGroup } from './tasks/storage-task-presenter';
 import { StorageTaskQueueContext } from './tasks/storage-task-queue-context';
+import classes from './StorageWorkspace.module.css';
 
 export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { t, i18n } = useTranslation('errors');

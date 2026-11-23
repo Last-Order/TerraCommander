@@ -1,9 +1,9 @@
-import type { CreateTarget, Entry, EntryRef, StorageErrorCode } from '@shared/storage';
 import type {
   OperationContext,
   ReopenableByteSource,
   WriteExecution,
 } from '@main/storage/core/contracts';
+import type { CreateTarget, Entry, EntryRef, StorageErrorCode } from '@shared/storage';
 
 /**
  * Policy when a destination directory already contains an item with the same name.

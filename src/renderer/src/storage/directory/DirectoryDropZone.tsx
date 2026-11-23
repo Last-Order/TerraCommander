@@ -1,8 +1,8 @@
-import type { ReactNode } from 'react';
 import { Upload } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import classes from './DirectoryListing.module.css';
 import type { DirectoryUpload } from './useDirectoryUpload';
+import classes from './DirectoryListing.module.css';
 
 interface DirectoryDropZoneProps {
   upload: Pick<DirectoryUpload, 'error' | 'dropActive' | 'dropZoneProps'>;
