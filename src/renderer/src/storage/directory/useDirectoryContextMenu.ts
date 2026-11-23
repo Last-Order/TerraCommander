@@ -1,8 +1,17 @@
 import { useCallback, useState } from 'react';
 import type { Entry } from '@shared/storage';
 
-type DirectoryContextMenu =
-  | { kind: 'entry'; locator: string }
+export interface DirectoryContextMenuPosition {
+  x: number;
+  y: number;
+}
+
+export type DirectoryContextMenuState =
+  | { kind: 'entry'; entry: Entry; x: number; y: number }
+  | { kind: 'blank'; x: number; y: number };
+
+type StoredContextMenu =
+  | { kind: 'entry'; locator: string; x: number; y: number }
   | { kind: 'blank'; x: number; y: number };
 
 interface UseDirectoryContextMenuOptions {
@@ -16,33 +25,38 @@ export function useDirectoryContextMenu({
   phase,
   selectForContextMenu,
 }: UseDirectoryContextMenuOptions) {
-  const [menu, setMenu] = useState<DirectoryContextMenu | null>(null);
+  const [stored, setStored] = useState<StoredContextMenu | null>(null);
 
-  const menuEntry = menu?.kind === 'entry' ? entries.get(menu.locator) : undefined;
-  if (phase === 'ready' && menu?.kind === 'entry' && !menuEntry) setMenu(null);
-  const blankMenuPosition = menu?.kind === 'blank' ? { x: menu.x, y: menu.y } : null;
+  const menuEntry = stored?.kind === 'entry' ? entries.get(stored.locator) : undefined;
+  if (phase === 'ready' && stored?.kind === 'entry' && !menuEntry) setStored(null);
+
+  let activeMenu: DirectoryContextMenuState | null = null;
+  if (stored?.kind === 'blank') {
+    activeMenu = stored;
+  } else if (stored?.kind === 'entry' && menuEntry) {
+    activeMenu = { kind: 'entry', entry: menuEntry, x: stored.x, y: stored.y };
+  }
 
   const closeMenu = useCallback(() => {
-    setMenu(null);
+    setStored(null);
   }, []);
 
   const showEntryMenu = useCallback(
-    ({ ref: { locator } }: Entry) => {
+    ({ ref: { locator } }: Entry, position: DirectoryContextMenuPosition) => {
       selectForContextMenu(locator);
-      setMenu({ kind: 'entry', locator });
+      setStored({ kind: 'entry', locator, ...position });
     },
     [selectForContextMenu],
   );
 
-  const showBlankMenu = useCallback((position: { x: number; y: number }) => {
-    setMenu({ kind: 'blank', ...position });
+  const showBlankMenu = useCallback((position: DirectoryContextMenuPosition) => {
+    setStored({ kind: 'blank', ...position });
   }, []);
 
   return {
+    activeMenu,
     menuEntry,
-    entryMenuOpened: menuEntry !== undefined,
-    blankMenuPosition,
-    anyMenuOpened: menuEntry !== undefined || blankMenuPosition !== null,
+    opened: activeMenu !== null,
     closeMenu,
     showEntryMenu,
     showBlankMenu,

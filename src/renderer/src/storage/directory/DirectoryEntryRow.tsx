@@ -3,6 +3,7 @@ import { ChevronRight, File, Folder, Link2, LockKeyhole, type LucideIcon } from 
 import type { Entry } from '@shared/storage';
 import type { DirectoryRow, DirectorySelectionModifiers } from './directory-types';
 import classes from './DirectoryTable.module.css';
+import type { DirectoryContextMenuPosition } from './useDirectoryContextMenu';
 import { useEntryBusy } from './useDirectoryEffects';
 import { formatSize } from '@renderer/format/size';
 
@@ -22,7 +23,7 @@ interface DirectoryEntryRowProps extends DirectoryRow {
   sizeFormatter: Intl.NumberFormat;
   measure: ((element: HTMLTableRowElement | null) => void) | undefined;
   onSelect: (locator: string, modifiers: DirectorySelectionModifiers) => void;
-  onContextMenu: (entry: Entry) => void;
+  onContextMenu: (entry: Entry, position: DirectoryContextMenuPosition) => void;
   onOpen: (entry: Entry) => void;
 }
 
@@ -61,7 +62,10 @@ export const DirectoryEntryRow = memo(function DirectoryEntryRow({
         event.currentTarget.querySelector('button')?.focus({ preventScroll: true });
         onSelect(locator, { toggle: event.ctrlKey, range: event.shiftKey });
       }}
-      onContextMenu={() => onContextMenu(entry)}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onContextMenu(entry, { x: event.clientX, y: event.clientY });
+      }}
       onDoubleClick={
         isDirectory
           ? (event) => {

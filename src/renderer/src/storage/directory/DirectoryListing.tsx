@@ -1,14 +1,13 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Menu, VisuallyHidden } from '@mantine/core';
+import { VisuallyHidden } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
 import type { Entry } from '@shared/storage';
 import { useCurrentDirectory } from './current-directory-context';
 import { isDirectoryBlankTarget } from './directory-blank-target';
 import { buildDirectoryRows } from './directory-rows';
 import { useDirectorySortStore } from './directory-sort';
-import { DirectoryBlankMenu } from './DirectoryBlankMenu';
+import { DirectoryContextMenu } from './DirectoryContextMenu';
 import { DirectoryDropZone } from './DirectoryDropZone';
-import { DirectoryEntryMenu } from './DirectoryEntryMenu';
 import classes from './DirectoryListing.module.css';
 import { DirectorySearch } from './DirectorySearch';
 import { DirectoryStatus } from './DirectoryStatus';
@@ -146,49 +145,37 @@ export function DirectoryListing({
           <DirectorySearch search={search} onClose={commands.closeSearch} />
           <DirectoryStatus error={error} empty={snapshot?.size === 0} onRetry={commands.reload} />
           {(loadingWithoutEntries || entries.size > 0) && (
-            <Menu
-              opened={menu.entryMenuOpened}
-              onChange={(opened) => {
-                if (!opened) menu.closeMenu();
-              }}
-              position="bottom-start"
-              floatingStrategy="fixed"
-              hideDetached={false}
-              transitionProps={{ duration: 0 }}
-            >
-              <DirectoryTable
-                scrollElement={scrollElement}
-                rows={rows}
-                revealTarget={search.revealTarget}
-                canSort={snapshot !== undefined && !loading}
-                loadingWithoutEntries={loadingWithoutEntries}
-                navigationBlocked={menu.anyMenuOpened}
-                selectedLocators={selectedLocators}
-                cutLocators={clipboard.cutLocators}
-                onSelect={selectEntry}
-                onContextMenu={menu.showEntryMenu}
-                onOpen={onOpen}
-              />
-              <DirectoryEntryMenu
-                opened={menu.entryMenuOpened}
-                selectedEntries={selectedEntries}
-                capabilities={capabilities}
-                onCopy={commands.copySelection}
-                onCut={commands.cutSelection}
-                onDownload={modals.showDownload}
-                onRename={modals.showRename}
-                onInformation={modals.showInformation}
-                onDelete={modals.showDelete}
-              />
-            </Menu>
+            <DirectoryTable
+              scrollElement={scrollElement}
+              rows={rows}
+              revealTarget={search.revealTarget}
+              canSort={snapshot !== undefined && !loading}
+              loadingWithoutEntries={loadingWithoutEntries}
+              navigationBlocked={menu.opened}
+              selectedLocators={selectedLocators}
+              cutLocators={clipboard.cutLocators}
+              onSelect={selectEntry}
+              onContextMenu={menu.showEntryMenu}
+              onOpen={onOpen}
+            />
           )}
-          <DirectoryBlankMenu
-            position={menu.blankMenuPosition}
-            actions={commands.blankActions}
-            onClose={menu.closeMenu}
-          />
         </div>
       </DirectoryDropZone>
+      <DirectoryContextMenu
+        menu={menu.activeMenu}
+        selectedEntries={selectedEntries}
+        capabilities={capabilities}
+        entryActions={{
+          onCopy: commands.copySelection,
+          onCut: commands.cutSelection,
+          onDownload: modals.showDownload,
+          onRename: modals.showRename,
+          onInformation: modals.showInformation,
+          onDelete: modals.showDelete,
+        }}
+        blankActions={commands.blankActions}
+        onClose={menu.closeMenu}
+      />
       <DirectoryEntryModals
         modal={modals.modal}
         pasteConflict={clipboard.pasteConflict}

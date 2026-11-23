@@ -3,7 +3,7 @@ import { ActionIcon, Menu } from '@mantine/core';
 import { Ellipsis, FileUp, FolderPlus, FolderUp, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useCurrentDirectory } from './current-directory-context';
-import { DirectoryBlankMenuDropdown, type DirectoryBlankActions } from './DirectoryBlankMenu';
+import { DirectoryBlankMenuDropdown, type DirectoryBlankActions } from './DirectoryContextMenu';
 import classes from './DirectoryListing.module.css';
 import type { DirectoryUpload } from './useDirectoryUpload';
 

@@ -5,14 +5,14 @@ import type { Entry } from '@shared/storage';
 import { useKeyboardShortcuts } from '@renderer/shortcuts/useKeyboardShortcuts';
 import { useStorageWorkspace } from '../storage-workspace-context';
 import { useCurrentDirectory } from './current-directory-context';
-import type { DirectoryBlankActions } from './DirectoryBlankMenu';
+import type { DirectoryBlankActions } from './DirectoryContextMenu';
 import type { EntryCapabilities } from './entry-capabilities';
 import type { DirectoryListingPhase } from './useDirectoryListing';
 
 const selectAllLoadingNotification = 'directory-select-all-loading';
 
 interface DirectoryCommandMenu {
-  anyMenuOpened: boolean;
+  opened: boolean;
   closeMenu: () => void;
 }
 
@@ -127,7 +127,7 @@ export function useDirectoryCommands({
     menu.closeMenu();
     onNavigateUp();
   };
-  const canNavigateUp = onNavigateUp !== undefined && !menu.anyMenuOpened;
+  const canNavigateUp = onNavigateUp !== undefined && !menu.opened;
 
   useKeyboardShortcuts([
     {

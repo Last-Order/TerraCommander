@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { Menu, Skeleton } from '@mantine/core';
+import { Skeleton } from '@mantine/core';
 import { ChevronDown, ChevronsUpDown, ChevronUp, type LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Entry } from '@shared/storage';
@@ -7,6 +7,7 @@ import classes from './DirectoryTable.module.css';
 import { DirectoryEntryRow } from './DirectoryEntryRow';
 import { isDirectoryNavigationKey } from './directory-navigation';
 import { useDirectorySortStore } from './directory-sort';
+import type { DirectoryContextMenuPosition } from './useDirectoryContextMenu';
 import { useDirectoryVirtualizer } from './useDirectoryVirtualizer';
 import type {
   DirectoryRevealTarget,
@@ -59,7 +60,7 @@ interface DirectoryTableProps {
   selectedLocators: ReadonlySet<string>;
   cutLocators?: ReadonlySet<string> | undefined;
   onSelect: (locator: string, modifiers: DirectorySelectionModifiers) => void;
-  onContextMenu: (entry: Entry) => void;
+  onContextMenu: (entry: Entry, position: DirectoryContextMenuPosition) => void;
   onOpen: (entry: Entry) => void;
 }
 
@@ -178,28 +179,26 @@ export function DirectoryTable({
           })}
         </tr>
       </thead>
-      <Menu.ContextMenu disabled={loadingWithoutEntries}>
-        <tbody
-          aria-hidden={loadingWithoutEntries || undefined}
-          className={loadingWithoutEntries ? classes.placeholderRows : undefined}
-        >
-          {loadingWithoutEntries && <DirectorySkeletonRows />}
-          {enabled
-            ? virtualRows.map((virtualRow, index) => {
-                const row = rows[virtualRow.index];
-                if (!row) return null;
-                const gap = virtualRow.start - (virtualRows[index - 1]?.end ?? scrollMargin);
-                return (
-                  <Fragment key={row.entry.ref.locator}>
-                    {gap > 0 && <DirectorySpacer height={gap} />}
-                    {renderRow(row, virtualRow.index)}
-                  </Fragment>
-                );
-              })
-            : rows.map(renderRow)}
-          {enabled && paddingBottom > 0 && <DirectorySpacer height={paddingBottom} />}
-        </tbody>
-      </Menu.ContextMenu>
+      <tbody
+        aria-hidden={loadingWithoutEntries || undefined}
+        className={loadingWithoutEntries ? classes.placeholderRows : undefined}
+      >
+        {loadingWithoutEntries && <DirectorySkeletonRows />}
+        {enabled
+          ? virtualRows.map((virtualRow, index) => {
+              const row = rows[virtualRow.index];
+              if (!row) return null;
+              const gap = virtualRow.start - (virtualRows[index - 1]?.end ?? scrollMargin);
+              return (
+                <Fragment key={row.entry.ref.locator}>
+                  {gap > 0 && <DirectorySpacer height={gap} />}
+                  {renderRow(row, virtualRow.index)}
+                </Fragment>
+              );
+            })
+          : rows.map(renderRow)}
+        {enabled && paddingBottom > 0 && <DirectorySpacer height={paddingBottom} />}
+      </tbody>
     </table>
   );
 }
