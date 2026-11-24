@@ -20,11 +20,13 @@ export function createCurrentDirectoryValue({
   ref,
   path,
   capabilities,
+  allowsDuplicateNames = false,
   ancestors,
 }: {
   ref: EntryRef;
   path: string;
   capabilities?: Capabilities | undefined;
+  allowsDuplicateNames?: boolean | undefined;
   ancestors: readonly EntryRef[];
 }): CurrentDirectoryContextValue {
   const isLocal = ref.connectionId === localConnectionId;
@@ -33,9 +35,6 @@ export function createCurrentDirectoryValue({
   const canCreateDirectory = capabilities?.createDirectory?.support !== 'unsupported';
   const canUpload = !isLocal && canWrite;
   const canUploadFolder = canUpload && canCreateDirectory;
-  const allowsDuplicateNames =
-    capabilities?.write?.guarantees?.allowsDuplicateNames === true ||
-    capabilities?.createDirectory?.guarantees?.allowsDuplicateNames === true;
 
   return {
     ref,

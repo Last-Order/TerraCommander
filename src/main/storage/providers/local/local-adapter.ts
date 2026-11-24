@@ -26,17 +26,16 @@ import { listLocalVolumes } from './local-volumes';
 
 const supported = { support: 'supported' } as const;
 const unsupported = { support: 'unsupported' } as const;
-const uniqueNameGuarantees = { allowsDuplicateNames: false } as const;
-const supportedUnique = { support: 'supported', guarantees: uniqueNameGuarantees } as const;
-const unknownUnique = { support: 'unknown', guarantees: uniqueNameGuarantees } as const;
+const unknown = { support: 'unknown' } as const;
+export const localSpaceSemantics = { allowsDuplicateNames: false } as const;
 const localBaseCapabilities: Capabilities = {
   list: supported,
   read: unsupported,
   write: unsupported,
-  createDirectory: unknownUnique,
+  createDirectory: unknown,
   remove: supported,
-  copyWithin: unknownUnique,
-  moveWithin: unknownUnique,
+  copyWithin: unknown,
+  moveWithin: unknown,
   rename: supported,
   rangeRead: unsupported,
   conditionalRead: unsupported,
@@ -53,6 +52,7 @@ export function localSpace(connectionId: string, directory: string): Space {
     connectionId,
     name: basename(path) || parse(path).root,
     root: { connectionId, spaceId: id, locator: '.' },
+    semantics: localSpaceSemantics,
   };
 }
 
@@ -393,11 +393,11 @@ function localEntry(ref: EntryRef, name: string, displayPath: string, info: Dire
     capabilities: {
       ...localBaseCapabilities,
       list: kind === 'directory' ? supported : unsupported,
-      createDirectory: kind === 'directory' ? supportedUnique : unsupported,
-      copyWithin: ref.locator !== '.' && kind === 'file' ? supportedUnique : unsupported,
+      createDirectory: kind === 'directory' ? supported : unsupported,
+      copyWithin: ref.locator !== '.' && kind === 'file' ? supported : unsupported,
       moveWithin:
         ref.locator !== '.' && (kind === 'file' || kind === 'directory' || kind === 'link')
-          ? supportedUnique
+          ? supported
           : unsupported,
       rename: ref.locator === '.' ? unsupported : supported,
       remove:

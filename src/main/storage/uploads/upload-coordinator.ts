@@ -222,16 +222,14 @@ export class UploadCoordinator {
   }
 
   private async getUploadDriver(lease: AdapterLease, target: WriteTarget): Promise<UploadDriver> {
-    const capabilities = await requireCapabilities(
+    await requireCapabilities(
       lease.adapter,
       targetRef(target),
       [...writeRequirements(target), { operation: 'resumeWrite', strict: true }],
       lease.context,
     );
 
-    // Ordinary upload support alone does not promise recovery after a restart.
-    const supportsDurableRecovery = capabilities.resumeWrite?.guarantees?.durableRecovery === true;
-    if (!lease.adapter.uploads || !supportsDurableRecovery) {
+    if (!lease.adapter.uploads) {
       throw new StorageError('Unsupported');
     }
 

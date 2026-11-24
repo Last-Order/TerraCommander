@@ -31,7 +31,11 @@ export type TaskRequest<
   Definitions extends TaskDefinitions,
   Type extends TaskType<Definitions> = TaskType<Definitions>,
 > = {
-  [Kind in Type]: { type: Kind; input: Definitions[Kind]['input'] };
+  [Kind in Type]: {
+    type: Kind;
+    input: Definitions[Kind]['input'];
+    resources?: readonly string[] | undefined;
+  };
 }[Type];
 
 export type TaskState<Result> =

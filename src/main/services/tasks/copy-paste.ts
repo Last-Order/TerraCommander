@@ -245,6 +245,7 @@ export async function removeMovedSources(
 }
 
 export interface PrepareCopyGroupOptions {
+  allowsDuplicateNames?: boolean | undefined;
   sameDirectory?: boolean | undefined;
   getReservedNames?: (() => ReadonlySet<string> | undefined) | undefined;
   onReserveName?: ((normalizedName: string) => void) | undefined;
@@ -346,6 +347,7 @@ export async function prepareCopyGroup<
             targetDirectoryPath: request.targetDirectoryPath,
             displayName: item.relativePath,
           },
+          resources: options?.allowsDuplicateNames ? [] : undefined,
         } as Parameters<typeof context.enqueue>[0],
         `${entryKey(item.sourceEntry.ref)}->${entryKey(item.targetParent)}/${item.targetName}`,
       );

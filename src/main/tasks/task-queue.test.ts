@@ -199,3 +199,35 @@ it('cancels safely if disposed while an async retry preparation is pending', asy
   await Promise.all([retrying, disposing]);
   expect(queue.store.getState().tasks[0]?.status).toBe('cancelled');
 });
+
+it('uses explicit request resources instead of handler conflictKeys on enqueue and retry', async () => {
+  const firstRun = deferred<TaskExecutionOutcome<string>>();
+  const secondRun = deferred<TaskExecutionOutcome<string>>();
+  let calls = 0;
+  const { queue } = setup({
+    execute: () => {
+      calls += 1;
+      if (calls === 1) return Promise.reject(new Error('fail once'));
+      return calls === 2 ? firstRun.promise : secondRun.promise;
+    },
+    retry: async () => undefined,
+  });
+
+  // Both tasks share the same default conflictKey ('same-id'), but explicit resources override it.
+  expect(queue.enqueue({ ...request('same-id'), resources: ['lock-a'] })).toBe(true);
+  await vi.waitFor(() => expect(queue.store.getState().tasks[0]?.status).toBe('failed'));
+
+  expect(queue.enqueue({ ...request('same-id'), resources: ['lock-b'] })).toBe(true);
+  await vi.waitFor(() => expect(queue.store.getState().tasks[1]?.status).toBe('running'));
+
+  // Retrying task 1 still uses its explicit ['lock-a'] rather than conflicting on 'same-id'.
+  await queue.retry(1);
+  await vi.waitFor(() => expect(queue.store.getState().tasks[0]?.status).toBe('running'));
+
+  firstRun.resolve({ status: 'completed', result: 'new-same-id' });
+  secondRun.resolve({ status: 'completed', result: 'new-same-id' });
+  await vi.waitFor(() => {
+    expect(queue.store.getState().tasks[0]?.status).toBe('completed');
+    expect(queue.store.getState().tasks[1]?.status).toBe('completed');
+  });
+});

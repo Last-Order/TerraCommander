@@ -1,12 +1,13 @@
 import type { AdapterFactory } from '@main/storage';
 import type { AccountSetupRequest, AccountSummary } from '@shared/accounts';
-import type { ConnectionDefinition, Entry, EntryRef, Space } from '@shared/storage';
+import type { ConnectionDefinition, Entry, EntryRef, Space, SpaceSemantics } from '@shared/storage';
 import type { StorageConnectionSummary, StorageProvider } from '@shared/storage-browser';
 
 export interface LocalStorageProviderIntegration {
   readonly kind: 'local';
   readonly provider: StorageProvider;
   readonly connectionDefinition: ConnectionDefinition;
+  readonly spaceSemantics?: SpaceSemantics | undefined;
   createAdapterFactory(): AdapterFactory;
   summarizeConnection(spaces: Space[]): StorageConnectionSummary;
   extraKnownSpaces(connectionId: string): Space[];
@@ -19,6 +20,7 @@ export interface AccountStorageProviderIntegration {
   readonly kind: 'account';
   readonly provider: StorageProvider;
   readonly defaultAuthentication: AccountSetupRequest;
+  readonly spaceSemantics?: SpaceSemantics | undefined;
   createAdapterFactory(): AdapterFactory;
   summarizeAccount(
     account: AccountSummary,

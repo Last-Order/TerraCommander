@@ -28,25 +28,17 @@ const sharedPrefix = 'shared:';
 const supported = { support: 'supported' } as const;
 const unsupported = { support: 'unsupported' } as const;
 const unknown = { support: 'unknown' } as const;
-const duplicateNameGuarantees = { allowsDuplicateNames: true } as const;
-const supportedWithDuplicates = {
-  support: 'supported',
-  guarantees: duplicateNameGuarantees,
-} as const;
-const unknownWithDuplicates = {
-  support: 'unknown',
-  guarantees: duplicateNameGuarantees,
-} as const;
+export const googleDriveSpaceSemantics = { allowsDuplicateNames: true } as const;
 const driveBaseCapabilities: Capabilities = {
   list: supported,
   read: supported,
   rangeRead: supported,
   rename: supported,
   remove: supported,
-  write: unknownWithDuplicates,
-  createDirectory: unknownWithDuplicates,
-  copyWithin: unknownWithDuplicates,
-  moveWithin: unknownWithDuplicates,
+  write: unknown,
+  createDirectory: unknown,
+  copyWithin: unknown,
+  moveWithin: unknown,
   conditionalRead: unsupported,
   conditionalWrite: unsupported,
   resumeWrite: unsupported,
@@ -482,7 +474,13 @@ class GoogleDriveAdapter implements StorageAdapter {
 }
 
 function driveSpace(connectionId: string, id: string, name: Space['name'], locator: string): Space {
-  return { id, connectionId, name, root: { connectionId, spaceId: id, locator } };
+  return {
+    id,
+    connectionId,
+    name,
+    root: { connectionId, spaceId: id, locator },
+    semantics: googleDriveSpaceSemantics,
+  };
 }
 
 function fileEntry(ref: EntryRef, file: z.infer<typeof fileSchema>, isRoot: boolean): Entry {
@@ -515,38 +513,17 @@ function fileEntry(ref: EntryRef, file: z.infer<typeof fileSchema>, isRoot: bool
         kind !== 'file' || file.mimeType.startsWith('application/vnd.google-apps.'),
         file.capabilities?.canDownload,
       ),
-      write: grantedCapability(
-        kind !== 'directory',
-        file.capabilities?.canAddChildren,
-        duplicateNameGuarantees,
-      ),
-      createDirectory: grantedCapability(
-        kind !== 'directory',
-        file.capabilities?.canAddChildren,
-        duplicateNameGuarantees,
-      ),
-      copyWithin: kind === 'file' && !isRoot ? supportedWithDuplicates : unsupported,
-      moveWithin: grantedCapability(
-        isRoot,
-        file.capabilities?.canMoveItemWithinDrive,
-        duplicateNameGuarantees,
-      ),
+      write: grantedCapability(kind !== 'directory', file.capabilities?.canAddChildren),
+      createDirectory: grantedCapability(kind !== 'directory', file.capabilities?.canAddChildren),
+      copyWithin: kind === 'file' && !isRoot ? supported : unsupported,
+      moveWithin: grantedCapability(isRoot, file.capabilities?.canMoveItemWithinDrive),
       rename: grantedCapability(isRoot, file.capabilities?.canRename),
       remove: grantedCapability(isRoot, file.capabilities?.canTrash),
     },
   };
 }
 
-function grantedCapability(
-  excluded: boolean,
-  granted: boolean | undefined,
-  guarantees?: { readonly allowsDuplicateNames?: boolean },
-) {
+function grantedCapability(excluded: boolean, granted: boolean | undefined) {
   if (excluded || granted === false) return unsupported;
-  if (guarantees) {
-    return granted
-      ? ({ support: 'supported', guarantees } as const)
-      : ({ support: 'unknown', guarantees } as const);
-  }
   return granted ? supported : unknown;
 }

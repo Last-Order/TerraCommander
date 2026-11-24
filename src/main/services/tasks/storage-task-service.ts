@@ -137,27 +137,8 @@ function projectGroupRequest<K extends keyof InternalGroupDefinitions>(request: 
   return groupRequestProjectors[request.kind](request.input);
 }
 
-function copyConflictKeys({ entry, targetParent, targetName }: CopyTaskRequest): string[] {
-  if (entry.capabilities.copyWithin?.guarantees?.allowsDuplicateNames === true) {
-    return [];
-  }
-  return [`${entryKey(targetParent)}/${targetName}`];
-}
-
-function moveTargetConflictKey(
-  entry: Entry,
-  targetParent: Entry['ref'],
-  targetName: string,
-): string | undefined {
-  if (entry.capabilities.moveWithin?.guarantees?.allowsDuplicateNames === true) {
-    return undefined;
-  }
+function targetConflictKey(targetParent: Entry['ref'], targetName: string): string {
   return `${entryKey(targetParent)}/${targetName}`;
-}
-
-function moveConflictKeys({ entry, targetParent, targetName }: MoveTaskRequest): string[] {
-  const targetKey = moveTargetConflictKey(entry, targetParent, targetName);
-  return targetKey ? [entryKey(entry.ref), targetKey] : [entryKey(entry.ref)];
 }
 
 export interface StorageTaskServiceOptions {
@@ -394,13 +375,16 @@ export class StorageTaskService {
         sourceCleanup,
       );
     }
+    const allowsDuplicateNames =
+      (await this.browser.spaceSemantics(request.targetParent))?.allowsDuplicateNames === true;
     if (plan.kind === 'move') {
-      return this.enqueueMovePlan(request, plan.items, plan.entries);
+      return this.enqueueMovePlan(request, plan.items, plan.entries, allowsDuplicateNames);
     }
     return this.enqueueCopyPlan(
       request,
       plan.items,
       plan.entries,
+      allowsDuplicateNames,
       plan.sameDirectory,
       plan.removeSources,
     );
@@ -410,6 +394,7 @@ export class StorageTaskService {
     request: PasteEntriesRequest,
     items: readonly CopyDiscoveryItem[],
     entries: readonly Entry[],
+    allowsDuplicateNames: boolean,
   ): PasteEntriesResponse {
     if (items.length === 1) {
       const [item] = items;
@@ -423,15 +408,17 @@ export class StorageTaskService {
           sourceDirectoryPath: request.sourceDirectoryPath,
           targetDirectoryPath: request.targetDirectoryPath,
         },
+        ...(allowsDuplicateNames ? { resources: [entryKey(item!.sourceEntry.ref)] } : {}),
       });
       if (!enqueued) throw new StorageError('PreconditionFailed');
       return { status: 'started' };
     }
 
     const groupResources = new Set<string>(entries.map((entry) => entryKey(entry.ref)));
-    for (const item of items) {
-      const targetKey = moveTargetConflictKey(item.sourceEntry, item.targetParent, item.targetName);
-      if (targetKey) groupResources.add(targetKey);
+    if (!allowsDuplicateNames) {
+      for (const item of items) {
+        groupResources.add(targetConflictKey(item.targetParent, item.targetName));
+      }
     }
     const groupId = this.queue.createGroup({
       kind: 'move',
@@ -456,6 +443,7 @@ export class StorageTaskService {
             sourceDirectoryPath: request.sourceDirectoryPath,
             targetDirectoryPath: request.targetDirectoryPath,
           },
+          ...(allowsDuplicateNames ? { resources: [entryKey(item.sourceEntry.ref)] } : {}),
         },
         { groupId },
       );
@@ -468,6 +456,7 @@ export class StorageTaskService {
     request: PasteEntriesRequest,
     items: readonly CopyDiscoveryItem[],
     entries: readonly Entry[],
+    allowsDuplicateNames: boolean,
     sameDirectory?: boolean,
     removeSources?: readonly Entry[],
   ): PasteEntriesResponse {
@@ -488,6 +477,7 @@ export class StorageTaskService {
           sourceDirectoryPath: request.sourceDirectoryPath,
           targetDirectoryPath: request.targetDirectoryPath,
         },
+        ...(allowsDuplicateNames ? { resources: [] } : {}),
       });
       if (!enqueued) throw new StorageError('AlreadyExists');
       return { status: 'started' };
@@ -528,21 +518,24 @@ export class StorageTaskService {
             items,
             (change) => this.emitDirectoryChanged(change),
             context,
-            sameDirectory && targetDirKey
-              ? {
-                  sameDirectory: true,
-                  getReservedNames: () => this.activeCopyNames.get(targetDirKey),
-                  onReserveName: (normalizedName) => {
-                    let active = this.activeCopyNames.get(targetDirKey);
-                    if (!active) {
-                      active = new Set();
-                      this.activeCopyNames.set(targetDirKey, active);
-                    }
-                    active.add(normalizedName);
-                    reservedForGroup.push(normalizedName);
-                  },
-                }
-              : undefined,
+            {
+              allowsDuplicateNames,
+              ...(sameDirectory && targetDirKey
+                ? {
+                    sameDirectory: true,
+                    getReservedNames: () => this.activeCopyNames.get(targetDirKey),
+                    onReserveName: (normalizedName: string) => {
+                      let active = this.activeCopyNames.get(targetDirKey);
+                      if (!active) {
+                        active = new Set();
+                        this.activeCopyNames.set(targetDirKey, active);
+                      }
+                      active.add(normalizedName);
+                      reservedForGroup.push(normalizedName);
+                    },
+                  }
+                : {}),
+            },
           ),
         toFailure: (error) => toTaskFailure(error),
         onPreparationFailure: (failure) => {
@@ -684,7 +677,7 @@ export class StorageTaskService {
   private createCopyHandler(): TaskHandler<CopyTaskRequest, Entry, TaskCategory> {
     return {
       category: 'operation',
-      conflictKeys: copyConflictKeys,
+      conflictKeys: ({ targetParent, targetName }) => [targetConflictKey(targetParent, targetName)],
       execute: async ({ entry, targetParent, targetName }) => ({
         status: 'completed',
         result: await this.browser.copyWithin(entry.ref, {
@@ -707,7 +700,10 @@ export class StorageTaskService {
   private createMoveHandler(): TaskHandler<MoveTaskRequest, Entry, TaskCategory> {
     return {
       category: 'operation',
-      conflictKeys: moveConflictKeys,
+      conflictKeys: ({ entry, targetParent, targetName }) => [
+        entryKey(entry.ref),
+        targetConflictKey(targetParent, targetName),
+      ],
       execute: async ({ entry, targetParent, targetName }) => ({
         status: 'completed',
         result: await this.browser.moveWithin(entry.ref, {

@@ -124,7 +124,7 @@ export class TaskQueue<
       this.groupCoordinator.hasMember(membership.groupId, membership.memberKey)
     )
       return false;
-    const keys = this.handlers[request.type].conflictKeys(request.input);
+    const keys = request.resources ?? this.handlers[request.type].conflictKeys(request.input);
     if (this.conflicts.hasConflicts(keys, membership.groupId)) return false;
 
     const task: QueueTask<Definitions, Type> = {
@@ -183,7 +183,7 @@ export class TaskQueue<
     const task = this.state.tasks.find((candidate) => candidate.id === id);
     if (!task || !this.canRetry(task)) return;
     const handler = this.handlers[task.request.type];
-    const keys = handler.conflictKeys(task.request.input);
+    const keys = task.request.resources ?? handler.conflictKeys(task.request.input);
     const extraConflicts = this.groupCoordinator.extraRetryConflicts(task.groupId);
     if (this.conflicts.hasConflicts([...keys, ...extraConflicts], task.groupId)) return;
     this.groupCoordinator.reopenForRetry(task.groupId);

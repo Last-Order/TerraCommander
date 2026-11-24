@@ -4,6 +4,7 @@ import {
   localAdapterFactory,
   localFailure,
   localSpace,
+  localSpaceSemantics,
   locateLocalEntry,
 } from '@main/storage/providers/local/local-adapter';
 import type { Space } from '@shared/storage';
@@ -26,6 +27,7 @@ export function createLocalStorageProvider(
       provider: 'local',
       configuration: {},
     },
+    spaceSemantics: localSpaceSemantics,
     createAdapterFactory: () => localAdapterFactory(() => preferences.folders()),
     summarizeConnection: (spaces) => ({
       ...emptyLocalConnection,

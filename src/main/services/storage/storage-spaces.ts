@@ -1,5 +1,5 @@
 import { StorageAccess, StorageError } from '@main/storage';
-import type { EntryRef, Space } from '@shared/storage';
+import type { EntryRef, Space, SpaceSemantics } from '@shared/storage';
 import type { SpaceChoice, StorageConnectionSummary } from '@shared/storage-browser';
 import type { StorageConnectionManager } from './storage-connections';
 import type { StoragePreferences } from './storage-preferences';
@@ -85,6 +85,14 @@ export class StorageSpaceCatalog {
     });
   }
 
+  async spaceSemantics({ connectionId, spaceId }: EntryRef): Promise<SpaceSemantics | undefined> {
+    const integration = await this.connections.resolveIntegration(connectionId);
+    const space =
+      this.knownSpaces(connectionId, integration).get(spaceId) ??
+      this.displayedSpaces(connectionId, integration).find((item) => item.id === spaceId);
+    return space?.semantics ?? integration.spaceSemantics;
+  }
+
   displayedSpaces(id: string, integration: StorageProviderIntegration): Space[] {
     const saved = this.preferences.selectedSpaces(id);
     const builtIn = integration.kind === 'account' ? integration.builtInSpace?.(id) : undefined;
@@ -101,6 +109,7 @@ export class StorageSpaceCatalog {
         connectionId: id,
         name: cached.name,
         root: { connectionId: id, spaceId, locator: cached.locator },
+        ...(integration.spaceSemantics ? { semantics: integration.spaceSemantics } : {}),
       };
     });
   }
@@ -123,7 +132,16 @@ export class StorageSpaceCatalog {
   private knownSpaces(id: string, integration: StorageProviderIntegration): Map<string, Space> {
     let known = this.discovered.get(id);
     if (!known) {
-      known = new Map(this.preferences.discoveredSpaces(id)?.map((space) => [space.id, space]));
+      known = new Map(
+        this.preferences
+          .discoveredSpaces(id)
+          ?.map((space) => [
+            space.id,
+            space.semantics || !integration.spaceSemantics
+              ? space
+              : { ...space, semantics: integration.spaceSemantics },
+          ]),
+      );
       if (integration.kind === 'local') {
         for (const space of integration.extraKnownSpaces(id)) {
           known.set(space.id, space);

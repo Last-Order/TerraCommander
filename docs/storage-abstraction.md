@@ -32,7 +32,7 @@ A connection ID is bound to its immutable configuration. Reconnecting with that 
 
 ## Capabilities and Operations
 
-Capabilities describe effective support and guarantees for an adapter, endpoint, space, entry type, and permissions. Unknown support must remain explicit. Capability metadata guides callers, while execution still enforces authorization. Unsupported operations fail explicitly.
+Capabilities describe effective operation support for an adapter, endpoint, space, entry type, and permissions, while space semantics describe native namespace traits such as duplicate-name allowance. Unknown support must remain explicit. Capability metadata guides callers, while execution still enforces authorization. Unsupported operations fail explicitly.
 
 Listing returns pages with opaque cursors. Page size is a hint; enumeration does not promise a transactional or globally sorted snapshot. Facade cursors are bound to their instance, connection, parent, and request, and cannot serve as persistent recovery state.
 

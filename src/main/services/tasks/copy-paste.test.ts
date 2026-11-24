@@ -19,6 +19,7 @@ function createMockBrowser() {
   const statEntry = vi.fn<StorageBrowser['statEntry']>();
   const resolveLocalPath = vi.fn<StorageBrowser['resolveLocalPath']>();
   const listDirectory = vi.fn<StorageBrowser['listDirectory']>();
+  const spaceSemantics = vi.fn<StorageBrowser['spaceSemantics']>(async () => undefined);
   const createDirectory = vi.fn<StorageBrowser['createDirectory']>();
   const copyWithin = vi.fn<StorageBrowser['copyWithin']>();
   const moveWithin = vi.fn<StorageBrowser['moveWithin']>();
@@ -62,6 +63,7 @@ function createMockBrowser() {
     statEntry,
     resolveLocalPath,
     listDirectory,
+    spaceSemantics,
     createDirectory,
     copyWithin,
     moveWithin,
@@ -75,6 +77,7 @@ function createMockBrowser() {
     statEntry,
     resolveLocalPath,
     listDirectory,
+    spaceSemantics,
     createDirectory,
     copyWithin,
     moveWithin,
@@ -691,7 +694,7 @@ it('deletes remote source after cloud-to-local cut-paste download completes', as
 });
 
 it('allows moving duplicate-named entries concurrently when allowsDuplicateNames is true, and locks targets otherwise', async () => {
-  const { browser, moveWithin } = createMockBrowser();
+  const { browser, moveWithin, spaceSemantics } = createMockBrowser();
   const service = new StorageTaskService(browser);
   const sourceParent: EntryRef = {
     connectionId: cloudConnectionA,
@@ -703,21 +706,18 @@ it('allows moving duplicate-named entries concurrently when allowsDuplicateNames
     spaceId: 'drive',
     locator: 'dst',
   };
+  spaceSemantics.mockResolvedValue({ allowsDuplicateNames: true });
   const dupA: Entry = {
     ref: { connectionId: cloudConnectionA, spaceId: 'drive', locator: 'file-a' },
     name: 'same.txt',
     kind: 'file',
-    capabilities: {
-      moveWithin: { support: 'supported', guarantees: { allowsDuplicateNames: true } },
-    },
+    capabilities: { moveWithin: { support: 'supported' } },
   };
   const dupB: Entry = {
     ref: { connectionId: cloudConnectionA, spaceId: 'drive', locator: 'file-b' },
     name: 'same.txt',
     kind: 'file',
-    capabilities: {
-      moveWithin: { support: 'supported', guarantees: { allowsDuplicateNames: true } },
-    },
+    capabilities: { moveWithin: { support: 'supported' } },
   };
   moveWithin.mockResolvedValueOnce(dupA).mockResolvedValueOnce(dupB);
 
@@ -740,6 +740,7 @@ it('allows moving duplicate-named entries concurrently when allowsDuplicateNames
   expect(moveWithin).toHaveBeenCalledTimes(2);
 
   // When allowsDuplicateNames is false, a move group targeting an already-locked target rejects atomically
+  spaceSemantics.mockResolvedValue({ allowsDuplicateNames: false });
   let releasePending!: () => void;
   const pendingMove = new Promise<Entry>((resolve) => {
     releasePending = () =>
@@ -754,25 +755,19 @@ it('allows moving duplicate-named entries concurrently when allowsDuplicateNames
     ref: { connectionId: cloudConnectionA, spaceId: 'drive', locator: 'unique-1' },
     name: 'conflict.txt',
     kind: 'file',
-    capabilities: {
-      moveWithin: { support: 'supported', guarantees: { allowsDuplicateNames: false } },
-    },
+    capabilities: { moveWithin: { support: 'supported' } },
   };
   const unique2: Entry = {
     ref: { connectionId: cloudConnectionA, spaceId: 'drive', locator: 'unique-2' },
     name: 'conflict.txt',
     kind: 'file',
-    capabilities: {
-      moveWithin: { support: 'supported', guarantees: { allowsDuplicateNames: false } },
-    },
+    capabilities: { moveWithin: { support: 'supported' } },
   };
   const unique3: Entry = {
     ref: { connectionId: cloudConnectionA, spaceId: 'drive', locator: 'unique-3' },
     name: 'other.txt',
     kind: 'file',
-    capabilities: {
-      moveWithin: { support: 'supported', guarantees: { allowsDuplicateNames: false } },
-    },
+    capabilities: { moveWithin: { support: 'supported' } },
   };
   moveWithin.mockReturnValueOnce(pendingMove);
 

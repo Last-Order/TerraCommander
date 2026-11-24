@@ -1,6 +1,6 @@
 import { StorageAccess, StorageError, type StorageLogger } from '@main/storage';
 import type { ReopenableByteSource, WriteExecution } from '@main/storage/core/contracts';
-import type { CreateTarget, Entry, EntryRef, Space } from '@shared/storage';
+import type { CreateTarget, Entry, EntryRef, Space, SpaceSemantics } from '@shared/storage';
 import type {
   SpaceChoice,
   StorageConnectionSummary,
@@ -94,6 +94,10 @@ export class StorageBrowser {
 
   listDirectory(parent: EntryRef, cursor?: string) {
     return this.spaces.withBrowsableSpace(parent, () => this.storage.list(parent, { cursor }));
+  }
+
+  spaceSemantics(ref: EntryRef): Promise<SpaceSemantics | undefined> {
+    return this.spaces.spaceSemantics(ref);
   }
 
   prepareUpload(parent: EntryRef, name: string, source: ReopenableByteSource): WriteExecution {

@@ -24,11 +24,16 @@ export function entryKey({ connectionId, spaceId, locator }: EntryRef): string {
 export const storageLabelKeys = ['thisPc', 'localFileSystem', 'myDrive'] as const;
 export type StorageLabel = string | { messageKey: (typeof storageLabelKeys)[number] };
 
+export interface SpaceSemantics {
+  allowsDuplicateNames?: boolean | undefined;
+}
+
 export interface Space {
   id: string;
   connectionId: string;
   name: StorageLabel;
   root: EntryRef;
+  semantics?: SpaceSemantics | undefined;
 }
 
 export const operations = [
@@ -48,15 +53,8 @@ export const operations = [
 
 export type StorageOperation = (typeof operations)[number];
 
-export interface CapabilityGuarantees {
-  atomic?: boolean | undefined;
-  durableRecovery?: boolean | undefined;
-  allowsDuplicateNames?: boolean | undefined;
-}
-
 export interface Capability {
   support: 'supported' | 'unsupported' | 'unknown';
-  guarantees?: CapabilityGuarantees | undefined;
 }
 
 export type Capabilities = Partial<Record<StorageOperation, Capability>>;

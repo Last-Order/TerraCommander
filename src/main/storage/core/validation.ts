@@ -23,13 +23,6 @@ export const entryNameSchema = z
   .refine((name) => name.trim().length > 0 && !name.includes('\0'));
 export const capabilitySchema = z.strictObject({
   support: z.enum(['supported', 'unsupported', 'unknown']),
-  guarantees: z
-    .strictObject({
-      atomic: z.boolean().optional(),
-      durableRecovery: z.boolean().optional(),
-      allowsDuplicateNames: z.boolean().optional(),
-    })
-    .optional(),
 });
 export const capabilitiesSchema = z.partialRecord(z.enum(operations), capabilitySchema);
 export const entrySchema = z.strictObject({
@@ -44,11 +37,15 @@ export const entrySchema = z.strictObject({
   checksums: z.array(z.strictObject({ algorithm: identifier, value: identifier })).optional(),
   capabilities: capabilitiesSchema,
 });
+export const spaceSemanticsSchema = z.strictObject({
+  allowsDuplicateNames: z.boolean().optional(),
+});
 export const spaceSchema = z.strictObject({
   id: identifier,
   connectionId: identifier,
   name: z.union([z.string(), z.strictObject({ messageKey: z.enum(storageLabelKeys) })]),
   root: entryRefSchema,
+  semantics: spaceSemanticsSchema.optional(),
 });
 
 // Strict request schemas reject accidental options instead of silently ignoring them.

@@ -1,5 +1,6 @@
 import {
   googleDriveAdapterFactory,
+  googleDriveSpaceSemantics,
   myDriveSpace,
 } from '@main/storage/providers/google-drive/google-drive-adapter';
 import type { AccountStorageProviderIntegration } from '../storage-provider';
@@ -9,6 +10,7 @@ export function createGoogleDriveStorageProvider(): AccountStorageProviderIntegr
     kind: 'account',
     provider: 'google-drive',
     defaultAuthentication: { method: 'browser' },
+    spaceSemantics: googleDriveSpaceSemantics,
     createAdapterFactory: () => googleDriveAdapterFactory(),
     builtInSpace: (connectionId) => myDriveSpace(connectionId),
     summarizeAccount: (account, spaces, needsAuthorization) => ({

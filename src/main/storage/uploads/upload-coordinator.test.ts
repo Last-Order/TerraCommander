@@ -268,9 +268,9 @@ describe('upload recovery guards', () => {
     await fixture.registry.dispose();
   });
 
-  it('requires durable recovery capability before opening an upload session', async () => {
+  it('requires positive resumeWrite support before opening an upload session', async () => {
     const fixture = await setup();
-    fixture.adapter.caps.resumeWrite = { support: 'supported' };
+    fixture.adapter.caps.resumeWrite = { support: 'unknown' };
     await expect(
       fixture.uploads.create(createTarget(), byteSource().source.descriptor),
     ).rejects.toBeInstanceOf(StorageError);

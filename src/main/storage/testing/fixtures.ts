@@ -37,7 +37,7 @@ export const fixtureCapabilities: Capabilities = {
   remove: { support: 'supported' },
   copyWithin: { support: 'supported' },
   moveWithin: { support: 'supported' },
-  resumeWrite: { support: 'supported', guarantees: { durableRecovery: true } },
+  resumeWrite: { support: 'supported' },
 };
 
 export function fixtureRef(connectionId = 'connection', locator = '', spaceId = 'space'): EntryRef {

@@ -56,9 +56,10 @@ export function DirectoryPane({ space }: DirectoryProps) {
         ref: current.ref,
         path: trail.map(({ name }) => formatStorageLabel(name, t)).join(' / '),
         capabilities: current.capabilities,
+        allowsDuplicateNames: space.semantics?.allowsDuplicateNames === true,
         ancestors: trail.map(({ ref }) => ref),
       }),
-    [current.ref, current.capabilities, trail, t],
+    [current.ref, current.capabilities, space.semantics?.allowsDuplicateNames, trail, t],
   );
 
   const navigateUp =
