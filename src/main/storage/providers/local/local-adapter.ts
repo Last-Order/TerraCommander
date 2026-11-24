@@ -14,6 +14,7 @@ import type {
   EntryRef,
   ListRequest,
   Space,
+  SpaceSemantics,
 } from '@shared/storage';
 import {
   defaultLocalPlatform,
@@ -27,7 +28,12 @@ import { listLocalVolumes } from './local-volumes';
 const supported = { support: 'supported' } as const;
 const unsupported = { support: 'unsupported' } as const;
 const unknown = { support: 'unknown' } as const;
-export const localSpaceSemantics = { allowsDuplicateNames: false } as const;
+export function localSpaceSemanticsFor(
+  platform: LocalPlatform = defaultLocalPlatform,
+): SpaceSemantics {
+  return { allowsDuplicateNames: false, caseSensitive: platform.caseSensitive };
+}
+export const localSpaceSemantics: SpaceSemantics = localSpaceSemanticsFor();
 const localBaseCapabilities: Capabilities = {
   list: supported,
   read: unsupported,
@@ -44,7 +50,11 @@ const localBaseCapabilities: Capabilities = {
 };
 const metadataBatchSize = 32;
 
-export function localSpace(connectionId: string, directory: string): Space {
+export function localSpace(
+  connectionId: string,
+  directory: string,
+  platform: LocalPlatform = defaultLocalPlatform,
+): Space {
   const path = normalize(directory);
   const id = createHash('sha256').update(path).digest('hex');
   return {
@@ -52,7 +62,7 @@ export function localSpace(connectionId: string, directory: string): Space {
     connectionId,
     name: basename(path) || parse(path).root,
     root: { connectionId, spaceId: id, locator: '.' },
-    semantics: localSpaceSemantics,
+    semantics: localSpaceSemanticsFor(platform),
   };
 }
 
@@ -161,7 +171,7 @@ class LocalAdapter implements StorageAdapter {
     for (const path of paths) this.volumePaths.set(localSpace(this.connectionId, path).id, path);
     const spaces = new Map<string, Space>();
     for (const path of [...paths, ...this.folders()]) {
-      const space = localSpace(this.connectionId, path);
+      const space = localSpace(this.connectionId, path, this.platform);
       spaces.set(space.id, space);
     }
     return [...spaces.values()];

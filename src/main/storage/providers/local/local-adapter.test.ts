@@ -207,6 +207,44 @@ it('validates entry names and locator segments per platform', () => {
   expect(win.isValidLocatorSegment('bad:name')).toBe(false);
   expect(posixPlatform.isValidLocatorSegment('a\\b')).toBe(true);
   expect(posixPlatform.isValidLocatorSegment('bad:name')).toBe(true);
+
+  expect(win.caseSensitive).toBe(false);
+  expect(posixPlatform.caseSensitive).toBe(false);
+  expect(createLocalPlatform('linux').caseSensitive).toBe(true);
+});
+
+it('reports space case sensitivity semantics from the local platform', async () => {
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-local-semantics-'));
+  for (const [platformName, expectedCaseSensitive] of [
+    ['win32', false],
+    ['darwin', false],
+    ['linux', true],
+  ] as const) {
+    const platform = createLocalPlatform(platformName);
+    const registry = new AdapterRegistry({
+      credentials: { async resolve() {} },
+      logger: { event() {} },
+    });
+    registry.register(
+      localAdapterFactory(
+        () => [temporary.path],
+        async () => [],
+        platform,
+      ),
+    );
+    await registry.connect({ id: 'local', provider: 'local', configuration: {} });
+    try {
+      const storage = new StorageAccess(registry);
+      const spaces = await storage.listSpaces('local');
+      expect(spaces).toHaveLength(1);
+      expect(spaces[0]?.semantics).toEqual({
+        allowsDuplicateNames: false,
+        caseSensitive: expectedCaseSensitive,
+      });
+    } finally {
+      await registry.dispose();
+    }
+  }
 });
 
 it('maps cross-platform filesystem errors to normalized storage errors', () => {

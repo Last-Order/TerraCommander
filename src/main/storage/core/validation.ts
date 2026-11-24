@@ -39,6 +39,7 @@ export const entrySchema = z.strictObject({
 });
 export const spaceSemanticsSchema = z.strictObject({
   allowsDuplicateNames: z.boolean().optional(),
+  caseSensitive: z.boolean().optional(),
 });
 export const spaceSchema = z.strictObject({
   id: identifier,

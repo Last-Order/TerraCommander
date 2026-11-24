@@ -128,12 +128,12 @@ it('executes create-directory tasks, prevents concurrent name conflicts, and map
   const pending = deferred<Entry>();
   createDirectory.mockImplementationOnce(() => pending.promise);
 
-  expect(service.enqueueCreateDirectory({ parent, name: 'Projects', directoryPath: '/docs' })).toBe(
-    true,
-  );
-  expect(service.enqueueCreateDirectory({ parent, name: 'Projects', directoryPath: '/docs' })).toBe(
-    false,
-  );
+  expect(
+    await service.enqueueCreateDirectory({ parent, name: 'Projects', directoryPath: '/docs' }),
+  ).toBe(true);
+  expect(
+    await service.enqueueCreateDirectory({ parent, name: 'Projects', directoryPath: '/docs' }),
+  ).toBe(false);
 
   const created = { ...folderEntry, name: 'Projects' };
   pending.resolve(created);
@@ -145,9 +145,9 @@ it('executes create-directory tasks, prevents concurrent name conflicts, and map
   });
 
   createDirectory.mockRejectedValueOnce(new StorageError('InvalidArgument'));
-  expect(service.enqueueCreateDirectory({ parent, name: 'bad', directoryPath: '/docs' })).toBe(
-    true,
-  );
+  expect(
+    await service.enqueueCreateDirectory({ parent, name: 'bad', directoryPath: '/docs' }),
+  ).toBe(true);
   await vi.waitFor(() => expect(service.getSnapshot().tasks[1]?.status).toBe('failed'));
   expect(service.getSnapshot().tasks[1]?.failure).toEqual({
     code: 'InvalidArgument',
@@ -155,9 +155,9 @@ it('executes create-directory tasks, prevents concurrent name conflicts, and map
   });
 
   createDirectory.mockRejectedValueOnce(new StorageError('AuthRequired'));
-  expect(service.enqueueCreateDirectory({ parent, name: 'Auth', directoryPath: '/docs' })).toBe(
-    true,
-  );
+  expect(
+    await service.enqueueCreateDirectory({ parent, name: 'Auth', directoryPath: '/docs' }),
+  ).toBe(true);
   await vi.waitFor(() => expect(service.getSnapshot().tasks[2]?.status).toBe('failed'));
   expect(events).toContainEqual({ type: 'auth-required', connectionId });
 
@@ -683,7 +683,7 @@ it('blocks overlapping slot operations between delete, rename, create-directory,
   ).toBe(true);
   // Creating a directory with the same name as a pending deletion must be rejected.
   expect(
-    service.enqueueCreateDirectory({ parent, name: fileEntry.name, directoryPath: '/docs' }),
+    await service.enqueueCreateDirectory({ parent, name: fileEntry.name, directoryPath: '/docs' }),
   ).toBe(false);
   // Copying another file into the slot being deleted must also be rejected.
   const otherSource: Entry = {
@@ -718,10 +718,10 @@ it('blocks overlapping slot operations between delete, rename, create-directory,
   ).toBe(true);
   // Both the old name slot and the new name slot are locked while rename is active.
   expect(
-    service.enqueueCreateDirectory({ parent, name: fileEntry.name, directoryPath: '/docs' }),
+    await service.enqueueCreateDirectory({ parent, name: fileEntry.name, directoryPath: '/docs' }),
   ).toBe(false);
   expect(
-    service.enqueueCreateDirectory({ parent, name: 'renamed.txt', directoryPath: '/docs' }),
+    await service.enqueueCreateDirectory({ parent, name: 'renamed.txt', directoryPath: '/docs' }),
   ).toBe(false);
 
   pendingRename.resolve({ ...fileEntry, name: 'renamed.txt' });
@@ -756,32 +756,58 @@ it('allows batch deleting duplicate-named entries when allowsDuplicateNames is t
   await service.dispose();
 });
 
-it('normalizes local slot conflict keys case-insensitively on Windows', async () => {
-  const { service, createDirectory } = setup();
-  const localParent = { connectionId: localConnectionId, spaceId: 'D:', locator: 'docs' };
-  const pending = deferred<Entry>();
-  createDirectory.mockImplementationOnce(() => pending.promise);
+it('normalizes slot conflict keys according to reported space case sensitivity', async () => {
+  const { service, createDirectory, spaceSemantics } = setup();
+  const pendingInsensitive = deferred<Entry>();
+  createDirectory.mockImplementationOnce(() => pendingInsensitive.promise);
+  spaceSemantics.mockResolvedValue({ allowsDuplicateNames: false, caseSensitive: false });
 
   expect(
-    service.enqueueCreateDirectory({
-      parent: localParent,
+    await service.enqueueCreateDirectory({
+      parent,
       name: 'Projects',
-      directoryPath: 'D:\\docs',
+      directoryPath: '/docs',
     }),
   ).toBe(true);
   expect(
-    service.enqueueCreateDirectory({
-      parent: localParent,
+    await service.enqueueCreateDirectory({
+      parent,
       name: 'projects',
-      directoryPath: 'D:\\docs',
+      directoryPath: '/docs',
     }),
-  ).toBe(process.platform !== 'win32');
+  ).toBe(false);
 
-  pending.resolve({
-    ...folderEntry,
-    ref: { ...localParent, locator: 'docs/Projects' },
-    name: 'Projects',
-  });
+  pendingInsensitive.resolve({ ...folderEntry, name: 'Projects' });
   await vi.waitFor(() => expect(service.getSnapshot().tasks[0]?.status).toBe('completed'));
+
+  const pendingSensitiveA = deferred<Entry>();
+  const pendingSensitiveB = deferred<Entry>();
+  createDirectory
+    .mockImplementationOnce(() => pendingSensitiveA.promise)
+    .mockImplementationOnce(() => pendingSensitiveB.promise);
+  spaceSemantics.mockResolvedValue({ allowsDuplicateNames: false, caseSensitive: true });
+
+  expect(
+    await service.enqueueCreateDirectory({
+      parent,
+      name: 'Archive',
+      directoryPath: '/docs',
+    }),
+  ).toBe(true);
+  expect(
+    await service.enqueueCreateDirectory({
+      parent,
+      name: 'archive',
+      directoryPath: '/docs',
+    }),
+  ).toBe(true);
+
+  pendingSensitiveA.resolve({ ...folderEntry, name: 'Archive' });
+  pendingSensitiveB.resolve({ ...folderEntry, name: 'archive' });
+  await vi.waitFor(() => {
+    const tasks = service.getSnapshot().tasks;
+    expect(tasks[1]?.status).toBe('completed');
+    expect(tasks[2]?.status).toBe('completed');
+  });
   await service.dispose();
 });

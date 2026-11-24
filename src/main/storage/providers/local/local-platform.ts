@@ -2,6 +2,7 @@ import { posix } from 'node:path';
 
 export interface LocalPlatform {
   readonly isWindows: boolean;
+  readonly caseSensitive: boolean;
   isValidEntryName(name: string): boolean;
   isValidLocatorSegment(segment: string): boolean;
 }
@@ -20,8 +21,10 @@ function hasControlCharacter(value: string): boolean {
 
 export function createLocalPlatform(platform: NodeJS.Platform = process.platform): LocalPlatform {
   const isWindows = platform === 'win32';
+  const caseSensitive = platform !== 'win32' && platform !== 'darwin';
   return {
     isWindows,
+    caseSensitive,
     isValidEntryName(name: string): boolean {
       if (
         !name.trim() ||

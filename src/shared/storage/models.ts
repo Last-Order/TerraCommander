@@ -26,6 +26,7 @@ export type StorageLabel = string | { messageKey: (typeof storageLabelKeys)[numb
 
 export interface SpaceSemantics {
   allowsDuplicateNames?: boolean | undefined;
+  caseSensitive?: boolean | undefined;
 }
 
 export interface Space {

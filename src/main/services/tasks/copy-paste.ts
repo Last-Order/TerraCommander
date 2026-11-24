@@ -1,9 +1,9 @@
 import { isAbsolute, relative } from 'node:path';
 import { StorageError } from '@main/storage';
-import type { TaskDefinitions, TaskGroupPreparationContext } from '@main/tasks/types';
+import type { TaskGroupPreparationContext } from '@main/tasks/types';
 import { entryKey, type Entry, type EntryRef } from '@shared/storage';
 import { localConnectionId, type BrowserErrorCode } from '@shared/storage-browser';
-import type { PasteEntriesRequest, StorageDirectoryChange } from '@shared/tasks';
+import type { CopyTaskRequest, PasteEntriesRequest, StorageDirectoryChange } from '@shared/tasks';
 import type { StorageBrowser } from '../storage/storage-browser';
 import { toBrowserErrorCode, toTaskFailure } from './task-errors';
 
@@ -244,34 +244,30 @@ export async function removeMovedSources(
   }
 }
 
+export function slotConflictKey(parent: EntryRef, name: string, caseInsensitive = false): string {
+  const normalized = caseInsensitive ? name.toLowerCase() : name;
+  return `slot:${entryKey(parent)}/${normalized}`;
+}
+
 export interface PrepareCopyGroupOptions {
   allowsDuplicateNames?: boolean | undefined;
+  caseInsensitive?: boolean | undefined;
   sameDirectory?: boolean | undefined;
   getReservedNames?: (() => ReadonlySet<string> | undefined) | undefined;
   onReserveName?: ((normalizedName: string) => void) | undefined;
 }
 
-export async function prepareCopyGroup<
-  TTasks extends TaskDefinitions & {
-    copy: {
-      input: {
-        sourceParent: EntryRef;
-        entry: Entry;
-        targetParent: EntryRef;
-        targetName: string;
-        sourceDirectoryPath: string;
-        targetDirectoryPath: string;
-        displayName?: string | undefined;
-      };
-      result: Entry;
-    };
-  },
->(
+type CopyGroupPreparationContext = Pick<
+  TaskGroupPreparationContext<{ copy: { input: CopyTaskRequest; result: Entry } }>,
+  'signal' | 'enqueue' | 'reportProgress' | 'reportIssue'
+>;
+
+export async function prepareCopyGroup(
   browser: StorageBrowser,
   request: PasteEntriesRequest,
   initialItems: readonly CopyDiscoveryItem[],
   emitDirectoryChanged: (change: StorageDirectoryChange) => void,
-  context: TaskGroupPreparationContext<TTasks>,
+  context: CopyGroupPreparationContext,
   options?: PrepareCopyGroupOptions,
 ): Promise<void> {
   const pending: CopyDiscoveryItem[] = initialItems.map((item) => ({ ...item }));
@@ -291,9 +287,9 @@ export async function prepareCopyGroup<
   };
   updateProgress();
 
+  const caseInsensitive = options?.caseInsensitive === true;
+
   if (options?.sameDirectory) {
-    const caseInsensitive =
-      request.targetParent.connectionId === localConnectionId && process.platform === 'win32';
     const usedNames = await listAllNames(
       browser,
       request.targetParent,
@@ -347,8 +343,10 @@ export async function prepareCopyGroup<
             targetDirectoryPath: request.targetDirectoryPath,
             displayName: item.relativePath,
           },
-          resources: options?.allowsDuplicateNames ? [] : undefined,
-        } as Parameters<typeof context.enqueue>[0],
+          resources: options?.allowsDuplicateNames
+            ? []
+            : [slotConflictKey(item.targetParent, item.targetName, caseInsensitive)],
+        },
         `${entryKey(item.sourceEntry.ref)}->${entryKey(item.targetParent)}/${item.targetName}`,
       );
       continue;

@@ -794,3 +794,75 @@ it('allows moving duplicate-named entries concurrently when allowsDuplicateNames
   releasePending();
   await service.dispose();
 });
+
+it('uses reported space case sensitivity rather than connectionId when allocating copy names', async () => {
+  const { browser, listDirectory, copyWithin, spaceSemantics } = createMockBrowser();
+  const service = new StorageTaskService(browser);
+  const parent: EntryRef = {
+    connectionId: cloudConnectionA,
+    spaceId: 'smb-share',
+    locator: 'docs',
+  };
+  const source: Entry = {
+    ref: { ...parent, locator: 'docs/report.txt' },
+    name: 'report.txt',
+    kind: 'file',
+    capabilities: { copyWithin: { support: 'supported' } },
+  };
+  const existingDifferentCase: Entry = {
+    ref: { ...parent, locator: 'docs/REPORT - COPY.TXT' },
+    name: 'REPORT - COPY.TXT',
+    kind: 'file',
+    capabilities: { copyWithin: { support: 'supported' } },
+  };
+
+  listDirectory.mockResolvedValue({ entries: [source, existingDifferentCase] });
+  copyWithin.mockImplementation(async (_ref, target) => ({
+    ref: { ...target.parent, locator: `docs/${target.name}` },
+    name: target.name,
+    kind: 'file',
+    capabilities: {},
+  }));
+
+  spaceSemantics.mockResolvedValue({ allowsDuplicateNames: false, caseSensitive: false });
+  await service.pasteEntries(1, {
+    mode: 'copy',
+    sourceParent: parent,
+    sourceDirectoryPath: '/docs',
+    entries: [source],
+    targetParent: parent,
+    targetDirectoryPath: '/docs',
+  });
+  await vi.waitFor(() => {
+    expect(service.getSnapshot().groups[0]?.state).toEqual({
+      phase: 'settled',
+      outcome: 'completed',
+    });
+  });
+  expect(copyWithin).toHaveBeenLastCalledWith(source.ref, {
+    parent,
+    name: 'report - Copy (2).txt',
+  });
+
+  spaceSemantics.mockResolvedValue({ allowsDuplicateNames: false, caseSensitive: true });
+  await service.pasteEntries(1, {
+    mode: 'copy',
+    sourceParent: parent,
+    sourceDirectoryPath: '/docs',
+    entries: [source],
+    targetParent: parent,
+    targetDirectoryPath: '/docs',
+  });
+  await vi.waitFor(() => {
+    expect(service.getSnapshot().groups[1]?.state).toEqual({
+      phase: 'settled',
+      outcome: 'completed',
+    });
+  });
+  expect(copyWithin).toHaveBeenLastCalledWith(source.ref, {
+    parent,
+    name: 'report - Copy.txt',
+  });
+
+  await service.dispose();
+});

@@ -46,6 +46,7 @@ import {
   planPaste,
   prepareCopyGroup,
   removeMovedSources,
+  slotConflictKey,
   type CopyDiscoveryItem,
 } from './copy-paste';
 import { projectDirectoryEffects } from './directory-effects';
@@ -137,12 +138,9 @@ function projectGroupRequest<K extends keyof InternalGroupDefinitions>(request: 
   return groupRequestProjectors[request.kind](request.input);
 }
 
-function slotConflictKey(parent: Entry['ref'], name: string): string {
-  const normalized =
-    parent.connectionId === localConnectionId && process.platform === 'win32'
-      ? name.toLowerCase()
-      : name;
-  return `slot:${entryKey(parent)}/${normalized}`;
+interface ResolvedSpaceSemantics {
+  allowsDuplicateNames: boolean;
+  caseInsensitive: boolean;
 }
 
 export interface StorageTaskServiceOptions {
@@ -262,20 +260,41 @@ export class StorageTaskService {
     };
   }
 
-  private async allowsDuplicateNames(ref: Entry['ref']): Promise<boolean> {
-    return (await this.browser.spaceSemantics?.(ref))?.allowsDuplicateNames === true;
+  private async resolveSpaceSemantics(ref: Entry['ref']): Promise<ResolvedSpaceSemantics> {
+    const semantics = await this.browser.spaceSemantics?.(ref);
+    return {
+      allowsDuplicateNames: semantics?.allowsDuplicateNames === true,
+      caseInsensitive: semantics?.caseSensitive === false,
+    };
   }
 
-  enqueueCreateDirectory(request: CreateDirectoryTaskRequest): boolean {
-    return this.queue.enqueue({ type: 'create-directory', input: request });
+  async enqueueCreateDirectory(request: CreateDirectoryTaskRequest): Promise<boolean> {
+    const { allowsDuplicateNames, caseInsensitive } = await this.resolveSpaceSemantics(
+      request.parent,
+    );
+    return this.queue.enqueue({
+      type: 'create-directory',
+      input: request,
+      resources: allowsDuplicateNames
+        ? []
+        : [slotConflictKey(request.parent, request.name, caseInsensitive)],
+    });
   }
 
   async enqueueRename(request: RenameTaskRequest): Promise<boolean> {
-    const allowsDuplicateNames = await this.allowsDuplicateNames(request.parent);
+    const { allowsDuplicateNames, caseInsensitive } = await this.resolveSpaceSemantics(
+      request.parent,
+    );
     return this.queue.enqueue({
       type: 'rename',
       input: request,
-      ...(allowsDuplicateNames ? { resources: [entryKey(request.entry.ref)] } : {}),
+      resources: allowsDuplicateNames
+        ? [entryKey(request.entry.ref)]
+        : [
+            entryKey(request.entry.ref),
+            slotConflictKey(request.parent, request.entry.name, caseInsensitive),
+            slotConflictKey(request.parent, request.name, caseInsensitive),
+          ],
     });
   }
 
@@ -289,7 +308,9 @@ export class StorageTaskService {
       uniqueEntries.push(entry);
     }
     if (uniqueEntries.length === 0) return false;
-    const allowsDuplicateNames = await this.allowsDuplicateNames(request.parent);
+    const { allowsDuplicateNames, caseInsensitive } = await this.resolveSpaceSemantics(
+      request.parent,
+    );
     if (uniqueEntries.length === 1) {
       const [entry] = uniqueEntries;
       return this.queue.enqueue({
@@ -299,14 +320,16 @@ export class StorageTaskService {
           entry: entry!,
           directoryPath: request.directoryPath,
         },
-        ...(allowsDuplicateNames ? { resources: [entryKey(entry!.ref)] } : {}),
+        resources: allowsDuplicateNames
+          ? [entryKey(entry!.ref)]
+          : [entryKey(entry!.ref), slotConflictKey(request.parent, entry!.name, caseInsensitive)],
       });
     }
     const groupResources = new Set<string>();
     for (const entry of uniqueEntries) {
       groupResources.add(entryKey(entry.ref));
       if (!allowsDuplicateNames) {
-        groupResources.add(slotConflictKey(request.parent, entry.name));
+        groupResources.add(slotConflictKey(request.parent, entry.name, caseInsensitive));
       }
     }
     const groupId = this.queue.createGroup({
@@ -328,7 +351,9 @@ export class StorageTaskService {
             entry,
             directoryPath: request.directoryPath,
           },
-          ...(allowsDuplicateNames ? { resources: [entryKey(entry.ref)] } : {}),
+          resources: allowsDuplicateNames
+            ? [entryKey(entry.ref)]
+            : [entryKey(entry.ref), slotConflictKey(request.parent, entry.name, caseInsensitive)],
         },
         { groupId },
       );
@@ -398,15 +423,26 @@ export class StorageTaskService {
         sourceCleanup,
       );
     }
-    const allowsDuplicateNames = await this.allowsDuplicateNames(request.targetParent);
+    const targetSemantics = await this.resolveSpaceSemantics(request.targetParent);
     if (plan.kind === 'move') {
-      return this.enqueueMovePlan(request, plan.items, plan.entries, allowsDuplicateNames);
+      const sourceSemantics =
+        request.sourceParent.connectionId === request.targetParent.connectionId &&
+        request.sourceParent.spaceId === request.targetParent.spaceId
+          ? targetSemantics
+          : await this.resolveSpaceSemantics(request.sourceParent);
+      return this.enqueueMovePlan(
+        request,
+        plan.items,
+        plan.entries,
+        sourceSemantics,
+        targetSemantics,
+      );
     }
     return this.enqueueCopyPlan(
       request,
       plan.items,
       plan.entries,
-      allowsDuplicateNames,
+      targetSemantics,
       plan.sameDirectory,
       plan.removeSources,
     );
@@ -416,8 +452,28 @@ export class StorageTaskService {
     request: PasteEntriesRequest,
     items: readonly CopyDiscoveryItem[],
     entries: readonly Entry[],
-    allowsDuplicateNames: boolean,
+    sourceSemantics: ResolvedSpaceSemantics,
+    targetSemantics: ResolvedSpaceSemantics,
   ): PasteEntriesResponse {
+    const moveResources = (item: CopyDiscoveryItem): string[] => {
+      const resources = [entryKey(item.sourceEntry.ref)];
+      if (!sourceSemantics.allowsDuplicateNames) {
+        resources.push(
+          slotConflictKey(
+            item.sourceParent,
+            item.sourceEntry.name,
+            sourceSemantics.caseInsensitive,
+          ),
+        );
+      }
+      if (!targetSemantics.allowsDuplicateNames) {
+        resources.push(
+          slotConflictKey(item.targetParent, item.targetName, targetSemantics.caseInsensitive),
+        );
+      }
+      return resources;
+    };
+
     if (items.length === 1) {
       const [item] = items;
       const enqueued = this.queue.enqueue({
@@ -430,17 +486,27 @@ export class StorageTaskService {
           sourceDirectoryPath: request.sourceDirectoryPath,
           targetDirectoryPath: request.targetDirectoryPath,
         },
-        ...(allowsDuplicateNames ? { resources: [entryKey(item!.sourceEntry.ref)] } : {}),
+        resources: moveResources(item!),
       });
       if (!enqueued) throw new StorageError('PreconditionFailed');
       return { status: 'started' };
     }
 
     const groupResources = new Set<string>(entries.map((entry) => entryKey(entry.ref)));
-    if (!allowsDuplicateNames) {
-      for (const item of items) {
-        groupResources.add(slotConflictKey(item.sourceParent, item.sourceEntry.name));
-        groupResources.add(slotConflictKey(item.targetParent, item.targetName));
+    for (const item of items) {
+      if (!sourceSemantics.allowsDuplicateNames) {
+        groupResources.add(
+          slotConflictKey(
+            item.sourceParent,
+            item.sourceEntry.name,
+            sourceSemantics.caseInsensitive,
+          ),
+        );
+      }
+      if (!targetSemantics.allowsDuplicateNames) {
+        groupResources.add(
+          slotConflictKey(item.targetParent, item.targetName, targetSemantics.caseInsensitive),
+        );
       }
     }
     const groupId = this.queue.createGroup({
@@ -466,7 +532,7 @@ export class StorageTaskService {
             sourceDirectoryPath: request.sourceDirectoryPath,
             targetDirectoryPath: request.targetDirectoryPath,
           },
-          ...(allowsDuplicateNames ? { resources: [entryKey(item.sourceEntry.ref)] } : {}),
+          resources: moveResources(item),
         },
         { groupId },
       );
@@ -479,7 +545,7 @@ export class StorageTaskService {
     request: PasteEntriesRequest,
     items: readonly CopyDiscoveryItem[],
     entries: readonly Entry[],
-    allowsDuplicateNames: boolean,
+    targetSemantics: ResolvedSpaceSemantics,
     sameDirectory?: boolean,
     removeSources?: readonly Entry[],
   ): PasteEntriesResponse {
@@ -500,7 +566,15 @@ export class StorageTaskService {
           sourceDirectoryPath: request.sourceDirectoryPath,
           targetDirectoryPath: request.targetDirectoryPath,
         },
-        ...(allowsDuplicateNames ? { resources: [] } : {}),
+        resources: targetSemantics.allowsDuplicateNames
+          ? []
+          : [
+              slotConflictKey(
+                item!.targetParent,
+                item!.targetName,
+                targetSemantics.caseInsensitive,
+              ),
+            ],
       });
       if (!enqueued) throw new StorageError('AlreadyExists');
       return { status: 'started' };
@@ -542,7 +616,8 @@ export class StorageTaskService {
             (change) => this.emitDirectoryChanged(change),
             context,
             {
-              allowsDuplicateNames,
+              allowsDuplicateNames: targetSemantics.allowsDuplicateNames,
+              caseInsensitive: targetSemantics.caseInsensitive,
               ...(sameDirectory && targetDirKey
                 ? {
                     sameDirectory: true,

@@ -28,7 +28,10 @@ const sharedPrefix = 'shared:';
 const supported = { support: 'supported' } as const;
 const unsupported = { support: 'unsupported' } as const;
 const unknown = { support: 'unknown' } as const;
-export const googleDriveSpaceSemantics = { allowsDuplicateNames: true } as const;
+export const googleDriveSpaceSemantics = {
+  allowsDuplicateNames: true,
+  caseSensitive: true,
+} as const;
 const driveBaseCapabilities: Capabilities = {
   list: supported,
   read: supported,
