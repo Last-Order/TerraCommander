@@ -7,30 +7,23 @@ export interface CurrentDirectoryContextValue {
   path: string;
   capabilities?: Capabilities | undefined;
   ancestors: readonly EntryRef[];
-  isLocal: boolean;
-  isRoot: boolean;
-  canWrite: boolean;
   canCreateDirectory: boolean;
   canUpload: boolean;
   canUploadFolder: boolean;
-  allowsDuplicateNames: boolean;
 }
 
 export function createCurrentDirectoryValue({
   ref,
   path,
   capabilities,
-  allowsDuplicateNames = false,
   ancestors,
 }: {
   ref: EntryRef;
   path: string;
   capabilities?: Capabilities | undefined;
-  allowsDuplicateNames?: boolean | undefined;
   ancestors: readonly EntryRef[];
 }): CurrentDirectoryContextValue {
   const isLocal = ref.connectionId === localConnectionId;
-  const isRoot = ancestors.length <= 1;
   const canWrite = capabilities?.write?.support !== 'unsupported';
   const canCreateDirectory = capabilities?.createDirectory?.support !== 'unsupported';
   const canUpload = !isLocal && canWrite;
@@ -41,13 +34,9 @@ export function createCurrentDirectoryValue({
     path,
     capabilities,
     ancestors,
-    isLocal,
-    isRoot,
-    canWrite,
     canCreateDirectory,
     canUpload,
     canUploadFolder,
-    allowsDuplicateNames,
   };
 }
 
