@@ -3,7 +3,9 @@ import type { DownloadErrorCode } from './downloads';
 import type { EntryPage, EntryRef, Space, StorageErrorCode, StorageLabel } from './storage';
 
 export const localConnectionId = 'local';
-export type StorageProvider = 'local' | 'google-drive';
+export const storageProviders = ['local', 'google-drive'] as const;
+export type StorageProvider = (typeof storageProviders)[number];
+export type StorageProviderAuthMode = 'none' | 'browser';
 
 export interface StorageConnectionSummary {
   id: string;
@@ -13,14 +15,6 @@ export interface StorageConnectionSummary {
   needsAuthorization: boolean;
   spaces: Space[];
 }
-
-export const emptyLocalConnection: StorageConnectionSummary = {
-  id: localConnectionId,
-  provider: 'local',
-  name: { messageKey: 'thisPc' },
-  needsAuthorization: false,
-  spaces: [],
-};
 
 export interface SpaceChoice {
   space: Space;
@@ -39,9 +33,7 @@ export interface StorageBrowserApi {
   listConnections(): Promise<BrowserResult<StorageConnectionSummary[]>>;
   listSpaces(connectionId: string, refresh?: boolean): Promise<BrowserResult<SpaceChoice[]>>;
   saveSpaces(connectionId: string, spaceIds: string[]): Promise<BrowserResult<void>>;
-  addConnection(
-    provider: Exclude<StorageProvider, 'local'>,
-  ): Promise<BrowserResult<StorageConnectionSummary>>;
+  addConnection(provider: StorageProvider): Promise<BrowserResult<StorageConnectionSummary>>;
   reauthorize(connectionId: string): Promise<BrowserResult<void>>;
   cancelAuthorization(): Promise<BrowserResult<void>>;
   listDirectory(parent: EntryRef, cursor?: string): Promise<BrowserResult<EntryPage>>;

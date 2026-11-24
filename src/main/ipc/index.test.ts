@@ -406,7 +406,7 @@ it('validates coarse task download preparation, confirmation, and task control i
 it('validates addConnection providers before initializing storage browser', async () => {
   const { event, getBrowser } = setup();
   const addConnection = handlers.get(channels.addConnection)!;
-  for (const args of [[], ['local'], ['s3'], ['google-drive', 'extra']]) {
+  for (const args of [[], ['s3'], ['local', 'extra'], ['google-drive', 'extra']]) {
     expect(await addConnection(event, ...args)).toEqual({ ok: false, code: 'InvalidArgument' });
   }
   expect(getBrowser).not.toHaveBeenCalled();

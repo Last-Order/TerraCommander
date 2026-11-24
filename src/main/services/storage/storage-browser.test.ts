@@ -336,3 +336,36 @@ it('keeps StoragePreferences provider-neutral and dispatches validation by provi
     () => new StoragePreferences(accountStore, { validateSpace: validateWithAccountRule }),
   ).toThrow(expect.objectContaining({ code: 'OutcomeUnknown' }));
 });
+
+it('returns the local connection summary from addConnection without persisting selection or initializing accounts', async () => {
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-add-local-'));
+  const getAccounts = vi.fn(async () => {
+    throw new Error('Adding local connection must not initialize accounts.');
+  });
+  const browser = createBrowser(memorySnapshotStore(), getAccounts, async () => [temporary.path]);
+  try {
+    const initial = await browser.addConnection('local');
+    expect(initial).toEqual({
+      id: localConnectionId,
+      provider: 'local',
+      name: { messageKey: 'thisPc' },
+      detail: { messageKey: 'localFileSystem' },
+      needsAuthorization: false,
+      spaces: [],
+    });
+    expect(getAccounts).not.toHaveBeenCalled();
+
+    const [choice] = await browser.listSpaces(localConnectionId);
+    if (!choice) throw new Error('Expected a local space');
+    await browser.saveSpaces(localConnectionId, [choice.space.id]);
+
+    const configured = await browser.addConnection('local');
+    expect(configured).toEqual({
+      ...initial,
+      spaces: [choice.space],
+    });
+    expect(getAccounts).not.toHaveBeenCalled();
+  } finally {
+    await browser.dispose();
+  }
+});

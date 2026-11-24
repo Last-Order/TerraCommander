@@ -1,7 +1,7 @@
 import { app, type BrowserWindow } from 'electron';
 import { z } from 'zod';
 import { channels, type AppInfo } from '@shared/contracts';
-import { localConnectionId } from '@shared/storage-browser';
+import { localConnectionId, storageProviders } from '@shared/storage-browser';
 import { isTrustedRenderer } from '../security';
 import type { ApplicationServices } from '../services/application-services';
 import {
@@ -97,7 +97,7 @@ export function registerIpcHandlers(
   );
   handleStorage(
     channels.addConnection,
-    z.tuple([z.enum(['google-drive'])]),
+    z.tuple([z.enum(storageProviders)]),
     (browser, window, provider) => browser.addConnection(provider, window.webContents.id),
   );
   handleStorage(channels.reauthorize, z.tuple([z.uuid()]), (browser, window, id) =>

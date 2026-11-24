@@ -3,24 +3,27 @@ import {
   googleDriveSpaceSemantics,
   myDriveSpace,
 } from '@main/storage/providers/google-drive/google-drive-adapter';
-import type { AccountStorageProviderIntegration } from '../storage-provider';
+import type { StorageProviderIntegration } from '../storage-provider';
 
-export function createGoogleDriveStorageProvider(): AccountStorageProviderIntegration {
+export function createGoogleDriveStorageProvider(): StorageProviderIntegration {
   return {
-    kind: 'account',
     provider: 'google-drive',
-    defaultAuthentication: { method: 'browser' },
+    authMode: 'browser',
+    connection: {
+      kind: 'account',
+      defaultAuthentication: { method: 'browser' },
+      summarize: (account, spaces, needsAuthorization) => ({
+        id: account.id,
+        provider: 'google-drive',
+        name: account.displayName || account.email || 'Google Drive',
+        detail:
+          account.email && account.displayName ? 'Google Drive · ' + account.email : 'Google Drive',
+        needsAuthorization,
+        spaces,
+      }),
+    },
     spaceSemantics: googleDriveSpaceSemantics,
     createAdapterFactory: () => googleDriveAdapterFactory(),
     builtInSpace: (connectionId) => myDriveSpace(connectionId),
-    summarizeAccount: (account, spaces, needsAuthorization) => ({
-      id: account.id,
-      provider: 'google-drive',
-      name: account.displayName || account.email || 'Google Drive',
-      detail:
-        account.email && account.displayName ? 'Google Drive · ' + account.email : 'Google Drive',
-      needsAuthorization,
-      spaces,
-    }),
   };
 }

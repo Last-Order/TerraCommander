@@ -17,22 +17,9 @@ export class StorageSpaceCatalog {
 
   async listConnections(): Promise<StorageConnectionSummary[]> {
     const result: StorageConnectionSummary[] = [];
-    for (const integration of this.connections.accountIntegrations()) {
-      for (const account of await this.connections.listAccountsFor(integration.provider)) {
-        result.push(
-          integration.summarizeAccount(
-            account,
-            this.displayedSpaces(account.id, integration),
-            this.connections.needsAuthorization(account),
-          ),
-        );
-      }
-    }
-    for (const local of this.connections.localIntegrations()) {
-      const id = local.connectionDefinition.id;
-      if (this.preferences.selectedSpaces(id)) {
-        result.push(local.summarizeConnection(this.displayedSpaces(id, local)));
-      }
+    for (const entry of await this.connections.listManagedConnections()) {
+      if (entry.requireSelection && !this.preferences.selectedSpaces(entry.id)) continue;
+      result.push(entry.summarize(this.displayedSpaces(entry.id, entry.integration)));
     }
     return result;
   }
@@ -52,7 +39,7 @@ export class StorageSpaceCatalog {
 
   async saveSpaces(id: string, spaceIds: string[]): Promise<void> {
     const integration = await this.connections.resolveIntegration(id);
-    const builtIn = integration.kind === 'account' ? integration.builtInSpace?.(id) : undefined;
+    const builtIn = integration.builtInSpace?.(id);
     const spaces = new Map(this.displayedSpaces(id, integration).map((space) => [space.id, space]));
     for (const [spaceId, space] of this.knownSpaces(id, integration)) spaces.set(spaceId, space);
     const selected = spaceIds.map((spaceId) => {
@@ -87,7 +74,7 @@ export class StorageSpaceCatalog {
 
   displayedSpaces(id: string, integration: StorageProviderIntegration): Space[] {
     const saved = this.preferences.selectedSpaces(id);
-    const builtIn = integration.kind === 'account' ? integration.builtInSpace?.(id) : undefined;
+    const builtIn = integration.builtInSpace?.(id);
     if (!saved) return builtIn ? [builtIn] : [];
 
     const known = this.knownSpaces(id, integration);

@@ -1,17 +1,17 @@
 import type { LucideIcon } from 'lucide-react';
 import { Cloud, HardDrive } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import type { StorageProvider, StorageProviderAuthMode } from '@shared/storage-browser';
 import classes from './StorageTypePicker.module.css';
-
-export type StorageTypeId = 'local' | 'google-drive';
 
 type StorageCategory = 'local' | 'cloud';
 type CategoryTitleKey = 'storageCategoryLocal' | 'storageCategoryCloud';
 type TypeNameKey = 'localFileSystem';
 type TypeDescriptionKey = 'localFileSystemDescription' | 'googleDriveDescription';
 
-interface StorageTypeOption {
-  id: StorageTypeId;
+export interface StorageTypeOption {
+  id: StorageProvider;
+  authMode: StorageProviderAuthMode;
   category: StorageCategory;
   icon: LucideIcon;
   /** Translation key, or a literal for brand names. */
@@ -28,6 +28,7 @@ const categories: readonly { id: StorageCategory; titleKey: CategoryTitleKey }[]
 const options: readonly StorageTypeOption[] = [
   {
     id: 'local',
+    authMode: 'none',
     category: 'local',
     icon: HardDrive,
     name: { key: 'localFileSystem' },
@@ -35,6 +36,7 @@ const options: readonly StorageTypeOption[] = [
   },
   {
     id: 'google-drive',
+    authMode: 'browser',
     category: 'cloud',
     icon: Cloud,
     name: { literal: 'Google Drive' },
@@ -43,10 +45,11 @@ const options: readonly StorageTypeOption[] = [
 ];
 
 interface StorageTypePickerProps {
-  onSelect: (type: StorageTypeId) => void;
+  disabled?: boolean;
+  onSelect: (option: StorageTypeOption) => void;
 }
 
-export function StorageTypePicker({ onSelect }: StorageTypePickerProps) {
+export function StorageTypePicker({ disabled = false, onSelect }: StorageTypePickerProps) {
   const { t } = useTranslation('storage');
 
   return (
@@ -69,7 +72,8 @@ export function StorageTypePicker({ onSelect }: StorageTypePickerProps) {
                     <button
                       type="button"
                       className={classes.option}
-                      onClick={() => onSelect(option.id)}
+                      disabled={disabled}
+                      onClick={() => onSelect(option)}
                     >
                       <span className={classes.icon} aria-hidden="true">
                         <Icon size={18} strokeWidth={1.75} />

@@ -70,12 +70,7 @@ export class StorageBrowser {
   addConnection(provider: StorageProvider, owner?: number): Promise<StorageConnectionSummary> {
     return this.connections.addConnection(
       provider,
-      (account, integration) =>
-        integration.summarizeAccount(
-          account,
-          this.spaces.displayedSpaces(account.id, integration),
-          false,
-        ),
+      (id, integration) => this.spaces.displayedSpaces(id, integration),
       owner,
     );
   }
@@ -111,13 +106,11 @@ export class StorageBrowser {
   }
 
   resolveLocalPath(ref: EntryRef): Promise<{ path: string; kind: Entry['kind']; dev?: number }> {
-    const local = this.connections
-      .localIntegrations()
-      .find((integration) => integration.connectionDefinition.id === ref.connectionId);
-    if (!local?.resolvePath) {
+    const integration = this.connections.builtInIntegration(ref.connectionId);
+    if (!integration?.resolvePath) {
       return Promise.reject(new StorageError('InvalidArgument'));
     }
-    return this.spaces.withBrowsableSpace(ref, () => local.resolvePath!(ref));
+    return this.spaces.withBrowsableSpace(ref, () => integration.resolvePath!(ref));
   }
 
   createDirectory(target: CreateTarget): Promise<Entry> {

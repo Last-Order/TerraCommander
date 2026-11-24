@@ -1,20 +1,23 @@
 import { AccountError } from '@main/accounts/core/errors';
 import { AdapterRegistry, StorageError, type StorageLogger } from '@main/storage';
 import type { AccountSummary } from '@shared/accounts';
-import type { ConnectionDefinition } from '@shared/storage';
+import type { ConnectionDefinition, Space } from '@shared/storage';
 import type { StorageConnectionSummary, StorageProvider } from '@shared/storage-browser';
 import type { AccountRuntime } from '../application-services';
-import type {
-  AccountStorageProviderIntegration,
-  LocalStorageProviderIntegration,
-  StorageProviderIntegration,
-} from './storage-provider';
+import type { StorageProviderIntegration } from './storage-provider';
+
+export interface ManagedConnection {
+  readonly id: string;
+  readonly integration: StorageProviderIntegration;
+  readonly requireSelection?: boolean;
+  summarize(spaces: Space[]): StorageConnectionSummary;
+}
 
 export class StorageConnectionManager {
   readonly registry: AdapterRegistry;
   private readonly providers = new Map<StorageProvider, StorageProviderIntegration>();
-  private readonly locals = new Map<string, LocalStorageProviderIntegration>();
-  private readonly accountProviders = new Map<string, AccountStorageProviderIntegration>();
+  private readonly builtIns = new Map<string, StorageProviderIntegration>();
+  private readonly accountProviders = new Map<string, StorageProviderIntegration>();
   private readonly connections = new Map<string, Promise<void>>();
   private readonly authorizationRequired = new Set<string>();
   private authorization: { owner: number | undefined; controller: AbortController } | undefined;
@@ -33,77 +36,85 @@ export class StorageConnectionManager {
     });
     for (const integration of providers) {
       this.providers.set(integration.provider, integration);
-      if (integration.kind === 'local') {
-        this.locals.set(integration.connectionDefinition.id, integration);
+      if (integration.connection.kind === 'built-in') {
+        this.builtIns.set(integration.connection.connectionDefinition.id, integration);
       }
       this.registry.register(integration.createAdapterFactory());
     }
   }
 
-  localIntegrations(): readonly LocalStorageProviderIntegration[] {
-    return [...this.locals.values()];
+  builtInIntegration(id: string): StorageProviderIntegration | undefined {
+    return this.builtIns.get(id);
   }
 
-  accountIntegrations(): readonly AccountStorageProviderIntegration[] {
-    return [...this.providers.values()].filter(
-      (integration): integration is AccountStorageProviderIntegration =>
-        integration.kind === 'account',
-    );
-  }
-
-  async listAccountsFor(provider: StorageProvider): Promise<AccountSummary[]> {
-    const { accounts } = await this.getAccounts();
-    const list = await accounts.list(provider);
-    const integration = this.providers.get(provider);
-    if (integration?.kind === 'account') {
-      for (const account of list) this.accountProviders.set(account.id, integration);
+  async listManagedConnections(): Promise<ManagedConnection[]> {
+    const accountEntries: ManagedConnection[] = [];
+    const builtInEntries: ManagedConnection[] = [];
+    for (const integration of this.providers.values()) {
+      const source = integration.connection;
+      if (source.kind === 'account') {
+        for (const account of await this.listAccountsFor(integration.provider)) {
+          const needsAuth = this.needsAuthorization(account);
+          accountEntries.push({
+            id: account.id,
+            integration,
+            summarize: (spaces) => source.summarize(account, spaces, needsAuth),
+          });
+        }
+      } else {
+        builtInEntries.push({
+          id: source.connectionDefinition.id,
+          integration,
+          requireSelection: true,
+          summarize: (spaces) => source.summarize(spaces),
+        });
+      }
     }
-    return list;
-  }
-
-  needsAuthorization(account: AccountSummary): boolean {
-    return (
-      account.authorization === 'reauthorization-required' ||
-      this.authorizationRequired.has(account.id)
-    );
+    return [...accountEntries, ...builtInEntries];
   }
 
   async resolveIntegration(id: string): Promise<StorageProviderIntegration> {
-    const local = this.locals.get(id);
-    if (local) return local;
+    const builtIn = this.builtIns.get(id);
+    if (builtIn) return builtIn;
     const definition = await this.definition(id);
     return this.integrationForDefinition(definition);
   }
 
   async addConnection(
     provider: StorageProvider,
-    summarize: (
-      account: AccountSummary,
-      integration: AccountStorageProviderIntegration,
-    ) => StorageConnectionSummary,
+    displayedSpaces: (id: string, integration: StorageProviderIntegration) => Space[],
     owner?: number,
   ): Promise<StorageConnectionSummary> {
     const integration = this.providers.get(provider);
-    if (!integration || integration.kind !== 'account') throw new AccountError('Unsupported');
+    if (!integration) throw new AccountError('Unsupported');
+    const source = integration.connection;
+    if (source.kind === 'built-in') {
+      const id = source.connectionDefinition.id;
+      return source.summarize(displayedSpaces(id, integration));
+    }
     return this.runAuthorization(owner, async (signal) => {
       const { accounts } = await this.getAccounts(signal);
-      const account = await accounts.add(integration.provider, integration.defaultAuthentication, {
+      const account = await accounts.add(integration.provider, source.defaultAuthentication, {
         signal,
       });
       this.authorizationRequired.delete(account.id);
       this.accountProviders.set(account.id, integration);
-      return summarize(account, integration);
+      return source.summarize(account, displayedSpaces(account.id, integration), false);
     });
   }
 
   async reauthorize(id: string, owner?: number): Promise<void> {
-    if (this.locals.has(id)) throw new AccountError('Unsupported');
+    if (this.builtIns.has(id)) throw new AccountError('Unsupported');
     await this.runAuthorization(owner, async (signal) => {
       const { accounts } = await this.getAccounts(signal);
       const definition = accounts.getConnectionDefinition(id);
       const integration = this.integrationForDefinition(definition);
-      if (integration.kind !== 'account') throw new AccountError('Unsupported');
-      await accounts.updateAuthentication(id, integration.defaultAuthentication, { signal });
+      if (integration.authMode === 'none' || integration.connection.kind !== 'account') {
+        throw new AccountError('Unsupported');
+      }
+      await accounts.updateAuthentication(id, integration.connection.defaultAuthentication, {
+        signal,
+      });
       this.authorizationRequired.delete(id);
     });
   }
@@ -144,13 +155,30 @@ export class StorageConnectionManager {
     await this.registry.dispose();
   }
 
+  private async listAccountsFor(provider: StorageProvider): Promise<AccountSummary[]> {
+    const { accounts } = await this.getAccounts();
+    const list = await accounts.list(provider);
+    const integration = this.providers.get(provider);
+    if (integration?.connection.kind === 'account') {
+      for (const account of list) this.accountProviders.set(account.id, integration);
+    }
+    return list;
+  }
+
+  private needsAuthorization(account: AccountSummary): boolean {
+    return (
+      account.authorization === 'reauthorization-required' ||
+      this.authorizationRequired.has(account.id)
+    );
+  }
+
   private async definition(id: string): Promise<ConnectionDefinition> {
-    const local = this.locals.get(id);
-    if (local) return local.connectionDefinition;
+    const builtIn = this.builtIns.get(id);
+    if (builtIn?.connection.kind === 'built-in') return builtIn.connection.connectionDefinition;
     const { accounts } = await this.getAccounts();
     const definition = accounts.getConnectionDefinition(id);
     const integration = this.providers.get(definition.provider as StorageProvider);
-    if (integration?.kind === 'account') this.accountProviders.set(id, integration);
+    if (integration?.connection.kind === 'account') this.accountProviders.set(id, integration);
     return definition;
   }
 

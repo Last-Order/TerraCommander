@@ -1,11 +1,11 @@
 import { Alert, Button, Group, Modal, Stack, Text } from '@mantine/core';
 import { useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { emptyLocalConnection, type StorageConnectionSummary } from '@shared/storage-browser';
+import type { StorageConnectionSummary, StorageProvider } from '@shared/storage-browser';
 import { errorKey, resultOf, type StorageErrorKey } from '../storage-client';
 import { formatStorageLabel } from '../storage-labels';
 import { SpacePicker } from './SpacePicker';
-import { StorageTypePicker } from './StorageTypePicker';
+import { StorageTypePicker, type StorageTypeOption } from './StorageTypePicker';
 
 export type SetupIntent =
   | { kind: 'add' }
@@ -13,22 +13,17 @@ export type SetupIntent =
 
 interface SetupProps {
   intent: SetupIntent;
-  localConnection: StorageConnectionSummary | undefined;
   onClose: () => void;
   onChanged: () => void;
   onAuthorized: (id: string) => void;
 }
 
-export function StorageSetupModal({
-  intent,
-  localConnection,
-  onClose,
-  onChanged,
-  onAuthorized,
-}: SetupProps) {
+export function StorageSetupModal({ intent, onClose, onChanged, onAuthorized }: SetupProps) {
   const { t } = useTranslation(['storage', 'common', 'errors']);
   const [connection, setConnection] = useState(intent.kind === 'manage' ? intent.connection : null);
-  const [showAuthorization, setShowAuthorization] = useState(intent.kind === 'reauthorize');
+  const [selectedProvider, setSelectedProvider] = useState<StorageProvider | null>(
+    intent.kind === 'reauthorize' ? intent.connection.provider : null,
+  );
   const [authorizing, setAuthorizing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<StorageErrorKey | null>(null);
@@ -48,6 +43,23 @@ export function StorageSetupModal({
     });
   }
 
+  async function selectType(option: StorageTypeOption) {
+    setError(null);
+    if (option.authMode === 'none') {
+      setBusy(true);
+      try {
+        const added = await resultOf(window.desktop.storage.addConnection(option.id));
+        setConnection(added);
+      } catch (failure) {
+        setError(errorKey(failure));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    setSelectedProvider(option.id);
+  }
+
   async function authorize() {
     cancelRequested.current = false;
     setAuthorizing(true);
@@ -57,8 +69,8 @@ export function StorageSetupModal({
         await resultOf(window.desktop.storage.reauthorize(existing.id));
         onAuthorized(existing.id);
         onClose();
-      } else {
-        const added = await resultOf(window.desktop.storage.addConnection('google-drive'));
+      } else if (selectedProvider) {
+        const added = await resultOf(window.desktop.storage.addConnection(selectedProvider));
         onAuthorized(added.id);
         if (cancelRequested.current) onClose();
         else setConnection(added);
@@ -74,7 +86,7 @@ export function StorageSetupModal({
   let title: string = t('add');
   if (connection) title = t('manageSpaces');
   else if (existing) title = t('reauthorizeGoogleDrive');
-  else if (showAuthorization) title = t('addGoogleDrive');
+  else if (selectedProvider) title = t('addGoogleDrive');
 
   let content: ReactNode;
   let choosingType = false;
@@ -91,7 +103,7 @@ export function StorageSetupModal({
         }}
       />
     );
-  } else if (showAuthorization) {
+  } else if (selectedProvider) {
     content = (
       <Stack gap="md">
         {existing && (
@@ -122,12 +134,14 @@ export function StorageSetupModal({
   } else {
     choosingType = true;
     content = (
-      <StorageTypePicker
-        onSelect={(type) => {
-          if (type === 'local') setConnection(localConnection ?? emptyLocalConnection);
-          else setShowAuthorization(true);
-        }}
-      />
+      <Stack gap="md">
+        {error && (
+          <Alert color="red" role="alert">
+            {t(`errors:${error}`)}
+          </Alert>
+        )}
+        <StorageTypePicker disabled={busy} onSelect={(option) => void selectType(option)} />
+      </Stack>
     );
   }
 
