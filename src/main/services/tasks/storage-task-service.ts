@@ -137,8 +137,12 @@ function projectGroupRequest<K extends keyof InternalGroupDefinitions>(request: 
   return groupRequestProjectors[request.kind](request.input);
 }
 
-function targetConflictKey(targetParent: Entry['ref'], targetName: string): string {
-  return `${entryKey(targetParent)}/${targetName}`;
+function slotConflictKey(parent: Entry['ref'], name: string): string {
+  const normalized =
+    parent.connectionId === localConnectionId && process.platform === 'win32'
+      ? name.toLowerCase()
+      : name;
+  return `slot:${entryKey(parent)}/${normalized}`;
 }
 
 export interface StorageTaskServiceOptions {
@@ -258,15 +262,24 @@ export class StorageTaskService {
     };
   }
 
+  private async allowsDuplicateNames(ref: Entry['ref']): Promise<boolean> {
+    return (await this.browser.spaceSemantics?.(ref))?.allowsDuplicateNames === true;
+  }
+
   enqueueCreateDirectory(request: CreateDirectoryTaskRequest): boolean {
     return this.queue.enqueue({ type: 'create-directory', input: request });
   }
 
-  enqueueRename(request: RenameTaskRequest): boolean {
-    return this.queue.enqueue({ type: 'rename', input: request });
+  async enqueueRename(request: RenameTaskRequest): Promise<boolean> {
+    const allowsDuplicateNames = await this.allowsDuplicateNames(request.parent);
+    return this.queue.enqueue({
+      type: 'rename',
+      input: request,
+      ...(allowsDuplicateNames ? { resources: [entryKey(request.entry.ref)] } : {}),
+    });
   }
 
-  enqueueDelete(request: DeleteEntriesRequest): boolean {
+  async enqueueDelete(request: DeleteEntriesRequest): Promise<boolean> {
     const uniqueEntries: Entry[] = [];
     const seen = new Set<string>();
     for (const entry of request.entries) {
@@ -276,6 +289,7 @@ export class StorageTaskService {
       uniqueEntries.push(entry);
     }
     if (uniqueEntries.length === 0) return false;
+    const allowsDuplicateNames = await this.allowsDuplicateNames(request.parent);
     if (uniqueEntries.length === 1) {
       const [entry] = uniqueEntries;
       return this.queue.enqueue({
@@ -285,7 +299,15 @@ export class StorageTaskService {
           entry: entry!,
           directoryPath: request.directoryPath,
         },
+        ...(allowsDuplicateNames ? { resources: [entryKey(entry!.ref)] } : {}),
       });
+    }
+    const groupResources = new Set<string>();
+    for (const entry of uniqueEntries) {
+      groupResources.add(entryKey(entry.ref));
+      if (!allowsDuplicateNames) {
+        groupResources.add(slotConflictKey(request.parent, entry.name));
+      }
     }
     const groupId = this.queue.createGroup({
       kind: 'delete',
@@ -294,7 +316,7 @@ export class StorageTaskService {
         directoryPath: request.directoryPath,
         entries: uniqueEntries.map((entry) => entry.ref),
       },
-      resources: uniqueEntries.map((entry) => entryKey(entry.ref)),
+      resources: [...groupResources],
     });
     if (groupId === undefined) return false;
     for (const entry of uniqueEntries) {
@@ -306,6 +328,7 @@ export class StorageTaskService {
             entry,
             directoryPath: request.directoryPath,
           },
+          ...(allowsDuplicateNames ? { resources: [entryKey(entry.ref)] } : {}),
         },
         { groupId },
       );
@@ -375,8 +398,7 @@ export class StorageTaskService {
         sourceCleanup,
       );
     }
-    const allowsDuplicateNames =
-      (await this.browser.spaceSemantics(request.targetParent))?.allowsDuplicateNames === true;
+    const allowsDuplicateNames = await this.allowsDuplicateNames(request.targetParent);
     if (plan.kind === 'move') {
       return this.enqueueMovePlan(request, plan.items, plan.entries, allowsDuplicateNames);
     }
@@ -417,7 +439,8 @@ export class StorageTaskService {
     const groupResources = new Set<string>(entries.map((entry) => entryKey(entry.ref)));
     if (!allowsDuplicateNames) {
       for (const item of items) {
-        groupResources.add(targetConflictKey(item.targetParent, item.targetName));
+        groupResources.add(slotConflictKey(item.sourceParent, item.sourceEntry.name));
+        groupResources.add(slotConflictKey(item.targetParent, item.targetName));
       }
     }
     const groupId = this.queue.createGroup({
@@ -610,7 +633,7 @@ export class StorageTaskService {
   > {
     return {
       category: 'operation',
-      conflictKeys: ({ parent, name }) => [`${entryKey(parent)}/${name}`],
+      conflictKeys: ({ parent, name }) => [slotConflictKey(parent, name)],
       execute: async ({ parent, name }) => ({
         status: 'completed',
         result: await this.browser.createDirectory({ parent, name }),
@@ -631,7 +654,11 @@ export class StorageTaskService {
   private createRenameHandler(): TaskHandler<RenameTaskRequest, Entry, TaskCategory> {
     return {
       category: 'operation',
-      conflictKeys: ({ entry }) => [entryKey(entry.ref)],
+      conflictKeys: ({ parent, entry, name }) => [
+        entryKey(entry.ref),
+        slotConflictKey(parent, entry.name),
+        slotConflictKey(parent, name),
+      ],
       execute: async ({ entry, name }) => ({
         status: 'completed',
         result: await this.browser.renameEntry(entry.ref, name),
@@ -657,7 +684,10 @@ export class StorageTaskService {
   private createDeleteHandler(): TaskHandler<DeleteTaskRequest, void, TaskCategory> {
     return {
       category: 'operation',
-      conflictKeys: ({ entry }) => [entryKey(entry.ref)],
+      conflictKeys: ({ parent, entry }) => [
+        entryKey(entry.ref),
+        slotConflictKey(parent, entry.name),
+      ],
       execute: async ({ entry }) => {
         await this.browser.deleteEntry(entry.ref);
         return { status: 'completed', result: undefined };
@@ -677,7 +707,7 @@ export class StorageTaskService {
   private createCopyHandler(): TaskHandler<CopyTaskRequest, Entry, TaskCategory> {
     return {
       category: 'operation',
-      conflictKeys: ({ targetParent, targetName }) => [targetConflictKey(targetParent, targetName)],
+      conflictKeys: ({ targetParent, targetName }) => [slotConflictKey(targetParent, targetName)],
       execute: async ({ entry, targetParent, targetName }) => ({
         status: 'completed',
         result: await this.browser.copyWithin(entry.ref, {
@@ -700,9 +730,10 @@ export class StorageTaskService {
   private createMoveHandler(): TaskHandler<MoveTaskRequest, Entry, TaskCategory> {
     return {
       category: 'operation',
-      conflictKeys: ({ entry, targetParent, targetName }) => [
+      conflictKeys: ({ sourceParent, entry, targetParent, targetName }) => [
         entryKey(entry.ref),
-        targetConflictKey(targetParent, targetName),
+        slotConflictKey(sourceParent, entry.name),
+        slotConflictKey(targetParent, targetName),
       ],
       execute: async ({ entry, targetParent, targetName }) => ({
         status: 'completed',

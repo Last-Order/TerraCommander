@@ -94,16 +94,33 @@ function setup() {
   }));
   const renameEntry = vi.fn(async () => ({ ...fileEntry, name: 'final.txt' }));
   const deleteEntry = vi.fn(async () => undefined);
+  const copyWithin = vi.fn(async () => ({ ...fileEntry, name: 'report.txt' }));
+  const moveWithin = vi.fn(async () => ({ ...fileEntry, name: 'report.txt' }));
+  const spaceSemantics = vi.fn<StorageBrowser['spaceSemantics']>(async () => undefined);
   const browser = {
     createDirectory,
     renameEntry,
     deleteEntry,
+    copyWithin,
+    moveWithin,
+    spaceSemantics,
     downloads,
   } as unknown as StorageBrowser;
   const service = new StorageTaskService(browser);
   const events: StorageTaskEvent[] = [];
   service.subscribe((event) => events.push(event));
-  return { service, browser, downloads, createDirectory, renameEntry, deleteEntry, events };
+  return {
+    service,
+    browser,
+    downloads,
+    createDirectory,
+    renameEntry,
+    deleteEntry,
+    copyWithin,
+    moveWithin,
+    spaceSemantics,
+    events,
+  };
 }
 
 it('executes create-directory tasks, prevents concurrent name conflicts, and maps errors', async () => {
@@ -151,7 +168,12 @@ it('executes rename and delete tasks, projects directory changes, and maps valid
   const { service, renameEntry, deleteEntry, events } = setup();
 
   expect(
-    service.enqueueRename({ parent, entry: fileEntry, name: 'final.txt', directoryPath: '/docs' }),
+    await service.enqueueRename({
+      parent,
+      entry: fileEntry,
+      name: 'final.txt',
+      directoryPath: '/docs',
+    }),
   ).toBe(true);
   await vi.waitFor(() => expect(service.getSnapshot().tasks[0]?.status).toBe('completed'));
   expect(renameEntry).toHaveBeenCalledWith(fileEntry.ref, 'final.txt');
@@ -166,7 +188,7 @@ it('executes rename and delete tasks, projects directory changes, and maps valid
   });
 
   renameEntry.mockRejectedValueOnce(new StorageError('InvalidArgument'));
-  service.enqueueRename({ parent, entry: fileEntry, name: 'bad', directoryPath: '/docs' });
+  await service.enqueueRename({ parent, entry: fileEntry, name: 'bad', directoryPath: '/docs' });
   await vi.waitFor(() => expect(service.getSnapshot().tasks[1]?.status).toBe('failed'));
   expect(service.getSnapshot().tasks[1]?.failure).toEqual({
     code: 'InvalidArgument',
@@ -174,7 +196,7 @@ it('executes rename and delete tasks, projects directory changes, and maps valid
   });
 
   deleteEntry.mockRejectedValueOnce(new StorageError('AuthRequired'));
-  service.enqueueDelete({ parent, entries: [fileEntry], directoryPath: '/docs' });
+  await service.enqueueDelete({ parent, entries: [fileEntry], directoryPath: '/docs' });
   await vi.waitFor(() => expect(service.getSnapshot().tasks[2]?.status).toBe('failed'));
   expect(events).toContainEqual({ type: 'auth-required', connectionId });
 
@@ -196,14 +218,14 @@ it('creates a delete task group for multiple entries including folders and rejec
   deleteEntry.mockImplementationOnce(() => firstDone);
 
   expect(
-    service.enqueueDelete({
+    await service.enqueueDelete({
       parent,
       entries: [fileEntry, folderEntry],
       directoryPath: '/docs',
     }),
   ).toBe(true);
   expect(
-    service.enqueueDelete({
+    await service.enqueueDelete({
       parent,
       entries: [folderEntry],
       directoryPath: '/docs',
@@ -649,4 +671,117 @@ it('emits lightweight task-progress events for progress ticks and includes direc
   } finally {
     await service.dispose();
   }
+});
+
+it('blocks overlapping slot operations between delete, rename, create-directory, and copy', async () => {
+  const { service, deleteEntry, renameEntry } = setup();
+  const pendingDelete = deferred<undefined>();
+  deleteEntry.mockImplementationOnce(() => pendingDelete.promise);
+
+  expect(
+    await service.enqueueDelete({ parent, entries: [fileEntry], directoryPath: '/docs' }),
+  ).toBe(true);
+  // Creating a directory with the same name as a pending deletion must be rejected.
+  expect(
+    service.enqueueCreateDirectory({ parent, name: fileEntry.name, directoryPath: '/docs' }),
+  ).toBe(false);
+  // Copying another file into the slot being deleted must also be rejected.
+  const otherSource: Entry = {
+    ref: { connectionId, spaceId: 'drive', locator: 'other-file' },
+    name: fileEntry.name,
+    kind: 'file',
+    capabilities: { copyWithin: { support: 'supported' } },
+  };
+  await expect(
+    service.pasteEntries(1, {
+      mode: 'copy',
+      sourceParent: { connectionId, spaceId: 'drive', locator: 'other-folder' },
+      sourceDirectoryPath: '/other',
+      entries: [otherSource],
+      targetParent: parent,
+      targetDirectoryPath: '/docs',
+    }),
+  ).rejects.toMatchObject({ code: 'AlreadyExists' });
+
+  pendingDelete.resolve(undefined);
+  await vi.waitFor(() => expect(service.getSnapshot().tasks[0]?.status).toBe('completed'));
+
+  const pendingRename = deferred<Entry>();
+  renameEntry.mockImplementationOnce(() => pendingRename.promise);
+  expect(
+    await service.enqueueRename({
+      parent,
+      entry: fileEntry,
+      name: 'renamed.txt',
+      directoryPath: '/docs',
+    }),
+  ).toBe(true);
+  // Both the old name slot and the new name slot are locked while rename is active.
+  expect(
+    service.enqueueCreateDirectory({ parent, name: fileEntry.name, directoryPath: '/docs' }),
+  ).toBe(false);
+  expect(
+    service.enqueueCreateDirectory({ parent, name: 'renamed.txt', directoryPath: '/docs' }),
+  ).toBe(false);
+
+  pendingRename.resolve({ ...fileEntry, name: 'renamed.txt' });
+  await vi.waitFor(() => expect(service.getSnapshot().tasks[1]?.status).toBe('completed'));
+  await service.dispose();
+});
+
+it('allows batch deleting duplicate-named entries when allowsDuplicateNames is true', async () => {
+  const { service, deleteEntry, spaceSemantics } = setup();
+  spaceSemantics.mockResolvedValue({ allowsDuplicateNames: true });
+  const dupA: Entry = {
+    ...fileEntry,
+    ref: { connectionId, spaceId: 'drive', locator: 'dup-a' },
+    name: 'same.txt',
+  };
+  const dupB: Entry = {
+    ...fileEntry,
+    ref: { connectionId, spaceId: 'drive', locator: 'dup-b' },
+    name: 'same.txt',
+  };
+
+  expect(
+    await service.enqueueDelete({ parent, entries: [dupA, dupB], directoryPath: '/docs' }),
+  ).toBe(true);
+  await vi.waitFor(() =>
+    expect(service.getSnapshot().groups[0]?.state).toEqual({
+      phase: 'settled',
+      outcome: 'completed',
+    }),
+  );
+  expect(deleteEntry).toHaveBeenCalledTimes(2);
+  await service.dispose();
+});
+
+it('normalizes local slot conflict keys case-insensitively on Windows', async () => {
+  const { service, createDirectory } = setup();
+  const localParent = { connectionId: localConnectionId, spaceId: 'D:', locator: 'docs' };
+  const pending = deferred<Entry>();
+  createDirectory.mockImplementationOnce(() => pending.promise);
+
+  expect(
+    service.enqueueCreateDirectory({
+      parent: localParent,
+      name: 'Projects',
+      directoryPath: 'D:\\docs',
+    }),
+  ).toBe(true);
+  expect(
+    service.enqueueCreateDirectory({
+      parent: localParent,
+      name: 'projects',
+      directoryPath: 'D:\\docs',
+    }),
+  ).toBe(process.platform !== 'win32');
+
+  pending.resolve({
+    ...folderEntry,
+    ref: { ...localParent, locator: 'docs/Projects' },
+    name: 'Projects',
+  });
+  await vi.waitFor(() => expect(service.getSnapshot().tasks[0]?.status).toBe('completed'));
+  await service.dispose();
 });
