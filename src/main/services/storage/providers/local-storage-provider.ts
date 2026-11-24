@@ -7,7 +7,7 @@ import { listLocalVolumes } from '@main/storage/providers/local/local-volumes';
 import { emptyLocalConnection, localConnectionId } from '@shared/storage-browser';
 import type { LocalStorageProviderIntegration } from '../storage-provider';
 
-export function isValidLocalStoredSpace({ locator }: { id: string; locator?: string }): boolean {
+function isValidLocalStoredSpace({ locator }: { id: string; locator?: string }): boolean {
   return locator === '.';
 }
 

@@ -62,7 +62,7 @@ export class StorageSpaceCatalog {
       if (typeof space.name !== 'string') throw new StorageError('OutcomeUnknown');
       return { id: spaceId, cached: { name: space.name, locator: space.root.locator } };
     });
-    this.preferences.saveSpaces(id, selected);
+    this.preferences.saveSpaces(id, integration.provider, selected);
   }
 
   withBrowsableSpace<T>({ connectionId, spaceId }: EntryRef, run: () => Promise<T>): Promise<T> {
@@ -110,9 +110,9 @@ export class StorageSpaceCatalog {
     let pending = this.spaceDiscovery.get(id);
     if (!pending) {
       pending = this.connections
-        .withConnection(id, async () => {
+        .withConnection(id, async (integration) => {
           const spaces = await this.storage.listSpaces(id);
-          this.preferences.saveDiscoveredSpaces(id, spaces);
+          this.preferences.saveDiscoveredSpaces(id, integration.provider, spaces);
           this.discovered.delete(id);
         })
         .finally(() => this.spaceDiscovery.delete(id));

@@ -6,14 +6,12 @@ import { accountFixture } from '@main/accounts/providers/google-drive/testing/fi
 import { createAccountServices } from '@main/accounts/runtime/account-services';
 import { FakeAccountCipher, MemoryAccountStore } from '@main/accounts/testing/fixtures';
 import { localConnectionId } from '@shared/storage-browser';
-import {
-  createDefaultStorageProviders,
-  validateDefaultStoredSpace,
-} from './providers/default-providers';
+import { createDefaultStorageProviders } from './providers/default-providers';
 import { createGoogleDriveStorageProvider } from './providers/google-drive-storage-provider';
 import { createLocalStorageProvider } from './providers/local-storage-provider';
 import { StorageBrowser } from './storage-browser';
 import { StoragePreferences } from './storage-preferences';
+import { createStoredSpaceValidator } from './storage-provider';
 
 function memorySnapshotStore() {
   let saved: unknown;
@@ -30,16 +28,17 @@ function createBrowser(
   getAccounts: ConstructorParameters<typeof StorageBrowser>[0]['getAccounts'],
   localVolumes?: () => Promise<string[]>,
 ) {
+  const providers = localVolumes
+    ? [createLocalStorageProvider(localVolumes), createGoogleDriveStorageProvider()]
+    : createDefaultStorageProviders();
   const preferences = new StoragePreferences(snapshotStore, {
-    validateSpace: validateDefaultStoredSpace,
+    validateSpace: createStoredSpaceValidator(providers),
   });
   return new StorageBrowser({
     preferences,
     getAccounts,
     logger: { event() {} },
-    providers: localVolumes
-      ? [createLocalStorageProvider(localVolumes), createGoogleDriveStorageProvider()]
-      : createDefaultStorageProviders(),
+    providers,
   });
 }
 
@@ -87,10 +86,11 @@ it('routes a shared Drive deletion through the saved account connection', async 
   try {
     const account = await runtime.accounts.add('google-drive', { method: 'browser' });
     snapshotStore.write({
-      version: 3,
+      version: 4,
       connections: [
         {
           id: account.id,
+          provider: 'google-drive',
           spaces: [{ id: 'shared:team', cached: { name: 'Drive', locator: 'team' } }],
         },
       ],
@@ -227,10 +227,11 @@ it('persists discovered spaces separately from legacy selections and refreshes t
   try {
     const account = await runtime.accounts.add('google-drive', { method: 'browser' });
     const saved = {
-      version: 3,
+      version: 4,
       connections: [
         {
           id: account.id,
+          provider: 'google-drive',
           spaces: [
             { id: 'my-drive' },
             { id: 'shared:team', cached: { name: 'Team', locator: 'team' } },
@@ -292,19 +293,46 @@ it('persists discovered spaces separately from legacy selections and refreshes t
   }
 });
 
-it('keeps StoragePreferences provider-neutral and allows custom space validation injection', () => {
-  const store = memorySnapshotStore();
-  store.write({
-    version: 3,
+it('keeps StoragePreferences provider-neutral and dispatches validation by provider', () => {
+  const localStore = memorySnapshotStore();
+  localStore.write({
+    version: 4,
     connections: [
       {
         id: localConnectionId,
+        provider: 'local',
         spaces: [{ id: 'custom', cached: { name: 'Custom', locator: 'not-dot' } }],
       },
     ],
   });
-  expect(() => new StoragePreferences(store)).not.toThrow();
+  const validateDefault = createStoredSpaceValidator(createDefaultStorageProviders());
+  expect(() => new StoragePreferences(localStore)).not.toThrow();
+  expect(() => new StoragePreferences(localStore, { validateSpace: validateDefault })).toThrow(
+    expect.objectContaining({ code: 'OutcomeUnknown' }),
+  );
+
+  const accountStore = memorySnapshotStore();
+  accountStore.write({
+    version: 4,
+    connections: [
+      {
+        id: 'account-1',
+        provider: 'google-drive',
+        spaces: [{ id: 'invalid-space', cached: { name: 'Invalid', locator: 'bad' } }],
+      },
+    ],
+  });
+  const validateWithAccountRule = createStoredSpaceValidator([
+    createLocalStorageProvider(),
+    {
+      ...createGoogleDriveStorageProvider(),
+      validateStoredSpace: ({ id }) => id === 'my-drive' || id.startsWith('shared:'),
+    },
+  ]);
   expect(
-    () => new StoragePreferences(store, { validateSpace: validateDefaultStoredSpace }),
+    () => new StoragePreferences(accountStore, { validateSpace: validateDefault }),
+  ).not.toThrow();
+  expect(
+    () => new StoragePreferences(accountStore, { validateSpace: validateWithAccountRule }),
   ).toThrow(expect.objectContaining({ code: 'OutcomeUnknown' }));
 });

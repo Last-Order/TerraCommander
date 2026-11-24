@@ -3,7 +3,7 @@ import { StorageError } from '@main/storage/core/errors';
 import { spaceSchema } from '@main/storage/core/validation';
 import type { Space } from '@shared/storage';
 
-const snapshotVersion = 3;
+const snapshotVersion = 4;
 const savedSpaceSchema = z.strictObject({
   id: z.string().min(1),
   cached: z.strictObject({ name: z.string(), locator: z.string() }).optional(),
@@ -14,25 +14,26 @@ const baseSnapshotSchema = z.strictObject({
   connections: z.array(
     z.strictObject({
       id: z.string().min(1),
+      provider: z.string().min(1),
       spaces: z.array(savedSpaceSchema).optional(),
       discovered: z.array(spaceSchema).optional(),
     }),
   ),
 });
 
-type SpaceValidator = (connectionId: string, space: { id: string; locator?: string }) => boolean;
+type SpaceValidator = (provider: string, space: { id: string; locator?: string }) => boolean;
 
 function createSnapshotSchema(validateSpace?: SpaceValidator) {
   return baseSnapshotSchema.refine(({ connections }) => {
     const ids = new Set<string>();
-    for (const { id, spaces = [], discovered = [] } of connections) {
+    for (const { id, provider, spaces = [], discovered = [] } of connections) {
       if (ids.has(id) || new Set(spaces.map((space) => space.id)).size !== spaces.length)
         return false;
       if (
         validateSpace &&
         spaces.some(
           (space) =>
-            !validateSpace(id, {
+            !validateSpace(provider, {
               id: space.id,
               ...(space.cached ? { locator: space.cached.locator } : {}),
             }),
@@ -47,7 +48,7 @@ function createSnapshotSchema(validateSpace?: SpaceValidator) {
             space.root.connectionId !== id ||
             space.root.spaceId !== space.id ||
             (validateSpace !== undefined &&
-              !validateSpace(id, { id: space.id, locator: space.root.locator })),
+              !validateSpace(provider, { id: space.id, locator: space.root.locator })),
         )
       )
         return false;
@@ -92,20 +93,24 @@ export class StoragePreferences {
     return this.snapshot.connections.find((connection) => connection.id === id)?.discovered;
   }
 
-  saveSpaces(id: string, spaces: SavedSpace[]): void {
-    this.updateConnection(id, { spaces });
+  saveSpaces(id: string, provider: string, spaces: SavedSpace[]): void {
+    this.updateConnection(id, provider, { spaces });
   }
 
-  saveDiscoveredSpaces(id: string, discovered: Space[]): void {
-    this.updateConnection(id, { discovered });
+  saveDiscoveredSpaces(id: string, provider: string, discovered: Space[]): void {
+    this.updateConnection(id, provider, { discovered });
   }
 
-  private updateConnection(id: string, update: { spaces?: SavedSpace[]; discovered?: Space[] }) {
+  private updateConnection(
+    id: string,
+    provider: string,
+    update: { spaces?: SavedSpace[]; discovered?: Space[] },
+  ) {
     const previous = this.snapshot.connections.find((connection) => connection.id === id);
     const connections = this.snapshot.connections.filter((connection) => connection.id !== id);
     this.commit({
       ...this.snapshot,
-      connections: [...connections, { ...previous, id, ...update }],
+      connections: [...connections, { ...previous, id, provider, ...update }],
     });
   }
 

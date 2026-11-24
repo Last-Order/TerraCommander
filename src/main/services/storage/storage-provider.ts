@@ -32,3 +32,12 @@ export interface AccountStorageProviderIntegration {
 export type StorageProviderIntegration =
   | LocalStorageProviderIntegration
   | AccountStorageProviderIntegration;
+
+export function createStoredSpaceValidator(
+  providers: readonly StorageProviderIntegration[],
+): (provider: string, space: { id: string; locator?: string }) => boolean {
+  const byProvider = new Map<string, StorageProviderIntegration>(
+    providers.map((integration) => [integration.provider, integration]),
+  );
+  return (provider, space) => byProvider.get(provider)?.validateStoredSpace?.(space) ?? true;
+}
