@@ -58,17 +58,15 @@ export function validatePaste({
     return { status: 'rejected', reason: 'selfContainment' };
   }
 
-  if (targetConnectionId !== localConnectionId) {
-    if (targetCapabilities?.write?.support === 'unsupported') {
-      return { status: 'rejected', reason: 'permissionDenied' };
-    }
-    if (
-      (clipboard.mode === 'copy' || sourceConnectionId !== targetConnectionId) &&
-      clipboard.entries.some((entry) => entry.kind === 'directory') &&
-      targetCapabilities?.createDirectory?.support === 'unsupported'
-    ) {
-      return { status: 'rejected', reason: 'unsupported' };
-    }
+  if (targetCapabilities?.write?.support === 'unsupported') {
+    return { status: 'rejected', reason: 'permissionDenied' };
+  }
+  if (
+    (clipboard.mode === 'copy' || sourceConnectionId !== targetConnectionId) &&
+    clipboard.entries.some((entry) => entry.kind === 'directory') &&
+    targetCapabilities?.createDirectory?.support === 'unsupported'
+  ) {
+    return { status: 'rejected', reason: 'unsupported' };
   }
 
   return { status: 'ok' };

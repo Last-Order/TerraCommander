@@ -1,4 +1,12 @@
-import { mkdir, mkdtempDisposable, readdir, readFile, symlink, writeFile } from 'node:fs/promises';
+import {
+  chmod,
+  mkdir,
+  mkdtempDisposable,
+  readdir,
+  readFile,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
@@ -152,10 +160,15 @@ it('reports scope-accurate capabilities and honors pre-aborted signals', async (
       write: { support: 'unsupported' },
     });
 
+    const expectedDirWrite =
+      process.platform === 'win32' ? { support: 'unknown' } : { support: 'supported' };
+
     const rootCaps = await storage.capabilities({ kind: 'entry', ref: root });
     expect(rootCaps).toEqual((await storage.stat(root)).capabilities);
     expect(rootCaps).toMatchObject({
       list: { support: 'supported' },
+      write: expectedDirWrite,
+      createDirectory: expectedDirWrite,
       rename: { support: 'unsupported' },
       remove: { support: 'unsupported' },
     });
@@ -165,16 +178,44 @@ it('reports scope-accurate capabilities and honors pre-aborted signals', async (
     expect(fileCaps).toEqual((await storage.stat(fileRef)).capabilities);
     expect(fileCaps).toMatchObject({
       list: { support: 'unsupported' },
+      write: { support: 'unsupported' },
+      createDirectory: { support: 'unsupported' },
       rename: { support: 'supported' },
       remove: { support: 'supported' },
     });
 
     const dirRef = { ...root, locator: 'dir' };
-    expect(await storage.capabilities({ kind: 'entry', ref: dirRef })).toMatchObject({
+    const dirCaps = await storage.capabilities({ kind: 'entry', ref: dirRef });
+    expect(dirCaps).toMatchObject({
       list: { support: 'supported' },
+      write: expectedDirWrite,
+      createDirectory: expectedDirWrite,
       rename: { support: 'supported' },
       remove: { support: 'supported' },
     });
+
+    const listed = await storage.list(root);
+    expect(listed.entries.find((entry) => entry.name === 'dir')?.capabilities).toEqual(dirCaps);
+    expect(listed.entries.find((entry) => entry.name === 'item.txt')?.capabilities).toEqual(
+      fileCaps,
+    );
+
+    if (process.platform !== 'win32' && process.getuid?.() !== 0) {
+      await chmod(folder, 0o555);
+      try {
+        const readOnlyCaps = await storage.capabilities({ kind: 'entry', ref: dirRef });
+        expect(readOnlyCaps).toMatchObject({
+          write: { support: 'unsupported' },
+          createDirectory: { support: 'unsupported' },
+        });
+        const listedReadOnly = await storage.list(root);
+        expect(listedReadOnly.entries.find((entry) => entry.name === 'dir')?.capabilities).toEqual(
+          readOnlyCaps,
+        );
+      } finally {
+        await chmod(folder, 0o755);
+      }
+    }
 
     await expect(
       storage.capabilities(

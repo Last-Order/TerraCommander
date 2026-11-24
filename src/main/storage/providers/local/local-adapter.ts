@@ -1,12 +1,23 @@
 import { createHash } from 'node:crypto';
 import type { Dirent, Stats } from 'node:fs';
-import { constants, copyFile, lstat, mkdir, readdir, rename, rm, unlink } from 'node:fs/promises';
+import {
+  access,
+  constants,
+  copyFile,
+  lstat,
+  mkdir,
+  readdir,
+  rename,
+  rm,
+  unlink,
+} from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, normalize, parse, relative } from 'node:path';
 import type { OperationContext } from '@main/storage/core/contracts';
 import { StorageError, throwIfAborted } from '@main/storage/core/errors';
 import type { AdapterFactory, StorageAdapter } from '@main/storage/ports/adapter';
 import type {
   Capabilities,
+  Capability,
   CapabilityScope,
   CreateTarget,
   Entry,
@@ -187,7 +198,7 @@ class LocalAdapter implements StorageAdapter {
 
   async stat(ref: EntryRef, { signal }: OperationContext): Promise<Entry> {
     const { path, info } = await this.locate(ref, signal);
-    return localEntry(ref, basename(path) || parse(path).root, path, info);
+    return this.toEntry(ref, basename(path) || parse(path).root, path, info, signal);
   }
 
   async list(
@@ -211,7 +222,7 @@ class LocalAdapter implements StorageAdapter {
             const displayPath = join(path, item.name);
             // A listed item can disappear or become inaccessible before metadata is read.
             const info = await lstat(displayPath).catch(() => undefined);
-            return localEntry(ref, item.name, displayPath, info ?? item);
+            return this.toEntry(ref, item.name, displayPath, info ?? item);
           }),
         );
         throwIfAborted(signal);
@@ -228,7 +239,7 @@ class LocalAdapter implements StorageAdapter {
       throw new StorageError('InvalidArgument');
     }
     const { path, info } = await this.locate(ref, signal);
-    if (basename(path) === name) return localEntry(ref, name, path, info);
+    if (basename(path) === name) return this.toEntry(ref, name, path, info, signal);
     const target = join(dirname(path), name);
     try {
       const existing = await lstat(target).catch((error: unknown) => {
@@ -324,7 +335,7 @@ class LocalAdapter implements StorageAdapter {
     }
     const sameParent = dirname(sourcePath) === parentPath;
     if (sameParent && basename(sourcePath) === name) {
-      return localEntry(ref, name, sourcePath, sourceInfo);
+      return this.toEntry(ref, name, sourcePath, sourceInfo, signal);
     }
     const targetPath = join(parentPath, name);
     try {
@@ -379,6 +390,71 @@ class LocalAdapter implements StorageAdapter {
       this.platform,
     );
   }
+
+  private async toEntry(
+    ref: EntryRef,
+    name: string,
+    displayPath: string,
+    info: Dirent | Stats,
+    signal?: AbortSignal,
+  ): Promise<Entry> {
+    const kind = entryKind(info);
+    const directoryWrite =
+      kind === 'directory'
+        ? await resolveDirectoryWriteCapability(displayPath, this.platform)
+        : unsupported;
+    throwIfAborted(signal);
+    const entry: Entry = {
+      ref,
+      name,
+      kind,
+      displayPath,
+      capabilities: {
+        ...localBaseCapabilities,
+        list: kind === 'directory' ? supported : unsupported,
+        write: directoryWrite,
+        createDirectory: directoryWrite,
+        copyWithin: ref.locator !== '.' && kind === 'file' ? supported : unsupported,
+        moveWithin:
+          ref.locator !== '.' && (kind === 'file' || kind === 'directory' || kind === 'link')
+            ? supported
+            : unsupported,
+        rename: ref.locator === '.' ? unsupported : supported,
+        remove:
+          ref.locator !== '.' && (kind === 'file' || kind === 'link' || kind === 'directory')
+            ? supported
+            : unsupported,
+      },
+    };
+    if ('mtime' in info) {
+      const year = info.mtime.getUTCFullYear();
+      if (year >= 0 && year <= 9999) entry.modifiedAt = info.mtime.toISOString();
+      if (kind === 'file' && Number.isSafeInteger(info.size) && info.size >= 0)
+        entry.size = info.size;
+    }
+    return entry;
+  }
+}
+
+async function resolveDirectoryWriteCapability(
+  path: string,
+  platform: LocalPlatform,
+): Promise<Capability> {
+  if (platform.isWindows) return unknown;
+  try {
+    await access(path, constants.W_OK);
+    return supported;
+  } catch (error) {
+    const code =
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      typeof error.code === 'string'
+        ? error.code
+        : undefined;
+    if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS') return unsupported;
+    return unknown;
+  }
 }
 
 function isLocalSubpath(parentPath: string, childPath: string): boolean {
@@ -391,36 +467,4 @@ function entryKind(info: Dirent | Stats): Entry['kind'] {
   if (info.isSymbolicLink()) return 'link';
   if (info.isFile()) return 'file';
   return 'other';
-}
-
-function localEntry(ref: EntryRef, name: string, displayPath: string, info: Dirent | Stats): Entry {
-  const kind = entryKind(info);
-  const entry: Entry = {
-    ref,
-    name,
-    kind,
-    displayPath,
-    capabilities: {
-      ...localBaseCapabilities,
-      list: kind === 'directory' ? supported : unsupported,
-      createDirectory: kind === 'directory' ? supported : unsupported,
-      copyWithin: ref.locator !== '.' && kind === 'file' ? supported : unsupported,
-      moveWithin:
-        ref.locator !== '.' && (kind === 'file' || kind === 'directory' || kind === 'link')
-          ? supported
-          : unsupported,
-      rename: ref.locator === '.' ? unsupported : supported,
-      remove:
-        ref.locator !== '.' && (kind === 'file' || kind === 'link' || kind === 'directory')
-          ? supported
-          : unsupported,
-    },
-  };
-  if ('mtime' in info) {
-    const year = info.mtime.getUTCFullYear();
-    if (year >= 0 && year <= 9999) entry.modifiedAt = info.mtime.toISOString();
-    if (kind === 'file' && Number.isSafeInteger(info.size) && info.size >= 0)
-      entry.size = info.size;
-  }
-  return entry;
 }
