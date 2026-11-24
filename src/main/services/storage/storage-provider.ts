@@ -10,9 +10,7 @@ export interface LocalStorageProviderIntegration {
   readonly spaceSemantics?: SpaceSemantics | undefined;
   createAdapterFactory(): AdapterFactory;
   summarizeConnection(spaces: Space[]): StorageConnectionSummary;
-  extraKnownSpaces(connectionId: string): Space[];
   validateStoredSpace(space: { id: string; locator?: string }): boolean;
-  addFolder(path: string): Promise<Space>;
   resolvePath?(ref: EntryRef): Promise<{ path: string; kind: Entry['kind']; dev?: number }>;
 }
 

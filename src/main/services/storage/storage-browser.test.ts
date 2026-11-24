@@ -10,6 +10,8 @@ import {
   createDefaultStorageProviders,
   validateDefaultStoredSpace,
 } from './providers/default-providers';
+import { createGoogleDriveStorageProvider } from './providers/google-drive-storage-provider';
+import { createLocalStorageProvider } from './providers/local-storage-provider';
 import { StorageBrowser } from './storage-browser';
 import { StoragePreferences } from './storage-preferences';
 
@@ -26,6 +28,7 @@ function memorySnapshotStore() {
 function createBrowser(
   snapshotStore: { read(): unknown; write(snapshot: unknown): void },
   getAccounts: ConstructorParameters<typeof StorageBrowser>[0]['getAccounts'],
+  localVolumes?: () => Promise<string[]>,
 ) {
   const preferences = new StoragePreferences(snapshotStore, {
     validateSpace: validateDefaultStoredSpace,
@@ -34,7 +37,9 @@ function createBrowser(
     preferences,
     getAccounts,
     logger: { event() {} },
-    providers: createDefaultStorageProviders(preferences),
+    providers: localVolumes
+      ? [createLocalStorageProvider(localVolumes), createGoogleDriveStorageProvider()]
+      : createDefaultStorageProviders(),
   });
 }
 
@@ -45,9 +50,11 @@ it('deletes local files without initializing accounts', async () => {
   const getAccounts = vi.fn(async () => {
     throw new Error('Local deletion must not initialize accounts.');
   });
-  const browser = createBrowser(memorySnapshotStore(), getAccounts);
+  const browser = createBrowser(memorySnapshotStore(), getAccounts, async () => [temporary.path]);
   try {
-    const space = await browser.addLocalFolder(temporary.path);
+    const [choice] = await browser.listSpaces(localConnectionId);
+    if (!choice) throw new Error('Expected a local space');
+    const { space } = choice;
     const ref = { ...space.root, locator: 'notes.txt' };
     await browser.deleteEntry(ref);
     expect((await browser.listDirectory(space.root)).entries).toEqual([]);
@@ -80,8 +87,7 @@ it('routes a shared Drive deletion through the saved account connection', async 
   try {
     const account = await runtime.accounts.add('google-drive', { method: 'browser' });
     snapshotStore.write({
-      version: 2,
-      folders: [],
+      version: 3,
       connections: [
         {
           id: account.id,
@@ -100,7 +106,7 @@ it('routes a shared Drive deletion through the saved account connection', async 
   }
 });
 
-it('restores a chosen folder and confines browsing to its saved root', async () => {
+it('restores a chosen local space and confines browsing to its saved root', async () => {
   await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-storage-'));
   const root = join(temporary.path, 'saved');
   const outside = join(temporary.path, 'outside');
@@ -114,25 +120,26 @@ it('restores a chosen folder and confines browsing to its saved root', async () 
   await utimes(file, modifiedAt, modifiedAt);
   await symlink(outside, join(root, 'redirect'), process.platform === 'win32' ? 'junction' : 'dir');
 
+  const resolvedRoot = await realpath(root);
   const snapshotStore = memorySnapshotStore();
-  snapshotStore.write({
-    version: 2,
-    folders: [],
-    connections: [{ id: localConnectionId, discovered: [] }],
-  });
   const accounts = createAccountServices({
     store: new MemoryAccountStore(),
     cipher: new FakeAccountCipher(),
   });
   function openBrowser() {
-    return createBrowser(snapshotStore, async () => accounts);
+    return createBrowser(
+      snapshotStore,
+      async () => accounts,
+      async () => [resolvedRoot],
+    );
   }
   const browser = openBrowser();
   let space;
   try {
     expect(await browser.listConnections()).toEqual([]);
-    expect(await browser.listSpaces(localConnectionId)).toEqual([]);
-    space = await browser.addLocalFolder(root);
+    const [choice] = await browser.listSpaces(localConnectionId);
+    if (!choice) throw new Error('Expected a local space');
+    space = choice.space;
     await browser.saveSpaces(localConnectionId, [space.id]);
   } finally {
     await browser.dispose();
@@ -149,7 +156,7 @@ it('restores a chosen folder and confines browsing to its saved root', async () 
       {
         name: 'file.txt',
         kind: 'file',
-        displayPath: join(await realpath(root), 'file.txt'),
+        displayPath: join(resolvedRoot, 'file.txt'),
         size: 10,
         modifiedAt: modifiedAt.toISOString(),
       },
@@ -181,9 +188,15 @@ it('lists a local directory beyond the default page size in one response', async
   await Promise.all(names.map((name) => writeFile(join(temporary.path, name), '')));
 
   const { runtime } = accountFixture();
-  const browser = createBrowser(memorySnapshotStore(), async () => runtime);
+  const browser = createBrowser(
+    memorySnapshotStore(),
+    async () => runtime,
+    async () => [temporary.path],
+  );
   try {
-    const space = await browser.addLocalFolder(temporary.path);
+    const [choice] = await browser.listSpaces(localConnectionId);
+    if (!choice) throw new Error('Expected a local space');
+    const { space } = choice;
     const page = await browser.listDirectory(space.root);
     expect(page.entries.map(({ name }) => name)).toEqual(names);
     expect(page.nextCursor).toBeUndefined();
@@ -214,8 +227,7 @@ it('persists discovered spaces separately from legacy selections and refreshes t
   try {
     const account = await runtime.accounts.add('google-drive', { method: 'browser' });
     const saved = {
-      version: 2,
-      folders: [],
+      version: 3,
       connections: [
         {
           id: account.id,
@@ -283,8 +295,7 @@ it('persists discovered spaces separately from legacy selections and refreshes t
 it('keeps StoragePreferences provider-neutral and allows custom space validation injection', () => {
   const store = memorySnapshotStore();
   store.write({
-    version: 2,
-    folders: [],
+    version: 3,
     connections: [
       {
         id: localConnectionId,

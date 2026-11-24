@@ -66,7 +66,7 @@ function setup() {
       throw new Error('Accounts must not be initialized.');
     },
     logger: { event() {} },
-    providers: createDefaultStorageProviders(preferences),
+    providers: createDefaultStorageProviders(),
   });
   const services = new ApplicationServices({ whenReady: async () => {} });
   activeServices.push(services);

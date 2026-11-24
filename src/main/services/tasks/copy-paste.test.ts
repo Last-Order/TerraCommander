@@ -393,12 +393,7 @@ it('copies local files and creates directories through StorageAccess capability 
     credentials: { async resolve() {} },
     logger: { event() {} },
   });
-  registry.register(
-    localAdapterFactory(
-      () => [temporary.path],
-      async () => [],
-    ),
-  );
+  registry.register(localAdapterFactory(async () => [temporary.path]));
   await registry.connect({ id: localConnectionId, provider: 'local', configuration: {} });
   const storage = new StorageAccess(registry);
   const root = localSpace(localConnectionId, temporary.path).root;

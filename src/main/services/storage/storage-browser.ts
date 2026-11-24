@@ -1,6 +1,6 @@
 import { StorageAccess, StorageError, type StorageLogger } from '@main/storage';
 import type { ReopenableByteSource, WriteExecution } from '@main/storage/core/contracts';
-import type { CreateTarget, Entry, EntryRef, Space, SpaceSemantics } from '@shared/storage';
+import type { CreateTarget, Entry, EntryRef, SpaceSemantics } from '@shared/storage';
 import type {
   SpaceChoice,
   StorageConnectionSummary,
@@ -65,10 +65,6 @@ export class StorageBrowser {
 
   saveSpaces(id: string, spaceIds: string[]): Promise<void> {
     return this.spaces.saveSpaces(id, spaceIds);
-  }
-
-  addLocalFolder(path: string): Promise<Space> {
-    return this.spaces.addLocalFolder(path);
   }
 
   addConnection(provider: StorageProvider, owner?: number): Promise<StorageConnectionSummary> {

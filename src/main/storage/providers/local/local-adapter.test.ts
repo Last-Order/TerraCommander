@@ -19,12 +19,7 @@ async function setup(path: string) {
     credentials: { async resolve() {} },
     logger: { event() {} },
   });
-  registry.register(
-    localAdapterFactory(
-      () => [path],
-      async () => [],
-    ),
-  );
+  registry.register(localAdapterFactory(async () => [path]));
   await registry.connect({ id: 'local', provider: 'local', configuration: {} });
   return {
     registry,
@@ -266,13 +261,7 @@ it('reports space case sensitivity semantics from the local platform', async () 
       credentials: { async resolve() {} },
       logger: { event() {} },
     });
-    registry.register(
-      localAdapterFactory(
-        () => [temporary.path],
-        async () => [],
-        platform,
-      ),
-    );
+    registry.register(localAdapterFactory(async () => [temporary.path], platform));
     await registry.connect({ id: 'local', provider: 'local', configuration: {} });
     try {
       const storage = new StorageAccess(registry);

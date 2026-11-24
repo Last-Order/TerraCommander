@@ -1,10 +1,9 @@
-import { isAbsolute } from 'node:path';
 import { z } from 'zod';
 import { StorageError } from '@main/storage/core/errors';
 import { spaceSchema } from '@main/storage/core/validation';
 import type { Space } from '@shared/storage';
 
-const snapshotVersion = 2;
+const snapshotVersion = 3;
 const savedSpaceSchema = z.strictObject({
   id: z.string().min(1),
   cached: z.strictObject({ name: z.string(), locator: z.string() }).optional(),
@@ -12,7 +11,6 @@ const savedSpaceSchema = z.strictObject({
 
 const baseSnapshotSchema = z.strictObject({
   version: z.literal(snapshotVersion),
-  folders: z.array(z.string().refine((path) => isAbsolute(path) && !path.includes('\0'))),
   connections: z.array(
     z.strictObject({
       id: z.string().min(1),
@@ -80,14 +78,10 @@ export class StoragePreferences {
   ) {
     const saved = store.read();
     const result = createSnapshotSchema(options.validateSpace).safeParse(
-      saved ?? { version: snapshotVersion, folders: [], connections: [] },
+      saved ?? { version: snapshotVersion, connections: [] },
     );
     if (!result.success) throw new StorageError('OutcomeUnknown');
     this.snapshot = result.data;
-  }
-
-  folders(): readonly string[] {
-    return this.snapshot.folders;
   }
 
   selectedSpaces(id: string): SavedSpace[] | undefined {
@@ -96,11 +90,6 @@ export class StoragePreferences {
 
   discoveredSpaces(id: string): Space[] | undefined {
     return this.snapshot.connections.find((connection) => connection.id === id)?.discovered;
-  }
-
-  addFolder(path: string): void {
-    if (this.snapshot.folders.includes(path)) return;
-    this.commit({ ...this.snapshot, folders: [...this.snapshot.folders, path] });
   }
 
   saveSpaces(id: string, spaces: SavedSpace[]): void {

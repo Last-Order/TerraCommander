@@ -65,14 +65,6 @@ export class StorageSpaceCatalog {
     this.preferences.saveSpaces(id, selected);
   }
 
-  async addLocalFolder(path: string): Promise<Space> {
-    const local = this.connections.localIntegrations()[0];
-    if (!local) throw new StorageError('Unsupported');
-    const space = await local.addFolder(path);
-    this.discovered.get(local.connectionDefinition.id)?.set(space.id, space);
-    return space;
-  }
-
   withBrowsableSpace<T>({ connectionId, spaceId }: EntryRef, run: () => Promise<T>): Promise<T> {
     return this.connections.withConnection(connectionId, (integration) => {
       if (
@@ -142,11 +134,6 @@ export class StorageSpaceCatalog {
               : { ...space, semantics: integration.spaceSemantics },
           ]),
       );
-      if (integration.kind === 'local') {
-        for (const space of integration.extraKnownSpaces(id)) {
-          known.set(space.id, space);
-        }
-      }
       this.discovered.set(id, known);
     }
     return known;

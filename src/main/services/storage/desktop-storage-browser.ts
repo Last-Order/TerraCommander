@@ -31,6 +31,6 @@ export function createDesktopStorageBrowser(
     preferences,
     getAccounts,
     logger: { event: (name, fields) => log.info(name, fields) },
-    providers: createDefaultStorageProviders(preferences),
+    providers: createDefaultStorageProviders(),
   });
 }

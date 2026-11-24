@@ -104,21 +104,19 @@ export function localFailure(error: unknown, signal?: AbortSignal): never {
 }
 
 export function localAdapterFactory(
-  folders: () => readonly string[],
   volumes: typeof listLocalVolumes = listLocalVolumes,
   platform: LocalPlatform = defaultLocalPlatform,
 ): AdapterFactory {
   return {
     provider: 'local',
     async create(connection) {
-      return new LocalAdapter(connection.id, folders, volumes, platform);
+      return new LocalAdapter(connection.id, volumes, platform);
     },
   };
 }
 
 export async function locateLocalEntry(
   ref: EntryRef,
-  folders: () => readonly string[],
   volumes: typeof listLocalVolumes = listLocalVolumes,
   cachedVolumes?: Map<string, string>,
   signal?: AbortSignal,
@@ -130,8 +128,7 @@ export async function locateLocalEntry(
     throw new StorageError('InvalidArgument');
   }
 
-  const folder = folders().find((path) => localSpace(ref.connectionId, path).id === ref.spaceId);
-  let path = folder ?? cachedVolumes?.get(ref.spaceId);
+  let path = cachedVolumes?.get(ref.spaceId);
   if (!path) {
     const discovered = await volumes(signal);
     throwIfAborted(signal);
@@ -170,7 +167,6 @@ class LocalAdapter implements StorageAdapter {
 
   constructor(
     readonly connectionId: string,
-    private readonly folders: () => readonly string[],
     private readonly volumes: typeof listLocalVolumes,
     private readonly platform: LocalPlatform,
   ) {}
@@ -179,10 +175,10 @@ class LocalAdapter implements StorageAdapter {
     const paths = await this.volumes(signal);
     throwIfAborted(signal);
     this.volumePaths.clear();
-    for (const path of paths) this.volumePaths.set(localSpace(this.connectionId, path).id, path);
     const spaces = new Map<string, Space>();
-    for (const path of [...paths, ...this.folders()]) {
+    for (const path of paths) {
       const space = localSpace(this.connectionId, path, this.platform);
+      this.volumePaths.set(space.id, path);
       spaces.set(space.id, space);
     }
     return [...spaces.values()];
@@ -381,14 +377,7 @@ class LocalAdapter implements StorageAdapter {
   async dispose() {}
 
   private locate(ref: EntryRef, signal?: AbortSignal) {
-    return locateLocalEntry(
-      ref,
-      this.folders,
-      this.volumes,
-      this.volumePaths,
-      signal,
-      this.platform,
-    );
+    return locateLocalEntry(ref, this.volumes, this.volumePaths, signal, this.platform);
   }
 
   private async toEntry(
