@@ -11,9 +11,32 @@
   line-height: 1;
 }
 
+.leading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
 .summary {
+  flex: none;
   padding-inline: 0.75rem;
   color: var(--storage-muted);
+  white-space: nowrap;
+}
+
+.status {
+  min-width: 0;
+  padding-inline: 0.75rem;
+  border-inline-start: 1px solid var(--storage-border);
+  color: var(--storage-secondary);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status:empty {
+  display: none;
 }
 
 .toggle {

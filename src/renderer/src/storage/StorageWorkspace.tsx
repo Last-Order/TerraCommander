@@ -10,6 +10,8 @@ import { StorageSidebar } from './connections/StorageSidebar';
 import { DirectoryCache } from './directory/directory-cache';
 import { DirectoryEffectsStore } from './directory/directory-effects';
 import { DirectoryPane, EmptyDirectoryPane } from './directory/DirectoryPane';
+import { DirectorySelectionStatus } from './directory/DirectorySelectionStatus';
+import { createSelectionSummaryStore } from './directory/selection-summary';
 import { errorKey, resultOf } from './storage-client';
 import { StorageWorkspaceContext } from './storage-workspace-context';
 import { StorageTaskClient } from './tasks/storage-task-client';
@@ -45,6 +47,7 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
   const [location, setLocation] = useState<{ space: Space; generation: number } | null>(null);
   const [directoryCache] = useState(() => new DirectoryCache());
   const [directoryEffects] = useState(() => new DirectoryEffectsStore());
+  const [selectionSummary] = useState(() => createSelectionSummaryStore());
 
   const refresh = useCallback(() => {
     void mutate();
@@ -60,10 +63,11 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
     () => ({
       directoryCache,
       directoryEffects,
+      selectionSummary,
       onAuthRequired: refresh,
       reauthorize,
     }),
-    [directoryCache, directoryEffects, refresh, reauthorize],
+    [directoryCache, directoryEffects, selectionSummary, refresh, reauthorize],
   );
   const [queue] = useState(
     () => new StorageTaskClient({ directoryCache, directoryEffects, onAuthRequired: refresh }),
@@ -104,6 +108,7 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
             presentTask={presentStorageTask}
             presentGroup={presentStorageTaskGroup}
             translateMessage={translateTaskMessage}
+            status={<DirectorySelectionStatus />}
           >
             {location ? (
               <DirectoryPane key={location.generation} space={location.space} />

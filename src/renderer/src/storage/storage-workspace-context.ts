@@ -1,10 +1,12 @@
 import { createContext, useContext } from 'react';
 import type { DirectoryCache } from './directory/directory-cache';
 import type { DirectoryEffectsStore } from './directory/directory-effects';
+import type { SelectionSummaryStore } from './directory/selection-summary';
 
 export interface StorageWorkspaceContextValue {
   directoryCache: DirectoryCache;
   directoryEffects: DirectoryEffectsStore;
+  selectionSummary: SelectionSummaryStore;
   onAuthRequired: () => void;
   reauthorize: (connectionId: string) => void;
 }

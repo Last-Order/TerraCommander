@@ -1,7 +1,8 @@
 import { VisuallyHidden } from '@mantine/core';
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Entry } from '@shared/storage';
+import { useStorageWorkspace } from '../storage-workspace-context';
 import { useCurrentDirectory } from './current-directory-context';
 import { isDirectoryBlankTarget } from './directory-blank-target';
 import { buildDirectoryRows } from './directory-rows';
@@ -14,6 +15,7 @@ import { DirectoryTable } from './DirectoryTable';
 import { DirectoryToolbar } from './DirectoryToolbar';
 import { resolveEntryCapabilities } from './entry-capabilities';
 import { DirectoryEntryModals } from './modals/DirectoryEntryModals';
+import { summarizeSelection } from './selection-summary';
 import { useDirectoryClipboard } from './useDirectoryClipboard';
 import { useDirectoryCommands } from './useDirectoryCommands';
 import { useDirectoryContextMenu } from './useDirectoryContextMenu';
@@ -41,6 +43,7 @@ export function DirectoryListing({
   children,
 }: ListingProps) {
   const { t, i18n } = useTranslation('storage');
+  const { selectionSummary } = useStorageWorkspace();
   const { ref: parent } = useCurrentDirectory();
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const sort = useDirectorySortStore((state) => state.sort);
@@ -74,6 +77,16 @@ export function DirectoryListing({
     rows,
     scrollElement,
   });
+  const selectionStatus = useMemo(() => summarizeSelection(selectedEntries), [selectedEntries]);
+  useEffect(() => {
+    selectionSummary.getState().setSummary(selectionStatus);
+  }, [selectionSummary, selectionStatus]);
+  useEffect(
+    () => () => {
+      selectionSummary.getState().setSummary(null);
+    },
+    [selectionSummary],
+  );
   const capabilities = useMemo(() => resolveEntryCapabilities(selectedEntries), [selectedEntries]);
   const menu = useDirectoryContextMenu({
     entries,

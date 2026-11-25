@@ -12,12 +12,14 @@ export function TaskQueueDock<TTask extends TaskViewItem, TGroup extends TaskGro
   presentTask,
   presentGroup,
   translateMessage,
+  status,
 }: {
   children: ReactNode;
   queue: TaskQueueViewClient<TTask, TGroup>;
   presentTask: TaskPresenter<TTask>;
   presentGroup: TaskGroupPresenter<TGroup>;
   translateMessage?: TaskMessageTranslator | undefined;
+  status?: ReactNode;
 }) {
   const [opened, setOpened] = useState(false);
   const [height, setHeight] = useState<number>();
@@ -70,6 +72,7 @@ export function TaskQueueDock<TTask extends TaskViewItem, TGroup extends TaskGro
         opened={opened}
         onToggle={() => setOpened((previous) => !previous)}
         buttonRef={button}
+        status={status}
       />
     </TaskDisplayContext.Provider>
   );

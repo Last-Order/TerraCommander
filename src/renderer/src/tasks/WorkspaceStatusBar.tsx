@@ -1,5 +1,5 @@
 import { ListTodo } from 'lucide-react';
-import type { Ref } from 'react';
+import type { ReactNode, Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
 import { summarizeTasks, topLevelEntries } from '@shared/task-selectors';
@@ -12,6 +12,7 @@ interface WorkspaceStatusBarProps<TTask extends TaskViewItem, TGroup extends Tas
   opened: boolean;
   onToggle: () => void;
   buttonRef: Ref<HTMLButtonElement>;
+  status?: ReactNode;
 }
 
 export function WorkspaceStatusBar<TTask extends TaskViewItem, TGroup extends TaskGroupViewItem>({
@@ -20,6 +21,7 @@ export function WorkspaceStatusBar<TTask extends TaskViewItem, TGroup extends Ta
   opened,
   onToggle,
   buttonRef,
+  status,
 }: WorkspaceStatusBarProps<TTask, TGroup>) {
   const { t } = useTranslation('tasks');
   const tasks = useStore(queue.store, (state) => state.tasks);
@@ -31,10 +33,13 @@ export function WorkspaceStatusBar<TTask extends TaskViewItem, TGroup extends Ta
 
   return (
     <footer className={classes.bar} aria-label={t('statusBar')}>
-      <span className={classes.summary} aria-live="polite">
-        {summary}
-        {active > 0 && paused > 0 && <span> · {t('pausedTasks', { count: paused })}</span>}
-      </span>
+      <div className={classes.leading}>
+        <span className={classes.summary} aria-live="polite">
+          {summary}
+          {active > 0 && paused > 0 && <span> · {t('pausedTasks', { count: paused })}</span>}
+        </span>
+        {status && <div className={classes.status}>{status}</div>}
+      </div>
       <button
         type="button"
         ref={buttonRef}
