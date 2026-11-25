@@ -1,9 +1,12 @@
 import { Button, Group, TextInput } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { FolderOpen } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { errorKey, resultOf } from '../storage/storage-client';
 import classes from './Downloads.module.css';
+
+const chooseDirectoryErrorNotification = 'choose-download-directory-error';
 
 export function DownloadDirectoryInput({
   value,
@@ -24,15 +27,17 @@ export function DownloadDirectoryInput({
 }) {
   const { t } = useTranslation(['storage', 'errors']);
   const [choosing, setChoosing] = useState(false);
-  const [failure, setFailure] = useState<string>();
   async function browse() {
     setChoosing(true);
-    setFailure(undefined);
     try {
       const selected = await resultOf(window.desktop.downloads.chooseDirectory(value));
       if (selected !== null) (onDirectorySelected ?? onChange)(selected);
-    } catch (error) {
-      setFailure(t(`errors:${errorKey(error)}`));
+    } catch (failure) {
+      notifications.show({
+        id: chooseDirectoryErrorNotification,
+        color: 'red',
+        message: t(`errors:${errorKey(failure)}`),
+      });
     } finally {
       setChoosing(false);
     }
@@ -45,10 +50,9 @@ export function DownloadDirectoryInput({
         value={value}
         disabled={disabled || choosing}
         maxLength={32_768}
-        error={error ?? failure}
+        error={error}
         onBlur={() => onBlur?.()}
         onChange={(event) => {
-          setFailure(undefined);
           onChange(event.currentTarget.value);
         }}
       />

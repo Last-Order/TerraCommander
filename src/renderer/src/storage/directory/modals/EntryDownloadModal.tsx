@@ -1,4 +1,5 @@
 import { Button, Group, Modal, Stack, Text } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DownloadDirectoryInput } from '@renderer/downloads/DownloadDirectoryInput';
@@ -8,6 +9,8 @@ import { useStorageTaskQueue } from '@renderer/storage/tasks/storage-task-queue-
 import type { Entry } from '@shared/storage';
 import { useCurrentDirectory } from '../current-directory-context';
 import { DownloadOverwriteModal } from './DownloadOverwriteModal';
+
+const entryDownloadErrorNotification = 'entry-download-error';
 
 interface PendingOverwriteConfirmation {
   confirmationId: string;
@@ -28,12 +31,24 @@ export function EntryDownloadModal({
   const [directory, setDirectory] = useState('');
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<StorageErrorKey>();
+  const [directoryInvalid, setDirectoryInvalid] = useState(false);
   const [pendingConflict, setPendingConflict] = useState<PendingOverwriteConfirmation | null>(null);
   const pendingConfirmationId = useRef<string | null>(null);
   const active = useRef(true);
   const submitting = useRef(false);
   const directoryEdited = useRef(false);
+
+  function reportError(code: StorageErrorKey) {
+    if (code === 'invalidDownloadDirectory') {
+      setDirectoryInvalid(true);
+    } else {
+      notifications.show({
+        id: entryDownloadErrorNotification,
+        color: 'red',
+        message: t(`errors:${code}`),
+      });
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -45,8 +60,19 @@ export function EntryDownloadModal({
           if (!directoryEdited.current) setDirectory(directorySetting);
           setReady(true);
         }
-      } catch (error) {
-        if (!cancelled && !directoryEdited.current) setError(errorKey(error));
+      } catch (failure) {
+        if (!cancelled && !directoryEdited.current) {
+          const code = errorKey(failure);
+          if (code === 'invalidDownloadDirectory') {
+            setDirectoryInvalid(true);
+          } else {
+            notifications.show({
+              id: entryDownloadErrorNotification,
+              color: 'red',
+              message: t(`errors:${code}`),
+            });
+          }
+        }
       }
     })();
     return () => {
@@ -60,13 +86,13 @@ export function EntryDownloadModal({
         });
       }
     };
-  }, [queue]);
+  }, [queue, t]);
 
   async function submit() {
     if (submitting.current || !directory) return;
     submitting.current = true;
     setBusy(true);
-    setError(undefined);
+    setDirectoryInvalid(false);
     try {
       const response = await queue.prepareDownload({ parent, entries, directory, directoryPath });
       if (!active.current) {
@@ -86,11 +112,11 @@ export function EntryDownloadModal({
         return;
       }
       onClose();
-    } catch (error) {
+    } catch (failure) {
       if (!active.current) return;
-      const code = errorKey(error);
+      const code = errorKey(failure);
       setPendingConflict(null);
-      setError(code);
+      reportError(code);
       if (code === 'authRequired') onAuthRequired();
     } finally {
       submitting.current = false;
@@ -102,17 +128,17 @@ export function EntryDownloadModal({
     if (submitting.current || !pendingConflict) return;
     submitting.current = true;
     setBusy(true);
-    setError(undefined);
+    setDirectoryInvalid(false);
     const confirmationId = pendingConflict.confirmationId;
     pendingConfirmationId.current = null;
     try {
       await queue.confirmDownload(confirmationId);
       if (active.current) onClose();
-    } catch (error) {
+    } catch (failure) {
       if (!active.current) return;
-      const code = errorKey(error);
+      const code = errorKey(failure);
       setPendingConflict(null);
-      setError(code);
+      reportError(code);
       if (code === 'authRequired') onAuthRequired();
     } finally {
       submitting.current = false;
@@ -128,8 +154,8 @@ export function EntryDownloadModal({
     setBusy(true);
     try {
       await queue.cancelDownloadConfirmation(confirmationId);
-    } catch (error) {
-      if (active.current) setError(errorKey(error));
+    } catch (failure) {
+      if (active.current) reportError(errorKey(failure));
     } finally {
       if (active.current) setBusy(false);
     }
@@ -172,23 +198,14 @@ export function EntryDownloadModal({
               label={t('downloadDirectory')}
               value={directory}
               disabled={blocked}
-              error={
-                error === 'invalidDownloadDirectory'
-                  ? t('errors:invalidDownloadDirectory')
-                  : undefined
-              }
+              error={directoryInvalid ? t('errors:invalidDownloadDirectory') : undefined}
               onChange={(value) => {
                 directoryEdited.current = true;
                 setDirectory(value);
                 setReady(true);
-                setError(undefined);
+                setDirectoryInvalid(false);
               }}
             />
-            {error && error !== 'invalidDownloadDirectory' && (
-              <Text size="sm" c="red" role="alert">
-                {t(`errors:${error}`)}
-              </Text>
-            )}
             <Group justify="flex-end">
               <Button variant="default" disabled={blocked} onClick={onClose}>
                 {t('common:cancel')}

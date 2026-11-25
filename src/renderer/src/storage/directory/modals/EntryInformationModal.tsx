@@ -1,12 +1,15 @@
-import { Alert, Group, Loader, Modal } from '@mantine/core';
+import { Group, Loader, Modal } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatSize } from '@renderer/format/size';
-import { errorKey, resultOf, type StorageErrorKey } from '@renderer/storage/storage-client';
+import { errorKey, resultOf } from '@renderer/storage/storage-client';
 import { useStorageWorkspace } from '@renderer/storage/storage-workspace-context';
 import type { Entry } from '@shared/storage';
 import { useCurrentDirectory } from '../current-directory-context';
 import classes from './EntryInformationModal.module.css';
+
+const entryInformationErrorNotification = 'entry-information-error';
 
 export type EntrySelection = [Entry, ...Entry[]];
 
@@ -29,7 +32,7 @@ export function EntryInformationModal({ entries, onClose }: EntryInformationProp
     [locale],
   );
   const [measurement, setMeasurement] = useState<
-    { bytes: number | null } | { error: StorageErrorKey } | null
+    { bytes: number | null } | { failed: true } | null
   >(null);
 
   useEffect(() => {
@@ -45,16 +48,21 @@ export function EntryInformationModal({ entries, onClose }: EntryInformationProp
       },
       (failure: unknown) => {
         if (!active) return;
-        const error = errorKey(failure);
-        setMeasurement({ error });
-        if (error === 'authRequired') onAuthRequired();
+        const code = errorKey(failure);
+        setMeasurement({ failed: true });
+        notifications.show({
+          id: entryInformationErrorNotification,
+          color: 'red',
+          message: t(`errors:${code}`),
+        });
+        if (code === 'authRequired') onAuthRequired();
       },
     );
     return () => {
       active = false;
       void storage.cancelDirectoryMeasurement(id).catch(() => {});
     };
-  }, [entries, onAuthRequired]);
+  }, [entries, onAuthRequired, t]);
 
   const [first] = entries;
   const multiple = entries.length > 1;
@@ -76,12 +84,12 @@ export function EntryInformationModal({ entries, onClose }: EntryInformationProp
     }
   }
   const calculating = measurement === null && entries.some(({ kind }) => kind === 'directory');
-  const error = measurement && 'error' in measurement ? measurement.error : null;
+  const failed = measurement !== null && 'failed' in measurement;
   const folderBytes = measurement && 'bytes' in measurement ? measurement.bytes : 0;
   const total =
     folderBytes === null || fileBytes === undefined ? undefined : folderBytes + fileBytes;
   const size =
-    error || total === undefined || !Number.isSafeInteger(total)
+    failed || total === undefined || !Number.isSafeInteger(total)
       ? t('entrySizeUnavailable')
       : formatSize(total, sizeFormatter);
 
@@ -112,11 +120,6 @@ export function EntryInformationModal({ entries, onClose }: EntryInformationProp
         <dt>{t(multiple ? 'entryParentPath' : 'entryPath')}</dt>
         <dd>{path}</dd>
       </dl>
-      {error && (
-        <Alert color="red" role="alert">
-          {t(`errors:${error}`)}
-        </Alert>
-      )}
     </Modal>
   );
 }

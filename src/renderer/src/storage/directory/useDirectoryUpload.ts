@@ -1,8 +1,12 @@
+import { notifications } from '@mantine/notifications';
 import { useState, type DragEvent } from 'react';
-import { errorKey, type StorageErrorKey } from '../storage-client';
+import { useTranslation } from 'react-i18next';
+import { errorKey } from '../storage-client';
 import { useStorageWorkspace } from '../storage-workspace-context';
 import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
 import { useCurrentDirectory } from './current-directory-context';
+
+const uploadErrorNotification = 'directory-upload-error';
 
 interface DirectoryUploadOptions {
   blocked: boolean;
@@ -13,23 +17,28 @@ function hasDroppedFiles(dataTransfer: DataTransfer | null) {
 }
 
 export function useDirectoryUpload({ blocked }: DirectoryUploadOptions) {
+  const { t } = useTranslation('errors');
   const { onAuthRequired } = useStorageWorkspace();
   const queue = useStorageTaskQueue();
   const { ref: parent, path: directoryPath, canUpload } = useCurrentDirectory();
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<StorageErrorKey | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const disabled = blocked || pending;
   const canDrop = canUpload && !disabled;
 
   const startUpload = async (upload: () => Promise<void>) => {
     setPending(true);
-    setError(null);
     try {
       await upload();
     } catch (failure) {
       const code = errorKey(failure);
-      if (code !== 'cancelled') setError(code);
+      if (code !== 'cancelled') {
+        notifications.show({
+          id: uploadErrorNotification,
+          color: 'red',
+          message: t(code),
+        });
+      }
       if (code === 'authRequired') onAuthRequired();
     } finally {
       setPending(false);
@@ -70,7 +79,6 @@ export function useDirectoryUpload({ blocked }: DirectoryUploadOptions) {
 
   return {
     disabled,
-    error,
     dropActive: dragActive && canDrop,
     dropZoneProps,
     uploadFile: () => startUpload(() => queue.uploadFile({ parent, directoryPath })),

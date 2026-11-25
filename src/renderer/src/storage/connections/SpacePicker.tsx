@@ -1,12 +1,15 @@
-import { ActionIcon, Alert, Button, Checkbox, Group, Loader, Stack, Text } from '@mantine/core';
+import { ActionIcon, Button, Checkbox, Group, Loader, Stack, Text } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import useSWR from 'swr';
 import type { StorageConnectionSummary } from '@shared/storage-browser';
-import { errorKey, resultOf, type StorageErrorKey } from '../storage-client';
+import { errorKey, resultOf } from '../storage-client';
 import { formatStorageLabel } from '../storage-labels';
 import classes from './SpacePicker.module.css';
+
+const spacesErrorNotification = 'storage-spaces-error';
 
 interface PickerProps {
   connection: StorageConnectionSummary;
@@ -18,6 +21,13 @@ interface PickerProps {
 
 export function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }: PickerProps) {
   const { t } = useTranslation(['storage', 'common', 'errors']);
+  function showError(failure: unknown) {
+    notifications.show({
+      id: spacesErrorNotification,
+      color: 'red',
+      message: t(`errors:${errorKey(failure)}`),
+    });
+  }
   const {
     data: choices,
     error,
@@ -28,13 +38,14 @@ export function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }
     ([, id]) => resultOf(window.desktop.storage.listSpaces(id)),
     {
       fallbackData: connection.spaces.map((space) => ({ space, available: true })),
-      onError: onChanged,
+      onError: (failure) => {
+        showError(failure);
+        onChanged();
+      },
     },
   );
   const [selected, setSelected] = useState(() => new Set(connection.spaces.map(({ id }) => id)));
   const [action, setAction] = useState<'refresh' | 'save' | null>(null);
-  const [actionError, setActionError] = useState<StorageErrorKey | null>(null);
-  const pickerError = actionError ?? (!loading && error ? errorKey(error) : null);
 
   function toggle(id: string, checked: boolean) {
     setSelected((previous) => {
@@ -48,14 +59,13 @@ export function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }
   async function refreshSpaces() {
     setAction('refresh');
     onBusy(true);
-    setActionError(null);
     try {
       const refreshed = await resultOf(window.desktop.storage.listSpaces(connection.id, true));
       await mutate(refreshed, { revalidate: false });
       const refreshedIds = new Set(refreshed.map(({ space }) => space.id));
       setSelected((previous) => new Set([...previous].filter((id) => refreshedIds.has(id))));
     } catch (failure) {
-      setActionError(errorKey(failure));
+      showError(failure);
     } finally {
       onChanged();
       setAction(null);
@@ -66,7 +76,6 @@ export function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }
   async function save() {
     setAction('save');
     onBusy(true);
-    setActionError(null);
     try {
       await resultOf(window.desktop.storage.saveSpaces(connection.id, [...selected]));
       await mutate(
@@ -76,7 +85,7 @@ export function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }
       );
       onSaved();
     } catch (failure) {
-      setActionError(errorKey(failure));
+      showError(failure);
     } finally {
       setAction(null);
       onBusy(false);
@@ -101,12 +110,7 @@ export function SpacePicker({ connection, onBusy, onCancel, onChanged, onSaved }
         </ActionIcon>
       </Group>
       {loading && <Loader size="sm" aria-label={t('discoveringSpaces')} />}
-      {pickerError && (
-        <Alert color="red" role="alert">
-          {t(`errors:${pickerError}`)}
-        </Alert>
-      )}
-      {!loading && !pickerError && choices.length === 0 && (
+      {!loading && !error && choices.length === 0 && (
         <Text size="sm" c="dimmed">
           {t('noAvailableSpaces')}
         </Text>

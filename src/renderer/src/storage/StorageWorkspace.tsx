@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { notifications } from '@mantine/notifications';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import useSWR from 'swr';
 import type { Space } from '@shared/storage';
@@ -16,12 +17,30 @@ import { presentStorageTask, presentStorageTaskGroup } from './tasks/storage-tas
 import { StorageTaskQueueContext } from './tasks/storage-task-queue-context';
 import classes from './StorageWorkspace.module.css';
 
+const connectionsErrorNotification = 'storage-connections-error';
+
 export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { t, i18n } = useTranslation('errors');
-  const { data, isLoading, isValidating, error, mutate } = useSWR('storage/connections', () =>
-    resultOf(window.desktop.storage.listConnections()),
+  const hasConnections = useRef(false);
+  const { data, isLoading, isValidating, error, mutate } = useSWR(
+    'storage/connections',
+    () => resultOf(window.desktop.storage.listConnections()),
+    {
+      onError: (failure) => {
+        if (hasConnections.current) {
+          notifications.show({
+            id: connectionsErrorNotification,
+            color: 'red',
+            message: t(errorKey(failure)),
+          });
+        }
+      },
+    },
   );
   const connections = data ?? [];
+  useEffect(() => {
+    hasConnections.current = connections.length > 0;
+  }, [connections.length]);
   const [dialog, setDialog] = useState<SetupIntent | null>(null);
   const [location, setLocation] = useState<{ space: Space; generation: number } | null>(null);
   const [directoryCache] = useState(() => new DirectoryCache());
@@ -70,7 +89,7 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
             connections={connections}
             activeSpace={location?.space ?? null}
             loading={isLoading}
-            error={!isValidating && error ? t(errorKey(error)) : null}
+            error={!isValidating && error && connections.length === 0 ? t(errorKey(error)) : null}
             onOpenSettings={onOpenSettings}
             onRetry={refresh}
             onAdd={() => setDialog({ kind: 'add' })}

@@ -1,9 +1,12 @@
 import { Button, NumberInput, Stack, Text } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { maxTransferConcurrency, minTransferConcurrency } from '@shared/tasks';
-import { errorKey, resultOf, type StorageErrorKey } from '../storage/storage-client';
+import { errorKey, resultOf } from '../storage/storage-client';
 import classes from './SettingsDialog.module.css';
+
+const transferConcurrencyErrorNotification = 'settings-transfer-concurrency-error';
 
 function isValidConcurrency(value: string | number): value is number {
   return (
@@ -21,8 +24,8 @@ function clampConcurrency(value: number): number {
 export function TransferConcurrencySection() {
   const { t } = useTranslation(['settings', 'common', 'errors']);
   const [savedLimit, setSavedLimit] = useState<number>();
+  const [loadFailed, setLoadFailed] = useState(false);
   const [value, setValue] = useState<string | number>('');
-  const [error, setError] = useState<StorageErrorKey>();
   const [attempt, setAttempt] = useState(0);
   const active = useRef(false);
   const draft = useRef<number | undefined>(undefined);
@@ -31,29 +34,38 @@ export function TransferConcurrencySection() {
   const pending = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const requests = useRef(new Set<number>());
 
-  const persist = useCallback((limit: number, version: number) => {
-    if (!dirty.current || requests.current.has(version)) return;
-    requests.current.add(version);
-    void (async () => {
-      try {
-        const saved = await resultOf(
-          window.desktop.settings.set('transfers.concurrencyLimit', limit),
-        );
-        if (version !== revision.current) return;
-        draft.current = saved;
-        dirty.current = false;
-        if (active.current) {
-          setSavedLimit(saved);
-          setValue(saved);
-          setError(undefined);
+  const persist = useCallback(
+    (limit: number, version: number) => {
+      if (!dirty.current || requests.current.has(version)) return;
+      requests.current.add(version);
+      void (async () => {
+        try {
+          const saved = await resultOf(
+            window.desktop.settings.set('transfers.concurrencyLimit', limit),
+          );
+          if (version !== revision.current) return;
+          draft.current = saved;
+          dirty.current = false;
+          if (active.current) {
+            setSavedLimit(saved);
+            setLoadFailed(false);
+            setValue(saved);
+          }
+        } catch (err) {
+          if (active.current && version === revision.current) {
+            notifications.show({
+              id: transferConcurrencyErrorNotification,
+              color: 'red',
+              message: t(`errors:${errorKey(err)}`),
+            });
+          }
+        } finally {
+          requests.current.delete(version);
         }
-      } catch (err) {
-        if (active.current && version === revision.current) setError(errorKey(err));
-      } finally {
-        requests.current.delete(version);
-      }
-    })();
-  }, []);
+      })();
+    },
+    [t],
+  );
 
   const flush = useCallback(() => {
     clearTimeout(pending.current);
@@ -76,24 +88,31 @@ export function TransferConcurrencySection() {
         const loaded = await resultOf(window.desktop.settings.get('transfers.concurrencyLimit'));
         if (current) {
           setSavedLimit(loaded);
+          setLoadFailed(false);
           setValue(loaded);
           draft.current = loaded;
         }
       } catch (err) {
-        if (current) setError(errorKey(err));
+        if (current) {
+          setLoadFailed(true);
+          notifications.show({
+            id: transferConcurrencyErrorNotification,
+            color: 'red',
+            message: t(`errors:${errorKey(err)}`),
+          });
+        }
       }
     })();
     return () => {
       current = false;
     };
-  }, [attempt]);
+  }, [attempt, t]);
 
   function scheduleSave(next: number) {
     if (draft.current === next && !dirty.current) return;
     draft.current = next;
     dirty.current = true;
     revision.current++;
-    setError(undefined);
     clearTimeout(pending.current);
     pending.current = setTimeout(flush, 300);
   }
@@ -126,13 +145,12 @@ export function TransferConcurrencySection() {
     draft.current = savedLimit;
     dirty.current = false;
     setValue(savedLimit);
-    setError(undefined);
   }
 
   return (
     <Stack gap="xs">
       <NumberInput
-        classNames={{ root: classes.setting, error: classes.settingError }}
+        classNames={{ root: classes.setting }}
         label={t('transferConcurrency')}
         value={value}
         min={minTransferConcurrency}
@@ -151,16 +169,11 @@ export function TransferConcurrencySection() {
           max: maxTransferConcurrency,
         })}
       </Text>
-      {error && (
-        <Text size="sm" c="red" role="alert">
-          {t(`errors:${error}`)}
-        </Text>
-      )}
-      {error && savedLimit === undefined && (
+      {loadFailed && savedLimit === undefined && (
         <Button
           variant="subtle"
           onClick={() => {
-            setError(undefined);
+            setLoadFailed(false);
             setAttempt((current) => current + 1);
           }}
         >

@@ -143,7 +143,11 @@ export function DirectoryListing({
           }}
         >
           <DirectorySearch search={search} onClose={commands.closeSearch} />
-          <DirectoryStatus error={error} empty={snapshot?.size === 0} onRetry={commands.reload} />
+          <DirectoryStatus
+            error={entries.size === 0 ? error : null}
+            empty={snapshot?.size === 0}
+            onRetry={commands.reload}
+          />
           {(loadingWithoutEntries || entries.size > 0) && (
             <DirectoryTable
               scrollElement={scrollElement}

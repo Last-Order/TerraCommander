@@ -5,31 +5,24 @@ import type { DirectoryUpload } from './useDirectoryUpload';
 import classes from './DirectoryListing.module.css';
 
 interface DirectoryDropZoneProps {
-  upload: Pick<DirectoryUpload, 'error' | 'dropActive' | 'dropZoneProps'>;
+  upload: Pick<DirectoryUpload, 'dropActive' | 'dropZoneProps'>;
   children: ReactNode;
 }
 
 export function DirectoryDropZone({ upload, children }: DirectoryDropZoneProps) {
-  const { t } = useTranslation(['storage', 'errors']);
+  const { t } = useTranslation('storage');
 
   return (
-    <>
-      {upload.error && (
-        <p className={classes.directoryStatus} role="alert">
-          {t(`errors:${upload.error}`)}
-        </p>
-      )}
-      <div className={classes.directoryBody} {...upload.dropZoneProps}>
-        {upload.dropActive && (
-          <div className={classes.dropOverlay} aria-hidden="true">
-            <div className={classes.dropPrompt}>
-              <Upload size={16} strokeWidth={1.5} />
-              <span>{t('dropToUpload')}</span>
-            </div>
+    <div className={classes.directoryBody} {...upload.dropZoneProps}>
+      {upload.dropActive && (
+        <div className={classes.dropOverlay} aria-hidden="true">
+          <div className={classes.dropPrompt}>
+            <Upload size={16} strokeWidth={1.5} />
+            <span>{t('dropToUpload')}</span>
           </div>
-        )}
-        {children}
-      </div>
-    </>
+        </div>
+      )}
+      {children}
+    </div>
   );
 }

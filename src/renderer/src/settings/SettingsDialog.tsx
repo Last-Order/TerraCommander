@@ -6,6 +6,7 @@ import {
   isMantineColorScheme,
   useMantineColorScheme,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { ArrowDownUp, SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -14,6 +15,8 @@ import { resultOf } from '../storage/storage-client';
 import { DownloadSettingsSection } from './DownloadSettingsSection';
 import { TransferConcurrencySection } from './TransferConcurrencySection';
 import classes from './SettingsDialog.module.css';
+
+const languageErrorNotification = 'settings-language-error';
 
 interface SettingsDialogProps {
   opened: boolean;
@@ -26,20 +29,22 @@ export function SettingsDialog({ opened, onClose, initialPreference }: SettingsD
   const { colorScheme, setColorScheme } = useMantineColorScheme();
   const [preference, setPreference] = useState(initialPreference);
   const [saving, setSaving] = useState(false);
-  const [failed, setFailed] = useState(false);
 
   async function changeLanguage(value: string) {
     const next = languagePreferences.find((option) => option === value);
     if (!next) return;
     setSaving(true);
-    setFailed(false);
     try {
       const settings = await resultOf(window.desktop.language.set(next));
       await i18n.changeLanguage(settings.language);
       document.documentElement.lang = settings.language;
       setPreference(settings.preference);
     } catch {
-      setFailed(true);
+      notifications.show({
+        id: languageErrorNotification,
+        color: 'red',
+        message: t('languageSaveFailed'),
+      });
     } finally {
       setSaving(false);
     }
@@ -91,11 +96,10 @@ export function SettingsDialog({ opened, onClose, initialPreference }: SettingsD
         <Tabs.Panel className={classes.panel} value="general">
           <Stack gap="md">
             <NativeSelect
-              classNames={{ root: classes.setting, error: classes.settingError }}
+              classNames={{ root: classes.setting }}
               label={t('language')}
               value={preference}
               disabled={saving}
-              error={failed && <span role="alert">{t('languageSaveFailed')}</span>}
               onChange={(event) => void changeLanguage(event.currentTarget.value)}
               data={[
                 { value: 'system', label: t('followSystem') },

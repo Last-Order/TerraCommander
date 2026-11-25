@@ -1,4 +1,6 @@
+import { notifications } from '@mantine/notifications';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { entryKey, type Entry } from '@shared/storage';
 import { errorKey, resultOf, StorageBrowserError, type StorageErrorKey } from '../storage-client';
 import { useStorageWorkspace } from '../storage-workspace-context';
@@ -9,6 +11,8 @@ import {
   replaceRenamedEntry,
   type DirectoryEntries,
 } from './directory-cache';
+
+const directoryLoadErrorNotification = 'directory-load-error';
 
 export type DirectoryListingPhase = 'loading' | 'ready' | 'refreshing' | 'error';
 
@@ -35,6 +39,7 @@ function listingSnapshot(listing: ListingState): DirectoryEntries | undefined {
 }
 
 export function useDirectoryListing({ cacheable, version }: ListingOptions) {
+  const { t } = useTranslation('errors');
   const { directoryCache: cache, onAuthRequired } = useStorageWorkspace();
   const { ref: parent } = useCurrentDirectory();
   const [listing, setListing] = useState<ListingState>(() => {
@@ -86,18 +91,30 @@ export function useDirectoryListing({ cacheable, version }: ListingOptions) {
       } catch (failure) {
         if (!isCurrent()) return;
         const error = errorKey(failure);
-        setListing({
-          phase: 'error',
-          entries: withAdditions(previous ?? entries),
-          snapshot: previous ? withAdditions(previous) : undefined,
-          error,
-        });
+        const nextEntries = withAdditions(previous ?? entries);
+        if (nextEntries.size > 0) {
+          notifications.show({
+            id: directoryLoadErrorNotification,
+            color: 'red',
+            message: t(error),
+          });
+        }
+        if (previous && nextEntries.size > 0) {
+          setListing({ phase: 'ready', entries: nextEntries });
+        } else {
+          setListing({
+            phase: 'error',
+            entries: nextEntries,
+            snapshot: previous ? withAdditions(previous) : undefined,
+            error,
+          });
+        }
         if (error === 'authRequired') onAuthRequired();
       } finally {
         if (currentRequest.current === request) currentRequest.current = null;
       }
     },
-    [parent, cache, cacheable, version, onAuthRequired],
+    [parent, cache, cacheable, version, onAuthRequired, t],
   );
 
   useLayoutEffect(() => {

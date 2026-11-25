@@ -1,14 +1,17 @@
 import { Button, Stack, Text } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DownloadDirectoryInput } from '../downloads/DownloadDirectoryInput';
-import { errorKey, resultOf, type StorageErrorKey } from '../storage/storage-client';
+import { errorKey, resultOf } from '../storage/storage-client';
+
+const downloadDirectoryErrorNotification = 'settings-download-directory-error';
 
 export function DownloadSettingsSection() {
   const { t } = useTranslation(['settings', 'common', 'errors']);
   const [loaded, setLoaded] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [directory, setDirectory] = useState('');
-  const [error, setError] = useState<StorageErrorKey>();
   const [attempt, setAttempt] = useState(0);
   const active = useRef(false);
   const draft = useRef<string | undefined>(undefined);
@@ -17,27 +20,36 @@ export function DownloadSettingsSection() {
   const pending = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const requests = useRef(new Set<number>());
 
-  const persist = useCallback((value: string, version: number) => {
-    if (!dirty.current || requests.current.has(version)) return;
-    requests.current.add(version);
-    void (async () => {
-      try {
-        const saved = await resultOf(window.desktop.settings.set('downloads.directory', value));
-        if (version !== revision.current) return;
-        draft.current = saved;
-        dirty.current = false;
-        if (active.current) {
-          setLoaded(true);
-          setDirectory(saved);
-          setError(undefined);
+  const persist = useCallback(
+    (value: string, version: number) => {
+      if (!dirty.current || requests.current.has(version)) return;
+      requests.current.add(version);
+      void (async () => {
+        try {
+          const saved = await resultOf(window.desktop.settings.set('downloads.directory', value));
+          if (version !== revision.current) return;
+          draft.current = saved;
+          dirty.current = false;
+          if (active.current) {
+            setLoaded(true);
+            setLoadFailed(false);
+            setDirectory(saved);
+          }
+        } catch (failure) {
+          if (active.current && version === revision.current) {
+            notifications.show({
+              id: downloadDirectoryErrorNotification,
+              color: 'red',
+              message: t(`errors:${errorKey(failure)}`),
+            });
+          }
+        } finally {
+          requests.current.delete(version);
         }
-      } catch (error) {
-        if (active.current && version === revision.current) setError(errorKey(error));
-      } finally {
-        requests.current.delete(version);
-      }
-    })();
-  }, []);
+      })();
+    },
+    [t],
+  );
 
   const flush = useCallback(() => {
     clearTimeout(pending.current);
@@ -60,17 +72,25 @@ export function DownloadSettingsSection() {
         const value = await resultOf(window.desktop.settings.get('downloads.directory'));
         if (current) {
           setLoaded(true);
+          setLoadFailed(false);
           setDirectory(value);
           draft.current = value;
         }
-      } catch (error) {
-        if (current) setError(errorKey(error));
+      } catch (failure) {
+        if (current) {
+          setLoadFailed(true);
+          notifications.show({
+            id: downloadDirectoryErrorNotification,
+            color: 'red',
+            message: t(`errors:${errorKey(failure)}`),
+          });
+        }
       }
     })();
     return () => {
       current = false;
     };
-  }, [attempt]);
+  }, [attempt, t]);
   function changeDirectory(value: string, immediate = false) {
     if (draft.current === value) {
       if (immediate) flush();
@@ -80,7 +100,6 @@ export function DownloadSettingsSection() {
     dirty.current = true;
     revision.current++;
     setDirectory(value);
-    setError(undefined);
     clearTimeout(pending.current);
     if (immediate) flush();
     else pending.current = setTimeout(flush, 300);
@@ -98,16 +117,11 @@ export function DownloadSettingsSection() {
       <Text size="sm" c="dimmed">
         {t('downloadDirectoryHint')}
       </Text>
-      {error && (
-        <Text size="sm" c="red" role="alert">
-          {t(`errors:${error}`)}
-        </Text>
-      )}
-      {error && !loaded && (
+      {loadFailed && !loaded && (
         <Button
           variant="subtle"
           onClick={() => {
-            setError(undefined);
+            setLoadFailed(false);
             setAttempt((value) => value + 1);
           }}
         >

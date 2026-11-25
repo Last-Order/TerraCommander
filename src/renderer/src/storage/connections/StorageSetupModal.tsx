@@ -1,11 +1,14 @@
-import { Alert, Button, Group, Modal, Stack, Text } from '@mantine/core';
+import { Button, Group, Modal, Stack, Text } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { StorageConnectionSummary, StorageProvider } from '@shared/storage-browser';
-import { errorKey, resultOf, type StorageErrorKey } from '../storage-client';
+import { errorKey, resultOf } from '../storage-client';
 import { formatStorageLabel } from '../storage-labels';
 import { SpacePicker } from './SpacePicker';
 import { StorageTypePicker, type StorageTypeOption } from './StorageTypePicker';
+
+const storageSetupErrorNotification = 'storage-setup-error';
 
 export type SetupIntent =
   | { kind: 'add' }
@@ -26,9 +29,16 @@ export function StorageSetupModal({ intent, onClose, onChanged, onAuthorized }: 
   );
   const [authorizing, setAuthorizing] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<StorageErrorKey | null>(null);
   const cancelRequested = useRef(false);
   const existing = intent.kind === 'reauthorize' ? intent.connection : null;
+
+  function showError(failure: unknown) {
+    notifications.show({
+      id: storageSetupErrorNotification,
+      color: 'red',
+      message: t(`errors:${errorKey(failure)}`),
+    });
+  }
 
   function dismiss() {
     if (busy) return;
@@ -39,19 +49,18 @@ export function StorageSetupModal({ intent, onClose, onChanged, onAuthorized }: 
     cancelRequested.current = true;
     void resultOf(window.desktop.storage.cancelAuthorization()).catch((failure: unknown) => {
       cancelRequested.current = false;
-      setError(errorKey(failure));
+      showError(failure);
     });
   }
 
   async function selectType(option: StorageTypeOption) {
-    setError(null);
     if (option.authMode === 'none') {
       setBusy(true);
       try {
         const added = await resultOf(window.desktop.storage.addConnection(option.id));
         setConnection(added);
       } catch (failure) {
-        setError(errorKey(failure));
+        showError(failure);
       } finally {
         setBusy(false);
       }
@@ -63,7 +72,6 @@ export function StorageSetupModal({ intent, onClose, onChanged, onAuthorized }: 
   async function authorize() {
     cancelRequested.current = false;
     setAuthorizing(true);
-    setError(null);
     try {
       if (existing) {
         await resultOf(window.desktop.storage.reauthorize(existing.id));
@@ -77,7 +85,7 @@ export function StorageSetupModal({ intent, onClose, onChanged, onAuthorized }: 
       }
     } catch (failure) {
       if (cancelRequested.current) onClose();
-      else setError(errorKey(failure));
+      else showError(failure);
     } finally {
       setAuthorizing(false);
     }
@@ -116,11 +124,6 @@ export function StorageSetupModal({ intent, onClose, onChanged, onAuthorized }: 
             ? t('reauthorizeInBrowser', { name: formatStorageLabel(existing.name, t) })
             : t('authorizeHint')}
         </Text>
-        {error && (
-          <Alert color="red" role="alert">
-            {t(`errors:${error}`)}
-          </Alert>
-        )}
         <Group justify="flex-end">
           <Button variant="default" onClick={dismiss}>
             {authorizing ? t('cancelAuthorization') : t('common:cancel')}
@@ -133,16 +136,7 @@ export function StorageSetupModal({ intent, onClose, onChanged, onAuthorized }: 
     );
   } else {
     choosingType = true;
-    content = (
-      <Stack gap="md">
-        {error && (
-          <Alert color="red" role="alert">
-            {t(`errors:${error}`)}
-          </Alert>
-        )}
-        <StorageTypePicker disabled={busy} onSelect={(option) => void selectType(option)} />
-      </Stack>
-    );
+    content = <StorageTypePicker disabled={busy} onSelect={(option) => void selectType(option)} />;
   }
 
   return (
