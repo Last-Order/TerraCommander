@@ -106,7 +106,7 @@ it('detects subpath containment without false positives on sibling prefixes', ()
   expect(isSubpath(parent, join('D:', 'Work', 'docs-2'))).toBe(false);
 });
 
-it('rejects cross-source cloud-to-cloud paste with Unsupported', async () => {
+it('rejects cross-source cloud-to-cloud paste with cross-source reason', async () => {
   const { browser } = createMockBrowser();
   const service = new StorageTaskService(browser);
   const sourceParent: EntryRef = { connectionId: cloudConnectionA, spaceId: 'drive', locator: 'a' };
@@ -127,7 +127,7 @@ it('rejects cross-source cloud-to-cloud paste with Unsupported', async () => {
       targetParent,
       targetDirectoryPath: 'Drive B',
     }),
-  ).rejects.toMatchObject({ code: 'Unsupported' } satisfies Partial<StorageError>);
+  ).resolves.toEqual({ status: 'rejected', reason: 'cross-source' });
 
   await service.dispose();
 });
@@ -858,6 +858,164 @@ it('uses reported space case sensitivity rather than connectionId when allocatin
     parent,
     name: 'report - Copy.txt',
   });
+
+  await service.dispose();
+});
+
+it('rejects pasting a directory into itself or a descendant via targetAncestors', async () => {
+  const { browser, resolveLocalPath } = createMockBrowser();
+  const service = new StorageTaskService(browser);
+  const root: EntryRef = { connectionId: cloudConnectionA, spaceId: 'drive', locator: 'root' };
+  const dir: EntryRef = { connectionId: cloudConnectionA, spaceId: 'drive', locator: 'dir-a' };
+  const child: EntryRef = { connectionId: cloudConnectionA, spaceId: 'drive', locator: 'dir-b' };
+
+  await expect(
+    service.pasteEntries(1, {
+      mode: 'copy',
+      sourceParent: root,
+      sourceDirectoryPath: 'My Drive',
+      entries: [{ ref: dir, name: 'dir-a', kind: 'directory', capabilities: {} }],
+      targetParent: child,
+      targetDirectoryPath: 'My Drive / dir-a / dir-b',
+      targetAncestors: [root, dir, child],
+    }),
+  ).resolves.toEqual({ status: 'rejected', reason: 'self-containment' });
+  expect(resolveLocalPath).not.toHaveBeenCalled();
+
+  await service.dispose();
+});
+
+it('enforces route-specific capabilities in planPaste without blocking copyWithin or moveWithin on target write', async () => {
+  const { browser, copyWithin, moveWithin, resolveLocalPath } = createMockBrowser();
+  const service = new StorageTaskService(browser);
+  const localRoot: EntryRef = { connectionId: localConnectionId, spaceId: 'local-1', locator: '.' };
+  const remoteSrc: EntryRef = { connectionId: cloudConnectionA, spaceId: 'drive', locator: 'src' };
+  const remoteDst: EntryRef = { connectionId: cloudConnectionA, spaceId: 'drive', locator: 'dst' };
+  const localFile: Entry = {
+    ref: { ...localRoot, locator: 'a.txt' },
+    name: 'a.txt',
+    kind: 'file',
+    capabilities: {},
+  };
+  const remoteFile: Entry = {
+    ref: { ...remoteSrc, locator: 'file-1' },
+    name: 'report.txt',
+    kind: 'file',
+    capabilities: { copyWithin: { support: 'supported' }, moveWithin: { support: 'supported' } },
+  };
+  const remoteFolder: Entry = {
+    ref: { ...remoteSrc, locator: 'folder-1' },
+    name: 'docs',
+    kind: 'directory',
+    capabilities: { moveWithin: { support: 'supported' } },
+  };
+
+  // Upload requires target write and (for folders) createDirectory
+  await expect(
+    service.pasteEntries(1, {
+      mode: 'copy',
+      sourceParent: localRoot,
+      sourceDirectoryPath: 'C:',
+      entries: [localFile],
+      targetParent: remoteDst,
+      targetDirectoryPath: 'Dst',
+      targetCapabilities: { write: { support: 'unsupported' } },
+    }),
+  ).resolves.toEqual({ status: 'rejected', reason: 'permission-denied' });
+  expect(resolveLocalPath).not.toHaveBeenCalled();
+
+  await expect(
+    service.pasteEntries(1, {
+      mode: 'copy',
+      sourceParent: localRoot,
+      sourceDirectoryPath: 'C:',
+      entries: [{ ...localFile, kind: 'directory', name: 'dir' }],
+      targetParent: remoteDst,
+      targetDirectoryPath: 'Dst',
+      targetCapabilities: { createDirectory: { support: 'unsupported' } },
+    }),
+  ).resolves.toEqual({ status: 'rejected', reason: 'unsupported' });
+
+  // Download requires local target write
+  await expect(
+    service.pasteEntries(1, {
+      mode: 'copy',
+      sourceParent: remoteSrc,
+      sourceDirectoryPath: 'Src',
+      entries: [remoteFile],
+      targetParent: localRoot,
+      targetDirectoryPath: 'C:',
+      targetCapabilities: { write: { support: 'unsupported' } },
+    }),
+  ).resolves.toEqual({ status: 'rejected', reason: 'permission-denied' });
+
+  // Same-connection file copy uses copyWithin, not target write
+  copyWithin.mockResolvedValueOnce({ ...remoteFile, ref: { ...remoteDst, locator: 'file-2' } });
+  await expect(
+    service.pasteEntries(1, {
+      mode: 'copy',
+      sourceParent: remoteSrc,
+      sourceDirectoryPath: 'Src',
+      entries: [remoteFile],
+      targetParent: remoteDst,
+      targetDirectoryPath: 'Dst',
+      targetCapabilities: { write: { support: 'unsupported' } },
+    }),
+  ).resolves.toEqual({ status: 'started' });
+
+  // Same-connection file copy rejects when source copyWithin is unsupported
+  await expect(
+    service.pasteEntries(1, {
+      mode: 'copy',
+      sourceParent: remoteSrc,
+      sourceDirectoryPath: 'Src',
+      entries: [{ ...remoteFile, capabilities: { copyWithin: { support: 'unsupported' } } }],
+      targetParent: remoteDst,
+      targetDirectoryPath: 'Dst',
+    }),
+  ).resolves.toEqual({ status: 'rejected', reason: 'unsupported' });
+
+  // Same-connection folder copy rejects when target createDirectory is unsupported
+  await expect(
+    service.pasteEntries(1, {
+      mode: 'copy',
+      sourceParent: remoteSrc,
+      sourceDirectoryPath: 'Src',
+      entries: [remoteFolder],
+      targetParent: remoteDst,
+      targetDirectoryPath: 'Dst',
+      targetCapabilities: { createDirectory: { support: 'unsupported' } },
+    }),
+  ).resolves.toEqual({ status: 'rejected', reason: 'unsupported' });
+
+  // Same-connection move uses moveWithin, not target write or createDirectory
+  moveWithin.mockResolvedValueOnce(remoteFolder);
+  await expect(
+    service.pasteEntries(1, {
+      mode: 'cut',
+      sourceParent: remoteSrc,
+      sourceDirectoryPath: 'Src',
+      entries: [remoteFolder],
+      targetParent: remoteDst,
+      targetDirectoryPath: 'Dst',
+      targetCapabilities: {
+        write: { support: 'unsupported' },
+        createDirectory: { support: 'unsupported' },
+      },
+    }),
+  ).resolves.toEqual({ status: 'started' });
+
+  // Same-connection move rejects when source moveWithin is unsupported
+  await expect(
+    service.pasteEntries(1, {
+      mode: 'cut',
+      sourceParent: remoteSrc,
+      sourceDirectoryPath: 'Src',
+      entries: [{ ...remoteFolder, capabilities: { moveWithin: { support: 'unsupported' } } }],
+      targetParent: remoteDst,
+      targetDirectoryPath: 'Dst',
+    }),
+  ).resolves.toEqual({ status: 'rejected', reason: 'unsupported' });
 
   await service.dispose();
 });

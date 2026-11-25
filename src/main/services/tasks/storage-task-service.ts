@@ -371,6 +371,7 @@ export class StorageTaskService {
   async pasteEntries(owner: number, request: PasteEntriesRequest): Promise<PasteEntriesResponse> {
     const plan = await planPaste(this.browser, request);
     if (plan.kind === 'empty') return { status: 'started' };
+    if (plan.kind === 'rejected') return { status: 'rejected', reason: plan.reason };
     if (plan.kind === 'upload') {
       const sourceCleanup = plan.removeSources
         ? { sourceParent: request.sourceParent, entries: plan.removeSources }

@@ -1,4 +1,4 @@
-import type { Entry, EntryRef } from './storage';
+import type { Capabilities, Entry, EntryRef } from './storage';
 import type { BrowserResult } from './storage-browser';
 
 export interface TaskMessage {
@@ -125,6 +125,12 @@ export interface DeleteEntriesRequest {
 
 export type PasteMode = 'copy' | 'cut';
 
+export type PasteRejectionReason =
+  | 'cross-source'
+  | 'self-containment'
+  | 'permission-denied'
+  | 'unsupported';
+
 export interface CopyTaskRequest {
   sourceParent: EntryRef;
   entry: Entry;
@@ -144,6 +150,8 @@ export interface PasteEntriesRequest {
   entries: readonly Entry[];
   targetParent: EntryRef;
   targetDirectoryPath: string;
+  targetAncestors?: readonly EntryRef[] | undefined;
+  targetCapabilities?: Capabilities | undefined;
 }
 
 export interface DownloadTaskDisplayInput {
@@ -268,7 +276,9 @@ export type ConflictConfirmationResponse =
   | { status: 'conflict'; confirmationId: string; conflicts?: readonly string[] | undefined };
 
 export type PrepareDownloadResponse = ConflictConfirmationResponse;
-export type PasteEntriesResponse = ConflictConfirmationResponse;
+export type PasteEntriesResponse =
+  | ConflictConfirmationResponse
+  | { status: 'rejected'; reason: PasteRejectionReason };
 
 export const defaultTransferConcurrency = 8;
 export const minTransferConcurrency = 1;

@@ -7,7 +7,7 @@ import { useStorageWorkspace } from '../storage-workspace-context';
 import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
 import { useCurrentDirectory } from './current-directory-context';
 import type { DirectoryPasteConflictModal } from './modals/DirectoryEntryModals';
-import { useStorageClipboard, validatePaste } from './storage-clipboard';
+import { useStorageClipboard } from './storage-clipboard';
 
 const copyEntriesNotification = 'directory-copy-entries';
 const pasteStatusNotification = 'directory-paste-status';
@@ -100,27 +100,6 @@ export function useDirectoryClipboard({ blocked }: DirectoryClipboardOptions) {
   const paste = async () => {
     if (!clipboard || clipboard.entries.length === 0 || blocked) return;
 
-    const validation = validatePaste({
-      clipboard,
-      targetParent: parent,
-      targetAncestors,
-      targetCapabilities,
-    });
-    if (validation.status === 'clear-cut') {
-      setClipboard(null);
-      return;
-    }
-    if (validation.status === 'rejected') {
-      const notice = {
-        crossSource: { color: 'yellow', message: t('crossSourcePasteUnsupported') },
-        selfContainment: { color: 'red', message: t('pasteSelfContainmentError') },
-        permissionDenied: { color: 'red', message: t('errors:permissionDenied') },
-        unsupported: { color: 'red', message: t('errors:unsupported') },
-      }[validation.reason];
-      notifications.show({ id: pasteStatusNotification, ...notice });
-      return;
-    }
-
     try {
       const response = await queue.pasteEntries({
         mode: clipboard.mode,
@@ -129,7 +108,19 @@ export function useDirectoryClipboard({ blocked }: DirectoryClipboardOptions) {
         entries: clipboard.entries,
         targetParent: parent,
         targetDirectoryPath: directoryPath,
+        targetAncestors,
+        targetCapabilities,
       });
+      if (response.status === 'rejected') {
+        const notice = {
+          'cross-source': { color: 'yellow', message: t('crossSourcePasteUnsupported') },
+          'self-containment': { color: 'red', message: t('pasteSelfContainmentError') },
+          'permission-denied': { color: 'red', message: t('errors:permissionDenied') },
+          unsupported: { color: 'red', message: t('errors:unsupported') },
+        }[response.reason];
+        notifications.show({ id: pasteStatusNotification, ...notice });
+        return;
+      }
       if (response.status === 'conflict') {
         setPasteConflict({
           confirmationId: response.confirmationId,

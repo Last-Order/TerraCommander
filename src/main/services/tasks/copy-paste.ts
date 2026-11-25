@@ -3,7 +3,12 @@ import { StorageError } from '@main/storage';
 import type { TaskGroupPreparationContext } from '@main/tasks/types';
 import { entryKey, type Entry, type EntryRef } from '@shared/storage';
 import { localConnectionId, type BrowserErrorCode } from '@shared/storage-browser';
-import type { CopyTaskRequest, PasteEntriesRequest, StorageDirectoryChange } from '@shared/tasks';
+import type {
+  CopyTaskRequest,
+  PasteEntriesRequest,
+  PasteRejectionReason,
+  StorageDirectoryChange,
+} from '@shared/tasks';
 import type { StorageBrowser } from '../storage/storage-browser';
 import { toBrowserErrorCode, toTaskFailure } from './task-errors';
 
@@ -18,6 +23,7 @@ export interface CopyDiscoveryItem {
 
 export type PastePlan =
   | { kind: 'empty' }
+  | { kind: 'rejected'; reason: PasteRejectionReason }
   | { kind: 'upload'; paths: string[]; removeSources?: readonly Entry[] | undefined }
   | {
       kind: 'download';
@@ -131,11 +137,38 @@ export async function planPaste(
     targetConnectionId !== localConnectionId &&
     sourceConnectionId !== targetConnectionId
   ) {
-    throw new StorageError('Unsupported');
+    return { kind: 'rejected', reason: 'cross-source' };
+  }
+
+  const hasDirectory = uniqueEntries.some((entry) => entry.kind === 'directory');
+  const targetCapabilities = request.targetCapabilities;
+
+  if (
+    hasDirectory &&
+    request.targetAncestors &&
+    uniqueEntries.some(
+      (entry) =>
+        entry.kind === 'directory' &&
+        request.targetAncestors!.some((ancestor) => entryKey(ancestor) === entryKey(entry.ref)),
+    )
+  ) {
+    return { kind: 'rejected', reason: 'self-containment' };
   }
 
   // Local -> Cloud: resolve OS paths via local provider integration for upload.
   if (sourceConnectionId === localConnectionId && targetConnectionId !== localConnectionId) {
+    if (targetCapabilities?.write?.support === 'unsupported') {
+      return { kind: 'rejected', reason: 'permission-denied' };
+    }
+    if (hasDirectory && targetCapabilities?.createDirectory?.support === 'unsupported') {
+      return { kind: 'rejected', reason: 'unsupported' };
+    }
+    if (
+      mode === 'cut' &&
+      uniqueEntries.some((entry) => entry.capabilities.remove?.support === 'unsupported')
+    ) {
+      return { kind: 'rejected', reason: 'unsupported' };
+    }
     const paths: string[] = [];
     for (const entry of uniqueEntries) {
       const resolved = await browser.resolveLocalPath(entry.ref);
@@ -148,6 +181,18 @@ export async function planPaste(
 
   // Cloud -> Local: resolve target local directory via local provider integration for download.
   if (sourceConnectionId !== localConnectionId && targetConnectionId === localConnectionId) {
+    if (targetCapabilities?.write?.support === 'unsupported') {
+      return { kind: 'rejected', reason: 'permission-denied' };
+    }
+    if (hasDirectory && targetCapabilities?.createDirectory?.support === 'unsupported') {
+      return { kind: 'rejected', reason: 'unsupported' };
+    }
+    if (
+      mode === 'cut' &&
+      uniqueEntries.some((entry) => entry.capabilities.remove?.support === 'unsupported')
+    ) {
+      return { kind: 'rejected', reason: 'unsupported' };
+    }
     const target = await browser.resolveLocalPath(request.targetParent);
     if (target.kind !== 'directory') throw new StorageError('InvalidArgument');
     return mode === 'cut'
@@ -172,7 +217,7 @@ export async function planPaste(
         entry.kind === 'directory' &&
         (target.path === source.path || isSubpath(source.path, target.path))
       ) {
-        throw new StorageError('InvalidArgument');
+        return { kind: 'rejected', reason: 'self-containment' };
       }
       if (
         mode === 'cut' &&
@@ -185,7 +230,7 @@ export async function planPaste(
     }
   } else {
     if (mode === 'cut' && request.sourceParent.spaceId !== request.targetParent.spaceId) {
-      throw new StorageError('Unsupported');
+      return { kind: 'rejected', reason: 'unsupported' };
     }
     for (const entry of uniqueEntries) {
       if (
@@ -193,12 +238,15 @@ export async function planPaste(
         entry.ref.locator === request.targetParent.locator &&
         entry.ref.spaceId === request.targetParent.spaceId
       ) {
-        throw new StorageError('InvalidArgument');
+        return { kind: 'rejected', reason: 'self-containment' };
       }
     }
   }
 
-  if (mode === 'cut') {
+  if (mode === 'cut' && !crossDevice) {
+    if (uniqueEntries.some((entry) => entry.capabilities.moveWithin?.support === 'unsupported')) {
+      return { kind: 'rejected', reason: 'unsupported' };
+    }
     const items: CopyDiscoveryItem[] = uniqueEntries.map((entry) => ({
       sourceEntry: entry,
       sourceParent: request.sourceParent,
@@ -207,10 +255,24 @@ export async function planPaste(
       relativePath: entry.name,
       emitAddedOnCreate: true,
     }));
-    if (crossDevice) {
-      return { kind: 'copy', items, entries: uniqueEntries, removeSources: uniqueEntries };
-    }
     return { kind: 'move', items, entries: uniqueEntries };
+  }
+
+  if (hasDirectory && targetCapabilities?.createDirectory?.support === 'unsupported') {
+    return { kind: 'rejected', reason: 'unsupported' };
+  }
+  if (
+    uniqueEntries.some(
+      (entry) => entry.kind === 'file' && entry.capabilities.copyWithin?.support === 'unsupported',
+    )
+  ) {
+    return { kind: 'rejected', reason: 'unsupported' };
+  }
+  if (
+    mode === 'cut' &&
+    uniqueEntries.some((entry) => entry.capabilities.remove?.support === 'unsupported')
+  ) {
+    return { kind: 'rejected', reason: 'unsupported' };
   }
 
   const items: CopyDiscoveryItem[] = uniqueEntries.map((entry) => ({
@@ -221,6 +283,10 @@ export async function planPaste(
     relativePath: entry.name,
     emitAddedOnCreate: true,
   }));
+
+  if (mode === 'cut') {
+    return { kind: 'copy', items, entries: uniqueEntries, removeSources: uniqueEntries };
+  }
 
   return { kind: 'copy', items, entries: uniqueEntries, sameDirectory };
 }
