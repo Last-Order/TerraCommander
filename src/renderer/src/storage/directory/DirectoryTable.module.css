@@ -42,16 +42,22 @@
 }
 
 .entries {
-  --entry-date-width: 13rem;
-  --entry-size-width: 7rem;
+  --entry-name-min-width: 140px;
+  --entry-date-width: 208px;
+  --entry-size-width: 112px;
 
   width: 100%;
-  min-width: calc(6rem + var(--entry-date-width) + var(--entry-size-width));
+  min-width: calc(var(--entry-name-min-width) + var(--entry-date-width) + var(--entry-size-width));
   table-layout: fixed;
   border-spacing: 0;
   margin-block-end: 0.75rem;
   font-size: var(--mantine-font-size-sm);
   line-height: var(--directory-line-height, 1.25rem);
+}
+
+.entries[data-resizing='true'] {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .entries td {
@@ -79,10 +85,47 @@
 .columnLabel {
   display: flex;
   width: 100%;
+  min-width: 0;
   align-items: center;
   gap: 0.5rem;
   padding: var(--directory-cell-padding-block, 0.5rem) var(--directory-cell-padding-inline, 0.75rem);
   white-space: nowrap;
+}
+
+.columnText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.resizeHandle {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: -4px;
+  width: 9px;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.resizeHandle::after {
+  position: absolute;
+  inset-block: 0.4375rem;
+  inset-inline-start: 4px;
+  width: 1px;
+  background: var(--storage-border);
+  content: '';
+  transition:
+    background-color 120ms ease,
+    inset-block 120ms ease,
+    width 120ms ease;
+}
+
+.resizeHandle:hover::after,
+.resizeHandle[data-active='true']::after {
+  inset-block: 0;
+  width: 2px;
+  background: var(--storage-accent);
 }
 
 .sortHeader svg {
@@ -120,6 +163,12 @@
   color: var(--storage-secondary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.entries td.entryDate,
+.entries td.entrySize {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .entryDate {

@@ -1,8 +1,24 @@
 import { Skeleton } from '@mantine/core';
 import { ChevronDown, ChevronsUpDown, ChevronUp, type LucideIcon } from 'lucide-react';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Entry } from '@shared/storage';
+import {
+  DIRECTORY_NAME_MIN_WIDTH,
+  resizeDirectoryColumns,
+  saveDirectoryColumnWidths,
+  useDirectoryColumnWidthsStore,
+  type DirectoryColumnWidths,
+  type ResizableDirectoryColumn,
+} from './directory-columns';
 import { isDirectoryNavigationKey } from './directory-navigation';
 import { useDirectorySortStore } from './directory-sort';
 import type {
@@ -22,14 +38,25 @@ const sortIcons: Record<DirectorySort['direction'], LucideIcon> = {
   descending: ChevronDown,
 };
 const columns = [
-  { field: 'name', label: 'entryName', className: undefined },
-  { field: 'modifiedAt', label: 'entryModifiedAt', className: classes.entryDate },
-  { field: 'size', label: 'entrySize', className: classes.entrySize },
+  { field: 'name', label: 'entryName', className: undefined, resizable: false },
+  { field: 'modifiedAt', label: 'entryModifiedAt', className: classes.entryDate, resizable: true },
+  { field: 'size', label: 'entrySize', className: classes.entrySize, resizable: true },
 ] as const satisfies readonly {
   field: DirectorySort['field'];
   label: string;
   className: string | undefined;
+  resizable: boolean;
 }[];
+
+interface ColumnResizeDrag {
+  column: ResizableDirectoryColumn;
+  pointerId: number;
+  startX: number;
+  startWidths: DirectoryColumnWidths;
+  latestWidths: DirectoryColumnWidths;
+  tableWidth: number;
+  direction: 1 | -1;
+}
 
 function DirectorySkeletonRows() {
   return Array.from({ length: 10 }, (_, index) => (
@@ -41,10 +68,14 @@ function DirectorySkeletonRows() {
         </div>
       </td>
       <td className={classes.entryDate}>
-        <Skeleton width="8.5rem" height="0.75rem" />
+        <Skeleton width="min(100%, 8.5rem)" height="0.75rem" />
       </td>
       <td className={classes.entrySize}>
-        <Skeleton className={classes.entrySizePlaceholder} width="3rem" height="0.75rem" />
+        <Skeleton
+          className={classes.entrySizePlaceholder}
+          width="min(100%, 3rem)"
+          height="0.75rem"
+        />
       </td>
     </tr>
   ));
@@ -80,6 +111,11 @@ export function DirectoryTable({
   const { t, i18n } = useTranslation('storage');
   const sort = useDirectorySortStore((state) => state.sort);
   const onSort = useDirectorySortStore((state) => state.toggleSort);
+  const columnWidths = useDirectoryColumnWidthsStore((state) => state.widths);
+  const setColumnWidths = useDirectoryColumnWidthsStore((state) => state.setWidths);
+  const resetColumnWidth = useDirectoryColumnWidthsStore((state) => state.resetColumnWidth);
+  const resizeDrag = useRef<ColumnResizeDrag | null>(null);
+  const [resizingColumn, setResizingColumn] = useState<ResizableDirectoryColumn | null>(null);
   const locale = i18n.resolvedLanguage;
   const dateFormatter = useMemo(
     () => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }),
@@ -144,11 +180,72 @@ export function DirectoryTable({
     />
   );
 
+  const finishResize = (persist: boolean) => {
+    const current = resizeDrag.current;
+    if (!current) return;
+    resizeDrag.current = null;
+    setResizingColumn(null);
+    if (persist) {
+      saveDirectoryColumnWidths(current.latestWidths);
+    }
+  };
+
+  const startColumnResize = (
+    column: ResizableDirectoryColumn,
+    event: PointerEvent<HTMLDivElement>,
+  ) => {
+    if (event.button !== 0 || !event.isPrimary || !tableRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const direction = getComputedStyle(tableRef.current).direction === 'rtl' ? -1 : 1;
+    resizeDrag.current = {
+      column,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidths: columnWidths,
+      latestWidths: columnWidths,
+      tableWidth: tableRef.current.getBoundingClientRect().width,
+      direction,
+    };
+    setResizingColumn(column);
+  };
+
+  const moveColumnResize = (event: PointerEvent<HTMLDivElement>) => {
+    const current = resizeDrag.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    const deltaX = (event.clientX - current.startX) * current.direction;
+    const nextWidths = resizeDirectoryColumns(
+      current.startWidths,
+      current.column,
+      deltaX,
+      current.tableWidth,
+    );
+    current.latestWidths = nextWidths;
+    setColumnWidths(nextWidths);
+  };
+
+  const stopColumnResize = (event: PointerEvent<HTMLDivElement>) => {
+    if (resizeDrag.current?.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    finishResize(true);
+  };
+
+  const tableStyle = {
+    '--entry-name-min-width': `${DIRECTORY_NAME_MIN_WIDTH}px`,
+    '--entry-date-width': `${columnWidths.modifiedAt}px`,
+    '--entry-size-width': `${columnWidths.size}px`,
+  } as CSSProperties;
+
   return (
     <table
       ref={tableRef}
       className={classes.entries}
+      style={tableStyle}
       data-tab-navigation={tabNavigation || undefined}
+      data-resizing={resizingColumn !== null || undefined}
       aria-label={t('filesAndFolders')}
       aria-rowcount={rows.length + 1}
       onFocusCapture={onFocus}
@@ -157,22 +254,42 @@ export function DirectoryTable({
     >
       <thead>
         <tr>
-          {columns.map(({ field, label, className }) => {
+          {columns.map(({ field, label, className, resizable }) => {
             const direction = canSort && sort?.field === field ? sort.direction : undefined;
             const Icon = direction ? sortIcons[direction] : ChevronsUpDown;
             return (
               <th key={field} scope="col" className={className} aria-sort={direction}>
+                {resizable && (
+                  <div
+                    aria-hidden="true"
+                    className={classes.resizeHandle}
+                    data-active={resizingColumn === field || undefined}
+                    onPointerDown={(event) => startColumnResize(field, event)}
+                    onPointerMove={moveColumnResize}
+                    onPointerUp={stopColumnResize}
+                    onPointerCancel={stopColumnResize}
+                    onLostPointerCapture={() => finishResize(true)}
+                    onClick={(event) => event.stopPropagation()}
+                    onDoubleClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      resetColumnWidth(field);
+                    }}
+                  />
+                )}
                 {canSort ? (
                   <button
                     type="button"
                     className={classes.sortHeader}
                     onClick={() => onSort(field)}
                   >
-                    {t(label)}
+                    <span className={classes.columnText}>{t(label)}</span>
                     <Icon size={16} strokeWidth={1.5} aria-hidden="true" />
                   </button>
                 ) : (
-                  <span className={classes.columnLabel}>{t(label)}</span>
+                  <span className={classes.columnLabel}>
+                    <span className={classes.columnText}>{t(label)}</span>
+                  </span>
                 )}
               </th>
             );
