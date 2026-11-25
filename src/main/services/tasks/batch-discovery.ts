@@ -16,8 +16,6 @@ export interface BatchDiscoveryConfig<TItem, TDefinitions extends TaskDefinition
   cancelDirectoryItem: (itemId: number) => Promise<void>;
   cancelErrorMessage: string;
   fatalErrorCodes: ReadonlySet<BrowserErrorCode>;
-  stageKey: 'storage:downloadScanning' | 'storage:uploadScanning';
-  summaryKey: 'storage:downloadPreparationProgress' | 'storage:uploadPreparationProgress';
   enqueueFile: (
     item: TItem,
     context: TaskGroupPreparationContext<TDefinitions>,
@@ -33,8 +31,6 @@ export async function prepareBatchGroup<TItem, TDefinitions extends TaskDefiniti
 ): Promise<void> {
   const pending = [...config.initialItems].reverse();
   let activeDirectory: TItem | undefined;
-  let discoveredFiles = 0;
-  let preparedFolders = 0;
 
   const cancelDirectory = () => {
     if (!activeDirectory) return;
@@ -45,8 +41,7 @@ export async function prepareBatchGroup<TItem, TDefinitions extends TaskDefiniti
   context.signal.addEventListener('abort', cancelDirectory, { once: true });
 
   const enqueueFile = async (item: TItem) => {
-    const counted = await config.enqueueFile(item, context);
-    if (counted !== false) discoveredFiles++;
+    await config.enqueueFile(item, context);
   };
 
   const discoverDirectory = async (item: TItem) => {
@@ -68,7 +63,6 @@ export async function prepareBatchGroup<TItem, TDefinitions extends TaskDefiniti
     activeDirectory = item;
     try {
       await discoverDirectory(item);
-      preparedFolders++;
     } catch (error) {
       if (context.signal.aborted || config.fatalErrorCodes.has(toBrowserErrorCode(error))) {
         throw error;
@@ -85,14 +79,6 @@ export async function prepareBatchGroup<TItem, TDefinitions extends TaskDefiniti
       const item = pending.pop()!;
       if (config.isDirectory(item)) await prepareDirectory(item);
       else await enqueueFile(item);
-      context.reportProgress({
-        kind: 'indeterminate',
-        stage: { key: config.stageKey },
-        summary: {
-          key: config.summaryKey,
-          values: { discoveredFiles, preparedFolders },
-        },
-      });
     }
   } finally {
     context.signal.removeEventListener('abort', cancelDirectory);

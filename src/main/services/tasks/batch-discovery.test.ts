@@ -18,7 +18,6 @@ function createPrepContext() {
   const controller = new AbortController();
   const enqueued: string[] = [];
   const reportIssue = vi.fn();
-  const reportProgress = vi.fn();
   const context: TaskGroupPreparationContext<TestDefinitions> = {
     groupId: 1,
     signal: controller.signal,
@@ -27,13 +26,12 @@ function createPrepContext() {
       return true;
     }),
     reportIssue,
-    reportProgress,
   };
-  return { controller, enqueued, context, reportIssue, reportProgress };
+  return { controller, enqueued, context, reportIssue };
 }
 
 it('performs DFS discovery across paginated directories, respects skipped items, and reports non-fatal issues', async () => {
-  const { enqueued, context, reportIssue, reportProgress } = createPrepContext();
+  const { enqueued, context, reportIssue } = createPrepContext();
   const afterDirectory = vi.fn();
 
   const discoverDirectory = vi
@@ -63,8 +61,6 @@ it('performs DFS discovery across paginated directories, respects skipped items,
       cancelDirectoryItem: vi.fn(async () => undefined),
       cancelErrorMessage: 'cancel failed',
       fatalErrorCodes: new Set(['AuthRequired']),
-      stageKey: 'storage:uploadScanning',
-      summaryKey: 'storage:uploadPreparationProgress',
       enqueueFile: async (item, prepContext) => {
         if (item.skip) return false;
         await prepContext.enqueue({ type: 'item', input: { label: item.label } }, String(item.id));
@@ -81,14 +77,6 @@ it('performs DFS discovery across paginated directories, respects skipped items,
     failure: { code: 'PermissionDenied', message: { key: 'errors:permissionDenied' } },
   });
   expect(afterDirectory).toHaveBeenCalledTimes(2);
-  expect(reportProgress).toHaveBeenLastCalledWith({
-    kind: 'indeterminate',
-    stage: { key: 'storage:uploadScanning' },
-    summary: {
-      key: 'storage:uploadPreparationProgress',
-      values: { discoveredFiles: 2, preparedFolders: 1 },
-    },
-  });
 });
 
 it('cancels the active directory on abort and rethrows fatal errors', async () => {
@@ -109,8 +97,6 @@ it('cancels the active directory on abort and rethrows fatal errors', async () =
         cancelDirectoryItem,
         cancelErrorMessage: 'cancel failed',
         fatalErrorCodes: new Set(['AuthRequired']),
-        stageKey: 'storage:downloadScanning',
-        summaryKey: 'storage:downloadPreparationProgress',
         enqueueFile: async () => true,
       },
       context,

@@ -86,7 +86,7 @@ export interface TaskContext {
 
 export interface TaskHandler<Input, Result, Category extends string = string> {
   readonly category: Category;
-  conflictKeys(input: Input): readonly string[];
+  conflictKeys?(input: Input): readonly string[];
   execute(input: Input, context: TaskContext): Promise<TaskExecutionOutcome<Result>>;
   cancel?(input: Input): void | Promise<void>;
   pause?(input: Input): void | Promise<void>;
@@ -126,7 +126,6 @@ export interface TaskGroup<Definitions extends TaskGroupDefinitions = TaskGroupD
   sealed: boolean;
   state: TaskGroupState;
   summary: TaskGroupSummary;
-  progress: TaskProgress;
   preparation: TaskGroupPreparation;
 }
 
@@ -134,7 +133,6 @@ export interface TaskGroupPreparationContext<Definitions extends TaskDefinitions
   groupId: number;
   signal: AbortSignal;
   enqueue(request: TaskRequest<Definitions>, memberKey?: string): Promise<boolean>;
-  reportProgress(progress: TaskProgress): void;
   reportIssue(issue: TaskPreparationIssue): void;
 }
 
@@ -160,7 +158,4 @@ export interface TaskQueueSnapshot<
   groups: readonly TaskGroup<Groups>[];
 }
 
-export type TaskQueueChange =
-  | { kind: 'snapshot' }
-  | { kind: 'task-progress'; taskId: number }
-  | { kind: 'group-progress'; groupId: number };
+export type TaskQueueChange = { kind: 'snapshot' } | { kind: 'task-progress'; taskId: number };

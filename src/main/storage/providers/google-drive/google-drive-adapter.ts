@@ -140,12 +140,11 @@ class GoogleDriveAdapter implements StorageAdapter {
 
   async capabilities(scope: CapabilityScope, ctx: OperationContext): Promise<Capabilities> {
     throwIfAborted(ctx.signal);
-    if (scope.kind === 'space') {
-      this.sharedDriveId(scope.spaceId);
-      return { ...driveBaseCapabilities };
-    }
     if (scope.kind === 'entry') {
       return (await this.stat(scope.ref, ctx)).capabilities;
+    }
+    if (scope.kind === 'space') {
+      this.sharedDriveId(scope.spaceId);
     }
     return { ...driveBaseCapabilities };
   }
@@ -165,6 +164,17 @@ class GoogleDriveAdapter implements StorageAdapter {
       throw new StorageError('NotFound');
     }
     return file;
+  }
+
+  private async getWritableFolder(ref: EntryRef, context: OperationContext) {
+    const folder = await this.getFile(ref, context);
+    if (folder.mimeType !== 'application/vnd.google-apps.folder') {
+      throw new StorageError('InvalidArgument');
+    }
+    if (folder.capabilities?.canAddChildren === false) {
+      throw new StorageError('PermissionDenied');
+    }
+    return folder;
   }
 
   async list(
@@ -241,11 +251,7 @@ class GoogleDriveAdapter implements StorageAdapter {
   async prepareWrite(target: WriteTarget, source: SourceDescriptor, context: OperationContext) {
     if (target.kind !== 'create') throw new StorageError('Unsupported');
     const { parent, name } = target;
-    const folder = await this.getFile(parent, context);
-    if (folder.mimeType !== 'application/vnd.google-apps.folder') {
-      throw new StorageError('InvalidArgument');
-    }
-    if (folder.capabilities?.canAddChildren === false) throw new StorageError('PermissionDenied');
+    const folder = await this.getWritableFolder(parent, context);
 
     const {
       ids: [id],
@@ -290,11 +296,7 @@ class GoogleDriveAdapter implements StorageAdapter {
 
   async createDirectory(target: CreateTarget, context: OperationContext): Promise<Entry> {
     const { parent, name } = target;
-    const folder = await this.getFile(parent, context);
-    if (folder.mimeType !== 'application/vnd.google-apps.folder') {
-      throw new StorageError('InvalidArgument');
-    }
-    if (folder.capabilities?.canAddChildren === false) throw new StorageError('PermissionDenied');
+    const folder = await this.getWritableFolder(parent, context);
     const params = new URLSearchParams({
       fields: `${fileFields},parents`,
       supportsAllDrives: 'true',
@@ -327,13 +329,7 @@ class GoogleDriveAdapter implements StorageAdapter {
     if (source.mimeType === 'application/vnd.google-apps.folder') {
       throw new StorageError('Unsupported');
     }
-    const folder = await this.getFile(target.parent, context);
-    if (folder.mimeType !== 'application/vnd.google-apps.folder') {
-      throw new StorageError('InvalidArgument');
-    }
-    if (folder.capabilities?.canAddChildren === false) {
-      throw new StorageError('PermissionDenied');
-    }
+    const folder = await this.getWritableFolder(target.parent, context);
     const params = new URLSearchParams({
       fields: `${fileFields},parents`,
       supportsAllDrives: 'true',
@@ -367,14 +363,8 @@ class GoogleDriveAdapter implements StorageAdapter {
     if (source.capabilities?.canMoveItemWithinDrive === false) {
       throw new StorageError('PermissionDenied');
     }
-    const folder = await this.getFile(target.parent, context);
-    if (folder.mimeType !== 'application/vnd.google-apps.folder') {
-      throw new StorageError('InvalidArgument');
-    }
+    const folder = await this.getWritableFolder(target.parent, context);
     if (folder.id === source.id) throw new StorageError('InvalidArgument');
-    if (folder.capabilities?.canAddChildren === false) {
-      throw new StorageError('PermissionDenied');
-    }
     if (source.parents?.includes(folder.id) && source.name === target.name) {
       return fileEntry({ ...target.parent, locator: source.id }, source, false);
     }

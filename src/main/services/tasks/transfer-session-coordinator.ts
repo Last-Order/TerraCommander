@@ -81,17 +81,6 @@ export class TransferSessionCoordinator {
 
   constructor(private readonly host: TransferSessionHost) {}
 
-  async uploadFile(
-    owner: number,
-    request: UploadFileRequest,
-    pickFile: () => Promise<string | undefined>,
-  ): Promise<void> {
-    await this.uploadPaths(owner, request, async () => {
-      const path = await pickFile();
-      return path ? [path] : [];
-    });
-  }
-
   async uploadPaths(
     owner: number,
     request: UploadFileRequest,

@@ -17,7 +17,6 @@ export type TaskProgress =
       stage?: TaskMessage;
       completedBytes?: number;
       bytesPerSecond?: number;
-      summary?: TaskMessage;
     }
   | {
       kind: 'determinate';
@@ -26,7 +25,6 @@ export type TaskProgress =
       unit: 'bytes' | 'items';
       stage?: TaskMessage;
       bytesPerSecond?: number;
-      summary?: TaskMessage;
     };
 
 export interface TaskControls {
@@ -76,12 +74,11 @@ export interface TaskPreparationIssue {
 
 export interface TaskGroupPreparation {
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
-  progress?: TaskProgress;
   issues: readonly TaskPreparationIssue[];
   failure?: TaskFailure;
 }
 
-export interface TaskViewItem<Request = unknown, Result = unknown> {
+export interface TaskViewItem<Request = unknown> {
   id: number;
   request: Request;
   status: TaskStatus;
@@ -89,7 +86,6 @@ export interface TaskViewItem<Request = unknown, Result = unknown> {
   controlRequest?: 'pause' | 'cancel' | undefined;
   progress?: TaskProgress | undefined;
   failure?: TaskFailure | undefined;
-  result?: Result | undefined;
   groupId?: number | undefined;
 }
 
@@ -99,7 +95,6 @@ export interface TaskGroupViewItem<Request = unknown> {
   sealed: boolean;
   state: TaskGroupState;
   summary: TaskGroupSummary;
-  progress: TaskProgress;
   preparation: TaskGroupPreparation;
 }
 
@@ -140,15 +135,7 @@ export interface CopyTaskRequest {
   displayName?: string | undefined;
 }
 
-export interface MoveTaskRequest {
-  sourceParent: EntryRef;
-  entry: Entry;
-  targetParent: EntryRef;
-  targetName: string;
-  sourceDirectoryPath: string;
-  targetDirectoryPath: string;
-  displayName?: string | undefined;
-}
+export type MoveTaskRequest = CopyTaskRequest;
 
 export interface PasteEntriesRequest {
   mode?: PasteMode | undefined;
@@ -266,12 +253,6 @@ export type StorageDirectoryChange =
 export type StorageTaskEvent =
   | { type: 'snapshot'; snapshot: StorageTaskSnapshot }
   | { type: 'task-progress'; taskId: number; progress: TaskProgress }
-  | {
-      type: 'group-progress';
-      groupId: number;
-      progress: TaskProgress;
-      preparationProgress?: TaskProgress | undefined;
-    }
   | { type: 'directory-changed'; change: StorageDirectoryChange }
   | { type: 'auth-required'; connectionId: string };
 

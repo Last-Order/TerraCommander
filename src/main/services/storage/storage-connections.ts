@@ -17,7 +17,6 @@ export class StorageConnectionManager {
   readonly registry: AdapterRegistry;
   private readonly providers = new Map<StorageProvider, StorageProviderIntegration>();
   private readonly builtIns = new Map<string, StorageProviderIntegration>();
-  private readonly accountProviders = new Map<string, StorageProviderIntegration>();
   private readonly connections = new Map<string, Promise<void>>();
   private readonly authorizationRequired = new Set<string>();
   private authorization: { owner: number | undefined; controller: AbortController } | undefined;
@@ -53,7 +52,8 @@ export class StorageConnectionManager {
     for (const integration of this.providers.values()) {
       const source = integration.connection;
       if (source.kind === 'account') {
-        for (const account of await this.listAccountsFor(integration.provider)) {
+        const { accounts } = await this.getAccounts();
+        for (const account of await accounts.list(integration.provider)) {
           const needsAuth = this.needsAuthorization(account);
           accountEntries.push({
             id: account.id,
@@ -98,7 +98,6 @@ export class StorageConnectionManager {
         signal,
       });
       this.authorizationRequired.delete(account.id);
-      this.accountProviders.set(account.id, integration);
       return source.summarize(account, displayedSpaces(account.id, integration), false);
     });
   }
@@ -155,16 +154,6 @@ export class StorageConnectionManager {
     await this.registry.dispose();
   }
 
-  private async listAccountsFor(provider: StorageProvider): Promise<AccountSummary[]> {
-    const { accounts } = await this.getAccounts();
-    const list = await accounts.list(provider);
-    const integration = this.providers.get(provider);
-    if (integration?.connection.kind === 'account') {
-      for (const account of list) this.accountProviders.set(account.id, integration);
-    }
-    return list;
-  }
-
   private needsAuthorization(account: AccountSummary): boolean {
     return (
       account.authorization === 'reauthorization-required' ||
@@ -176,16 +165,11 @@ export class StorageConnectionManager {
     const builtIn = this.builtIns.get(id);
     if (builtIn?.connection.kind === 'built-in') return builtIn.connection.connectionDefinition;
     const { accounts } = await this.getAccounts();
-    const definition = accounts.getConnectionDefinition(id);
-    const integration = this.providers.get(definition.provider as StorageProvider);
-    if (integration?.connection.kind === 'account') this.accountProviders.set(id, integration);
-    return definition;
+    return accounts.getConnectionDefinition(id);
   }
 
   private integrationForDefinition(definition: ConnectionDefinition): StorageProviderIntegration {
-    const integration =
-      this.providers.get(definition.provider as StorageProvider) ??
-      this.accountProviders.get(definition.id);
+    const integration = this.providers.get(definition.provider as StorageProvider);
     if (!integration) throw new StorageError('Unsupported');
     return integration;
   }

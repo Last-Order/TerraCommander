@@ -60,7 +60,6 @@ function createSnapshot(): StorageTaskSnapshot {
           cancelled: 0,
           skipped: 0,
         },
-        progress: { kind: 'indeterminate' },
         preparation: { status: 'running', issues: [] },
       },
     ],
@@ -119,29 +118,6 @@ describe('StorageTaskClient', () => {
       total: 100,
       unit: 'bytes',
       bytesPerSecond: 1024,
-    });
-    expect(applySpy).toHaveBeenCalledTimes(1);
-
-    emit?.({
-      type: 'group-progress',
-      groupId: 2,
-      progress: {
-        kind: 'indeterminate',
-        summary: { key: 'storage:discovered', values: { count: 3 } },
-      },
-      preparationProgress: {
-        kind: 'indeterminate',
-        summary: { key: 'storage:discovered', values: { count: 3 } },
-      },
-    });
-
-    expect(client.store.getState().groups[0]?.progress).toEqual({
-      kind: 'indeterminate',
-      summary: { key: 'storage:discovered', values: { count: 3 } },
-    });
-    expect(client.store.getState().groups[0]?.preparation.progress).toEqual({
-      kind: 'indeterminate',
-      summary: { key: 'storage:discovered', values: { count: 3 } },
     });
     expect(applySpy).toHaveBeenCalledTimes(1);
 

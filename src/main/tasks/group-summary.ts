@@ -37,7 +37,6 @@ export function summarizeGroup<Definitions extends TaskGroupDefinitions>(
     outcome = summary.completed || summary.skipped ? 'partial' : 'cancelled';
   else outcome = 'completed';
   const state: TaskGroupState = phase === 'settled' ? { phase: 'settled', outcome } : { phase };
-  const completed = summary.completed + summary.failed + summary.cancelled + summary.skipped;
   return {
     id,
     request,
@@ -45,12 +44,5 @@ export function summarizeGroup<Definitions extends TaskGroupDefinitions>(
     state,
     summary,
     preparation,
-    progress:
-      sealed && summary.total > 0
-        ? { kind: 'determinate', completed, total: summary.total, unit: 'items' }
-        : (preparation.progress ?? {
-            kind: 'indeterminate',
-            stage: { key: 'tasks:generatingTasks' },
-          }),
   };
 }

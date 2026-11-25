@@ -13,7 +13,6 @@ import type {
   TaskGroupRequest,
   TaskGroupState,
   TaskMembership,
-  TaskQueueChange,
   TaskRequest,
 } from './types';
 
@@ -33,7 +32,7 @@ interface GroupCoordinatorDeps<
   nextId(): number;
   getTasks(): readonly QueueTask<Definitions>[];
   getGroups(): readonly TaskGroup<Groups>[];
-  setGroups(groups: readonly TaskGroup<Groups>[], change?: TaskQueueChange): void;
+  setGroups(groups: readonly TaskGroup<Groups>[]): void;
   subscribe(listener: () => void): () => void;
   enqueue(request: TaskRequest<Definitions>, membership: TaskMembership): boolean;
   invokeHook(id: number, hook: () => void | Promise<void>): Promise<void>;
@@ -158,7 +157,7 @@ export class TaskGroupCoordinator<
     return { finishedGroupIds };
   }
 
-  sync(change: TaskQueueChange = { kind: 'snapshot' }): void {
+  sync(): void {
     const tasksByGroup = this.deps.getTasks();
     const settle: number[] = [];
     const groups = this.deps.getGroups().map((previous) => {
@@ -186,7 +185,7 @@ export class TaskGroupCoordinator<
       }
       return group;
     });
-    this.deps.setGroups(groups, settle.length > 0 ? { kind: 'snapshot' } : change);
+    this.deps.setGroups(groups);
     for (const id of settle) {
       const pending = this.settleGroup(id).finally(() => this.settlements.delete(id));
       this.settlements.set(id, pending);
@@ -223,11 +222,6 @@ export class TaskGroupCoordinator<
             await this.waitForCapacity(id, signal);
             if (!active()) return false;
             return this.deps.enqueue(request, { groupId: id, ...(memberKey ? { memberKey } : {}) });
-          },
-          reportProgress: (progress) => {
-            if (!active()) return;
-            record.preparation = { ...record.preparation, progress };
-            this.sync({ kind: 'group-progress', groupId: id });
           },
           reportIssue: (issue) => {
             if (!active()) return;

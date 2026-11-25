@@ -160,22 +160,17 @@ it('reserves group resources without conflicting with its own members until sett
   expect(queue.enqueue({ type: 'work', input: { name: 'shared' } })).toBe(true);
 });
 
-it('deduplicates membership keys and waits for bounded work capacity', async () => {
+it('deduplicates membership keys', async () => {
   const gate = pending<Outcome>();
   const { queue } = setup({ execute: async () => gate.promise });
   const groupId = queue.createGroup(groupRequest)!;
-  queue.enqueue({ type: 'work', input: { name: 'first' } }, { groupId, memberKey: 'first' });
-  expect(queue.hasGroupMember(groupId, 'first')).toBe(true);
+  expect(
+    queue.enqueue({ type: 'work', input: { name: 'first' } }, { groupId, memberKey: 'first' }),
+  ).toBe(true);
   expect(
     queue.enqueue({ type: 'work', input: { name: 'different' } }, { groupId, memberKey: 'first' }),
   ).toBe(false);
-  const controller = new AbortController();
-  const available = vi.fn();
-  const wait = queue.waitForGroupCapacity(groupId, controller.signal, 1).then(available);
-  expect(available).not.toHaveBeenCalled();
   gate.resolve(completed);
-  await wait;
-  expect(available).toHaveBeenCalledOnce();
   queue.sealGroup(groupId);
 });
 
@@ -276,7 +271,7 @@ it('does not finish while preparation is still active after an early member comp
     },
   })!;
   expect(queue.store.getState().tasks).toHaveLength(0);
-  expect(queue.store.getState().groups[0]?.progress.kind).toBe('indeterminate');
+  expect(queue.store.getState().groups[0]?.preparation.status).toBe('running');
   start.resolve();
   await vi.waitFor(() => expect(queue.store.getState().tasks[0]?.status).toBe('completed'));
   expect(queue.store.getState().groups[0]).toMatchObject({

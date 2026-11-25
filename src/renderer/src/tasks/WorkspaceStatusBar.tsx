@@ -2,7 +2,7 @@ import { ListTodo } from 'lucide-react';
 import type { Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
-import { summarizeTasks, topLevelEntries } from './task-selectors';
+import { summarizeTasks, topLevelEntries } from '@shared/task-selectors';
 import type { TaskGroupViewItem, TaskQueueViewClient, TaskViewItem } from './task-types';
 import classes from './WorkspaceStatusBar.module.css';
 

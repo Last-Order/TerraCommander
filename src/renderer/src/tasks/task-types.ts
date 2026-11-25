@@ -1,33 +1,21 @@
 import type { StoreApi } from 'zustand';
 import type {
-  TaskControlAvailability,
-  TaskControls,
   TaskFailure,
-  TaskGroupOutcome,
   TaskGroupPreparation,
-  TaskGroupState,
   TaskGroupSummary,
   TaskGroupViewItem,
   TaskMessage,
-  TaskPreparationIssue,
   TaskProgress,
-  TaskStatus,
   TaskViewItem,
 } from '@shared/tasks';
 
 export type {
-  TaskControlAvailability,
-  TaskControls,
   TaskFailure,
-  TaskGroupOutcome,
   TaskGroupPreparation,
-  TaskGroupState,
   TaskGroupSummary,
   TaskGroupViewItem,
   TaskMessage,
-  TaskPreparationIssue,
   TaskProgress,
-  TaskStatus,
   TaskViewItem,
 };
 

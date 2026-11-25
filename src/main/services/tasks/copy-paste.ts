@@ -259,7 +259,7 @@ export interface PrepareCopyGroupOptions {
 
 type CopyGroupPreparationContext = Pick<
   TaskGroupPreparationContext<{ copy: { input: CopyTaskRequest; result: Entry } }>,
-  'signal' | 'enqueue' | 'reportProgress' | 'reportIssue'
+  'signal' | 'enqueue' | 'reportIssue'
 >;
 
 export async function prepareCopyGroup(
@@ -272,21 +272,6 @@ export async function prepareCopyGroup(
 ): Promise<void> {
   const pending: CopyDiscoveryItem[] = initialItems.map((item) => ({ ...item }));
   const visitedDirectories = new Set<string>([entryKey(request.targetParent)]);
-  let discoveredFiles = 0;
-  let scannedDirectories = 0;
-
-  const updateProgress = () => {
-    context.reportProgress({
-      kind: 'indeterminate',
-      stage: { key: 'storage:copyScanning' },
-      summary: {
-        key: 'storage:copyPreparationProgress',
-        values: { files: discoveredFiles, folders: scannedDirectories },
-      },
-    });
-  };
-  updateProgress();
-
   const caseInsensitive = options?.caseInsensitive === true;
 
   if (options?.sameDirectory) {
@@ -329,8 +314,6 @@ export async function prepareCopyGroup(
         });
         continue;
       }
-      discoveredFiles += 1;
-      updateProgress();
       await context.enqueue(
         {
           type: 'copy',
@@ -367,8 +350,6 @@ export async function prepareCopyGroup(
       if (item.emitAddedOnCreate) {
         emitDirectoryChanged({ kind: 'added', parent: item.targetParent, entry: createdDir });
       }
-      scannedDirectories += 1;
-      updateProgress();
 
       let cursor: string | undefined;
       do {

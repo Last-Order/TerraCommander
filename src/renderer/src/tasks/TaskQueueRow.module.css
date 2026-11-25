@@ -102,8 +102,7 @@
 }
 
 .titlePart,
-.location,
-.progressNote {
+.location {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -151,12 +150,6 @@
 .progress > span {
   flex: none;
   white-space: nowrap;
-}
-
-.progress > .progressNote {
-  min-width: 0;
-  max-width: 16rem;
-  flex: 0 1 auto;
 }
 
 .aside {
@@ -237,10 +230,6 @@
 
 .members > li > .header {
   padding-inline: 0;
-}
-
-.members > li > .details {
-  padding-inline: calc(14px + 0.5rem) 0;
 }
 
 .preparationIssues {

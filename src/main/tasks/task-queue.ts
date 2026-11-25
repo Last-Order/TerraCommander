@@ -71,7 +71,7 @@ export class TaskQueue<
       nextId: () => ++this.nextId,
       getTasks: () => this.state.tasks,
       getGroups: () => this.state.groups,
-      setGroups: (groups, change) => this.setState({ groups }, change),
+      setGroups: (groups) => this.setState({ groups }),
       subscribe: (listener) => this.store.subscribe(listener),
       enqueue: (request, membership) => this.enqueue(request, membership),
       invokeHook: (id, hook) => this.invokeHook(id, hook),
@@ -88,14 +88,6 @@ export class TaskQueue<
 
   sealGroup(id: number): void {
     this.groupCoordinator.sealGroup(id);
-  }
-
-  hasGroupMember(groupId: number, memberKey: string): boolean {
-    return this.groupCoordinator.hasMember(groupId, memberKey);
-  }
-
-  waitForGroupCapacity(groupId: number, signal: AbortSignal, limit = 64): Promise<void> {
-    return this.groupCoordinator.waitForCapacity(groupId, signal, limit);
   }
 
   /** Updates a category's concurrency limit and drains queued tasks if capacity increased. */
@@ -124,7 +116,8 @@ export class TaskQueue<
       this.groupCoordinator.hasMember(membership.groupId, membership.memberKey)
     )
       return false;
-    const keys = request.resources ?? this.handlers[request.type].conflictKeys(request.input);
+    const keys =
+      request.resources ?? this.handlers[request.type].conflictKeys?.(request.input) ?? [];
     if (this.conflicts.hasConflicts(keys, membership.groupId)) return false;
 
     const task: QueueTask<Definitions, Type> = {
@@ -183,7 +176,7 @@ export class TaskQueue<
     const task = this.state.tasks.find((candidate) => candidate.id === id);
     if (!task || !this.canRetry(task)) return;
     const handler = this.handlers[task.request.type];
-    const keys = task.request.resources ?? handler.conflictKeys(task.request.input);
+    const keys = task.request.resources ?? handler.conflictKeys?.(task.request.input) ?? [];
     const extraConflicts = this.groupCoordinator.extraRetryConflicts(task.groupId);
     if (this.conflicts.hasConflicts([...keys, ...extraConflicts], task.groupId)) return;
     this.groupCoordinator.reopenForRetry(task.groupId);
@@ -262,8 +255,6 @@ export class TaskQueue<
       request: task.request,
       status: 'queued',
       ...(task.progress ? { progress: task.progress } : {}),
-      ...(task.groupId !== undefined ? { groupId: task.groupId } : {}),
-      ...(task.memberKey !== undefined ? { memberKey: task.memberKey } : {}),
     });
     this.drain();
   }

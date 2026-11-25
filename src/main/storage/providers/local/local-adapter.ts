@@ -77,12 +77,18 @@ export function localSpace(
   };
 }
 
+function errorCode(error: unknown): string | undefined {
+  return typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof error.code === 'string'
+    ? error.code
+    : undefined;
+}
+
 export function localFailure(error: unknown, signal?: AbortSignal): never {
   throwIfAborted(signal);
-  const code =
-    typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
-      ? error.code
-      : undefined;
+  const code = errorCode(error);
   const options = code ? { cause: error, providerCode: code } : { cause: error };
   if (code === 'ENOENT' || code === 'ENOTDIR') throw new StorageError('NotFound', options);
   if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS') {
@@ -236,32 +242,15 @@ class LocalAdapter implements StorageAdapter {
     }
     const { path, info } = await this.locate(ref, signal);
     if (basename(path) === name) return this.toEntry(ref, name, path, info, signal);
-    const target = join(dirname(path), name);
-    try {
-      const existing = await lstat(target).catch((error: unknown) => {
-        if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')
-          return undefined;
-        throw error;
-      });
-      let caseOnly =
-        existing !== undefined &&
-        basename(path).toLowerCase() === name.toLowerCase() &&
-        existing.dev === info.dev &&
-        existing.ino === info.ino;
-      if (caseOnly && existing && existing.nlink > 1) {
-        const siblings = await readdir(dirname(path));
-        caseOnly = !siblings.includes(name);
-      }
-      if (existing && !caseOnly) throw new StorageError('AlreadyExists');
-      throwIfAborted(signal);
-      await rename(path, target);
-      return await this.stat(
-        { ...ref, locator: joinLocalLocator(parentLocalLocator(ref.locator), name) },
-        {},
-      );
-    } catch (error) {
-      localFailure(error, signal);
-    }
+    return this.performRename({
+      sourcePath: path,
+      sourceInfo: info,
+      parentPath: dirname(path),
+      name,
+      sameParent: true,
+      targetRef: { ...ref, locator: joinLocalLocator(parentLocalLocator(ref.locator), name) },
+      signal,
+    });
   }
 
   async createDirectory(
@@ -333,11 +322,38 @@ class LocalAdapter implements StorageAdapter {
     if (sameParent && basename(sourcePath) === name) {
       return this.toEntry(ref, name, sourcePath, sourceInfo, signal);
     }
+    return this.performRename({
+      sourcePath,
+      sourceInfo,
+      parentPath,
+      name,
+      sameParent,
+      targetRef: { ...parent, locator: joinLocalLocator(parent.locator, name) },
+      signal,
+    });
+  }
+
+  private async performRename({
+    sourcePath,
+    sourceInfo,
+    parentPath,
+    name,
+    sameParent,
+    targetRef,
+    signal,
+  }: {
+    sourcePath: string;
+    sourceInfo: Stats;
+    parentPath: string;
+    name: string;
+    sameParent: boolean;
+    targetRef: EntryRef;
+    signal: AbortSignal | undefined;
+  }): Promise<Entry> {
     const targetPath = join(parentPath, name);
     try {
       const existing = await lstat(targetPath).catch((error: unknown) => {
-        if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')
-          return undefined;
+        if (errorCode(error) === 'ENOENT') return undefined;
         throw error;
       });
       let caseOnly =
@@ -353,7 +369,7 @@ class LocalAdapter implements StorageAdapter {
       if (existing && !caseOnly) throw new StorageError('AlreadyExists');
       throwIfAborted(signal);
       await rename(sourcePath, targetPath);
-      return await this.stat({ ...parent, locator: joinLocalLocator(parent.locator, name) }, {});
+      return await this.stat(targetRef, {});
     } catch (error) {
       localFailure(error, signal);
     }
@@ -434,13 +450,7 @@ async function resolveDirectoryWriteCapability(
     await access(path, constants.W_OK);
     return supported;
   } catch (error) {
-    const code =
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      typeof error.code === 'string'
-        ? error.code
-        : undefined;
+    const code = errorCode(error);
     if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS') return unsupported;
     return unknown;
   }

@@ -222,20 +222,6 @@ export class StorageTaskService {
           return;
         }
       }
-      if (change.kind === 'group-progress') {
-        const group = state.groups.find((item) => item.id === change.groupId);
-        if (group) {
-          this.emit({
-            type: 'group-progress',
-            groupId: group.id,
-            progress: group.progress,
-            ...(group.preparation.progress !== undefined
-              ? { preparationProgress: group.preparation.progress }
-              : {}),
-          });
-          return;
-        }
-      }
       this.emit({ type: 'snapshot', snapshot: this.getSnapshot() });
     });
   }
@@ -360,14 +346,6 @@ export class StorageTaskService {
     }
     this.queue.sealGroup(groupId);
     return true;
-  }
-
-  uploadFile(
-    owner: number,
-    request: UploadFileRequest,
-    pickFile: () => Promise<string | undefined>,
-  ): Promise<void> {
-    return this.session.uploadFile(owner, request, pickFile);
   }
 
   uploadPaths(
@@ -708,7 +686,6 @@ export class StorageTaskService {
   > {
     return {
       category: 'operation',
-      conflictKeys: ({ parent, name }) => [slotConflictKey(parent, name)],
       execute: async ({ parent, name }) => ({
         status: 'completed',
         result: await this.browser.createDirectory({ parent, name }),
@@ -729,11 +706,6 @@ export class StorageTaskService {
   private createRenameHandler(): TaskHandler<RenameTaskRequest, Entry, TaskCategory> {
     return {
       category: 'operation',
-      conflictKeys: ({ parent, entry, name }) => [
-        entryKey(entry.ref),
-        slotConflictKey(parent, entry.name),
-        slotConflictKey(parent, name),
-      ],
       execute: async ({ entry, name }) => ({
         status: 'completed',
         result: await this.browser.renameEntry(entry.ref, name),
@@ -759,10 +731,6 @@ export class StorageTaskService {
   private createDeleteHandler(): TaskHandler<DeleteTaskRequest, void, TaskCategory> {
     return {
       category: 'operation',
-      conflictKeys: ({ parent, entry }) => [
-        entryKey(entry.ref),
-        slotConflictKey(parent, entry.name),
-      ],
       execute: async ({ entry }) => {
         await this.browser.deleteEntry(entry.ref);
         return { status: 'completed', result: undefined };
@@ -782,7 +750,6 @@ export class StorageTaskService {
   private createCopyHandler(): TaskHandler<CopyTaskRequest, Entry, TaskCategory> {
     return {
       category: 'operation',
-      conflictKeys: ({ targetParent, targetName }) => [slotConflictKey(targetParent, targetName)],
       execute: async ({ entry, targetParent, targetName }) => ({
         status: 'completed',
         result: await this.browser.copyWithin(entry.ref, {
@@ -805,11 +772,6 @@ export class StorageTaskService {
   private createMoveHandler(): TaskHandler<MoveTaskRequest, Entry, TaskCategory> {
     return {
       category: 'operation',
-      conflictKeys: ({ sourceParent, entry, targetParent, targetName }) => [
-        entryKey(entry.ref),
-        slotConflictKey(sourceParent, entry.name),
-        slotConflictKey(targetParent, targetName),
-      ],
       execute: async ({ entry, targetParent, targetName }) => ({
         status: 'completed',
         result: await this.browser.moveWithin(entry.ref, {
@@ -906,8 +868,6 @@ export class StorageTaskService {
           this.browser.downloads.cancelBatchItem(queueOwnerId, prepared.id, itemId),
         cancelErrorMessage: 'Download directory preparation cancellation failed.',
         fatalErrorCodes: fatalDirectoryErrorCodes,
-        stageKey: 'storage:downloadScanning',
-        summaryKey: 'storage:downloadPreparationProgress',
         enqueueFile: async (item, prepContext) => {
           const admitted = await prepContext.enqueue(
             {
@@ -998,14 +958,6 @@ export class StorageTaskService {
     context: TaskGroupPreparationContext<InternalTaskDefinitions>,
   ): Promise<void> {
     if (prepared.needsValidation) {
-      context.reportProgress({
-        kind: 'indeterminate',
-        stage: { key: 'storage:uploadScanning' },
-        summary: {
-          key: 'storage:uploadPreparationProgress',
-          values: { files: 0, folders: 0 },
-        },
-      });
       await this.browser.uploads.validateDestination(
         request.parent,
         prepared.needsValidation.requireCreateDirectory,
@@ -1025,8 +977,6 @@ export class StorageTaskService {
           this.browser.uploads.cancelBatchItem(queueOwnerId, prepared.id, itemId),
         cancelErrorMessage: 'Upload directory preparation cancellation failed.',
         fatalErrorCodes: fatalUploadDirectoryErrorCodes,
-        stageKey: 'storage:uploadScanning',
-        summaryKey: 'storage:uploadPreparationProgress',
         beforeDirectory: (item, prepContext) => {
           if (!item.code) return true;
           prepContext.reportIssue({
@@ -1118,7 +1068,6 @@ export class StorageTaskService {
       ...(task.status === 'failed' || (task.status === 'paused' && task.failure)
         ? { failure: task.failure }
         : {}),
-      ...(task.status === 'completed' ? { result: task.result } : {}),
       ...(task.groupId !== undefined ? { groupId: task.groupId } : {}),
     };
   }
@@ -1130,7 +1079,6 @@ export class StorageTaskService {
       sealed: group.sealed,
       state: group.state,
       summary: group.summary,
-      progress: group.progress,
       preparation: group.preparation,
     };
   }

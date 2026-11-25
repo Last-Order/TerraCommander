@@ -54,10 +54,7 @@ export class StorageSpaceCatalog {
 
   withBrowsableSpace<T>({ connectionId, spaceId }: EntryRef, run: () => Promise<T>): Promise<T> {
     return this.connections.withConnection(connectionId, (integration) => {
-      if (
-        !this.knownSpaces(connectionId, integration).has(spaceId) &&
-        !this.displayedSpaces(connectionId, integration).some((space) => space.id === spaceId)
-      ) {
+      if (!this.findSpace(connectionId, spaceId, integration)) {
         throw new StorageError('NotFound');
       }
       return run();
@@ -66,9 +63,7 @@ export class StorageSpaceCatalog {
 
   async spaceSemantics({ connectionId, spaceId }: EntryRef): Promise<SpaceSemantics | undefined> {
     const integration = await this.connections.resolveIntegration(connectionId);
-    const space =
-      this.knownSpaces(connectionId, integration).get(spaceId) ??
-      this.displayedSpaces(connectionId, integration).find((item) => item.id === spaceId);
+    const space = this.findSpace(connectionId, spaceId, integration);
     return space?.semantics ?? integration.spaceSemantics;
   }
 
@@ -106,6 +101,17 @@ export class StorageSpaceCatalog {
       this.spaceDiscovery.set(id, pending);
     }
     return pending;
+  }
+
+  private findSpace(
+    connectionId: string,
+    spaceId: string,
+    integration: StorageProviderIntegration,
+  ): Space | undefined {
+    return (
+      this.knownSpaces(connectionId, integration).get(spaceId) ??
+      this.displayedSpaces(connectionId, integration).find((item) => item.id === spaceId)
+    );
   }
 
   private knownSpaces(id: string, integration: StorageProviderIntegration): Map<string, Space> {

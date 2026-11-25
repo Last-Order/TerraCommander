@@ -172,9 +172,6 @@ export class StorageTaskClient implements TaskQueueViewClient<
       case 'task-progress':
         this.applyTaskProgress(event.taskId, event.progress);
         return;
-      case 'group-progress':
-        this.applyGroupProgress(event.groupId, event.progress, event.preparationProgress);
-        return;
       case 'directory-changed':
         this.applyDirectoryChange(event.change);
         return;
@@ -195,27 +192,6 @@ export class StorageTaskClient implements TaskQueueViewClient<
       const tasks = [...state.tasks];
       tasks[index] = { ...tasks[index]!, progress };
       return { tasks };
-    });
-  }
-
-  private applyGroupProgress(
-    groupId: number,
-    progress: TaskProgress,
-    preparationProgress?: TaskProgress,
-  ): void {
-    this.store.setState((state) => {
-      const index = state.groups.findIndex((group) => group.id === groupId);
-      if (index < 0) return state;
-      const group = state.groups[index]!;
-      const groups = [...state.groups];
-      groups[index] = {
-        ...group,
-        progress,
-        ...(preparationProgress !== undefined
-          ? { preparation: { ...group.preparation, progress: preparationProgress } }
-          : {}),
-      };
-      return { groups };
     });
   }
 

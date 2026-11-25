@@ -1,9 +1,7 @@
 import { z } from 'zod';
-import { canonicalJson, jsonFingerprint } from '@main/common/canonical-json';
+import { jsonFingerprint } from '@main/common/canonical-json';
 import { operations, storageLabelKeys } from '@shared/storage/models';
 import { StorageError } from './errors';
-
-export { canonicalJson };
 
 const identifier = z.string().min(1);
 
@@ -21,7 +19,7 @@ export const entryNameSchema = z
   .min(1)
   .max(32_768)
   .refine((name) => name.trim().length > 0 && !name.includes('\0'));
-export const capabilitySchema = z.strictObject({
+const capabilitySchema = z.strictObject({
   support: z.enum(['supported', 'unsupported', 'unknown']),
 });
 export const capabilitiesSchema = z.partialRecord(z.enum(operations), capabilitySchema);

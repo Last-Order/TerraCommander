@@ -1,5 +1,5 @@
+import { isFinishedTask } from '@shared/task-selectors';
 import type { TaskPresenter } from './task-row-model';
-import { isFinishedTask } from './task-selectors';
 import type { TaskGroupViewItem, TaskQueueViewClient, TaskViewItem } from './task-types';
 import { TaskQueueRow } from './TaskQueueRow';
 

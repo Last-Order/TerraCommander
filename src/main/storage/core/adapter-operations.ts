@@ -49,12 +49,9 @@ export function scopeConnection(scope: CapabilityScope): string {
   return scope.kind === 'entry' ? scope.ref.connectionId : scope.connectionId;
 }
 
-export function checkedEntry(input: unknown, connectionId: string, spaceId?: string): Entry {
+export function checkedEntry(input: unknown, connectionId: string, spaceId: string): Entry {
   const entry = parse(entrySchema, input, 'OutcomeUnknown');
-  if (
-    entry.ref.connectionId !== connectionId ||
-    (spaceId !== undefined && entry.ref.spaceId !== spaceId)
-  ) {
+  if (entry.ref.connectionId !== connectionId || entry.ref.spaceId !== spaceId) {
     throw new StorageError('OutcomeUnknown');
   }
   return entry;
@@ -77,7 +74,7 @@ export async function requireCapabilities(
   ref: EntryRef,
   requests: CapabilityRequirement[],
   ctx: OperationContext,
-): Promise<Capabilities> {
+): Promise<void> {
   const capabilities = await getCapabilities(
     adapter,
     { kind: 'space', connectionId: ref.connectionId, spaceId: ref.spaceId },
@@ -94,6 +91,4 @@ export async function requireCapabilities(
       throw new StorageError('Unsupported');
     }
   }
-
-  return capabilities;
 }

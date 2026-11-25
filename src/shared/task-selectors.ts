@@ -36,10 +36,6 @@ export function topLevelEntries<
   ].sort((left, right) => right.id - left.id);
 }
 
-export function isActiveTask({ status }: { status: TaskStatus }): boolean {
-  return status === 'queued' || status === 'running';
-}
-
 export function isFinishedTask({ status }: { status: TaskStatus }): boolean {
   return (
     status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'skipped'
