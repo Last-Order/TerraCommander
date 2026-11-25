@@ -61,43 +61,41 @@ export function useDirectoryClipboard({ blocked }: DirectoryClipboardOptions) {
     return new Set(clipboard.entries.map((entry) => entry.ref.locator));
   }, [clipboard, parent]);
 
-  const copy = (entries: readonly Entry[]) => {
+  const writeClipboard = (mode: 'copy' | 'cut', entries: readonly Entry[]) => {
     if (entries.length === 0) return;
     setClipboard({
-      mode: 'copy',
+      mode,
       sourceParent: parent,
       sourceDirectoryPath: directoryPath,
       entries,
     });
+    const singleKey = mode === 'copy' ? 'copiedEntryNotice' : 'cutEntryNotice';
+    const pluralKey = mode === 'copy' ? 'copiedEntriesNotice' : 'cutEntriesNotice';
     notifications.show({
       id: copyEntriesNotification,
       color: 'blue',
       message:
         entries.length === 1
-          ? t('copiedEntryNotice', { name: entries[0]!.name })
-          : t('copiedEntriesNotice', { count: entries.length }),
+          ? t(singleKey, { name: entries[0]!.name })
+          : t(pluralKey, { count: entries.length }),
     });
   };
 
-  const cut = (entries: readonly Entry[]) => {
-    if (entries.length === 0) return;
-    setClipboard({
-      mode: 'cut',
-      sourceParent: parent,
-      sourceDirectoryPath: directoryPath,
-      entries,
-    });
-    notifications.show({
-      id: copyEntriesNotification,
-      color: 'blue',
-      message:
-        entries.length === 1
-          ? t('cutEntryNotice', { name: entries[0]!.name })
-          : t('cutEntriesNotice', { count: entries.length }),
-    });
-  };
-
+  const copy = (entries: readonly Entry[]) => writeClipboard('copy', entries);
+  const cut = (entries: readonly Entry[]) => writeClipboard('cut', entries);
   const clear = () => setClipboard(null);
+
+  const handlePasteError = (caught: unknown) => {
+    if (caught instanceof StorageBrowserError && caught.code === 'AuthRequired') {
+      onAuthRequired();
+      return;
+    }
+    notifications.show({
+      id: pasteStatusNotification,
+      color: 'red',
+      message: t(`errors:${errorKey(caught)}`),
+    });
+  };
 
   const paste = async () => {
     if (!clipboard || clipboard.entries.length === 0 || blocked) return;
@@ -143,15 +141,7 @@ export function useDirectoryClipboard({ blocked }: DirectoryClipboardOptions) {
         setClipboard(null);
       }
     } catch (caught) {
-      if (caught instanceof StorageBrowserError && caught.code === 'AuthRequired') {
-        onAuthRequired();
-        return;
-      }
-      notifications.show({
-        id: pasteStatusNotification,
-        color: 'red',
-        message: t(`errors:${errorKey(caught)}`),
-      });
+      handlePasteError(caught);
     }
   };
 
@@ -164,17 +154,7 @@ export function useDirectoryClipboard({ blocked }: DirectoryClipboardOptions) {
       .then(() => {
         if (clearClipboardOnConfirm) setClipboard(null);
       })
-      .catch((caught) => {
-        if (caught instanceof StorageBrowserError && caught.code === 'AuthRequired') {
-          onAuthRequired();
-        } else {
-          notifications.show({
-            id: pasteStatusNotification,
-            color: 'red',
-            message: t(`errors:${errorKey(caught)}`),
-          });
-        }
-      })
+      .catch(handlePasteError)
       .finally(() => setPasteConflict(null));
   };
 

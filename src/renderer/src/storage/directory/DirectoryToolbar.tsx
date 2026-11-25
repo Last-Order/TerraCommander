@@ -44,11 +44,7 @@ interface MoreButtonProps {
 
 function MoreButton({ buttonRef, actions }: MoreButtonProps) {
   const { t } = useTranslation('storage');
-  const { canCreateDirectory } = useCurrentDirectory();
-  const disabled =
-    (!canCreateDirectory || !actions.createDirectoryEnabled) &&
-    !actions.canPaste &&
-    actions.refreshDisabled;
+  const disabled = !actions.createDirectoryEnabled && !actions.canPaste && actions.refreshDisabled;
 
   return (
     <Menu position="bottom-end" withinPortal>
@@ -79,8 +75,7 @@ interface AddButtonProps {
 function AddButton({ createDirectoryEnabled, upload, onCreateDirectory }: AddButtonProps) {
   const { t } = useTranslation('storage');
   const { canCreateDirectory, canUpload, canUploadFolder } = useCurrentDirectory();
-  const disabled =
-    (!canCreateDirectory || !createDirectoryEnabled) && (!canUpload || upload.disabled);
+  const disabled = !createDirectoryEnabled && (!canUpload || upload.disabled);
 
   return (
     <Menu position="bottom-end" withinPortal>

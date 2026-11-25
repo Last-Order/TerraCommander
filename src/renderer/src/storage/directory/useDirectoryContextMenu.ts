@@ -6,9 +6,11 @@ export interface DirectoryContextMenuPosition {
   y: number;
 }
 
-export type DirectoryContextMenuState =
-  | { kind: 'entry'; entry: Entry; x: number; y: number }
-  | { kind: 'blank'; x: number; y: number };
+export type DirectoryContextMenuState = {
+  kind: 'entry' | 'blank';
+  x: number;
+  y: number;
+};
 
 type StoredContextMenu =
   | { kind: 'entry'; locator: string; x: number; y: number }
@@ -16,25 +18,25 @@ type StoredContextMenu =
 
 interface UseDirectoryContextMenuOptions {
   entries: ReadonlyMap<string, Entry>;
-  phase: string;
+  ready: boolean;
   selectForContextMenu: (locator: string) => void;
 }
 
 export function useDirectoryContextMenu({
   entries,
-  phase,
+  ready,
   selectForContextMenu,
 }: UseDirectoryContextMenuOptions) {
   const [stored, setStored] = useState<StoredContextMenu | null>(null);
 
   const menuEntry = stored?.kind === 'entry' ? entries.get(stored.locator) : undefined;
-  if (phase === 'ready' && stored?.kind === 'entry' && !menuEntry) setStored(null);
+  if (ready && stored?.kind === 'entry' && !menuEntry) setStored(null);
 
   let activeMenu: DirectoryContextMenuState | null = null;
   if (stored?.kind === 'blank') {
     activeMenu = stored;
   } else if (stored?.kind === 'entry' && menuEntry) {
-    activeMenu = { kind: 'entry', entry: menuEntry, x: stored.x, y: stored.y };
+    activeMenu = { kind: 'entry', x: stored.x, y: stored.y };
   }
 
   const closeMenu = useCallback(() => {

@@ -53,12 +53,12 @@ function DirectorySkeletonRows() {
 interface DirectoryTableProps {
   scrollElement: HTMLDivElement | null;
   rows: readonly DirectoryRow[];
-  revealTarget?: DirectoryRevealTarget | null;
+  revealTarget: DirectoryRevealTarget | null;
   canSort: boolean;
   loadingWithoutEntries: boolean;
-  navigationBlocked?: boolean | undefined;
+  navigationBlocked: boolean;
   selectedLocators: ReadonlySet<string>;
-  cutLocators?: ReadonlySet<string> | undefined;
+  cutLocators: ReadonlySet<string> | undefined;
   onSelect: (locator: string, modifiers: DirectorySelectionModifiers) => void;
   onContextMenu: (entry: Entry, position: DirectoryContextMenuPosition) => void;
   onOpen: (entry: Entry) => void;
@@ -67,10 +67,10 @@ interface DirectoryTableProps {
 export function DirectoryTable({
   scrollElement,
   rows,
-  revealTarget = null,
+  revealTarget,
   canSort,
   loadingWithoutEntries,
-  navigationBlocked = false,
+  navigationBlocked,
   selectedLocators,
   cutLocators,
   onSelect,

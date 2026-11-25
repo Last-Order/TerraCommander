@@ -105,7 +105,7 @@ export function useDirectoryListing({ cacheable, version }: ListingOptions) {
           setListing({
             phase: 'error',
             entries: nextEntries,
-            snapshot: previous ? withAdditions(previous) : undefined,
+            snapshot: previous ? nextEntries : undefined,
             error,
           });
         }

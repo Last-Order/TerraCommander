@@ -1,5 +1,3 @@
-import type { DirectorySelectionModifiers } from './directory-types';
-
 export type DirectoryNavigationKey =
   | 'ArrowDown'
   | 'ArrowUp'
@@ -46,14 +44,4 @@ export function resolveDirectoryNavigationIndex(
     case 'PageUp':
       return clampedCurrent < 0 ? lastIndex : Math.max(0, clampedCurrent - step);
   }
-}
-
-export function resolveSpaceSelectionModifiers(event: {
-  ctrlKey: boolean;
-  shiftKey: boolean;
-}): DirectorySelectionModifiers {
-  return {
-    toggle: event.ctrlKey,
-    range: event.shiftKey,
-  };
 }

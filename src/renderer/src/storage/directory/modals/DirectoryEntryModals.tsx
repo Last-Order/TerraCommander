@@ -23,7 +23,7 @@ export interface DirectoryPasteConflictModal {
 
 interface DirectoryEntryModalsProps {
   modal: DirectoryModal | null;
-  pasteConflict?: DirectoryPasteConflictModal | null | undefined;
+  pasteConflict: DirectoryPasteConflictModal | null;
   onClose: () => void;
 }
 

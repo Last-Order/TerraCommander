@@ -78,7 +78,6 @@ export const DirectoryEntryRow = memo(function DirectoryEntryRow({
         <button
           type="button"
           className={classes.entry}
-          data-kind={entry.kind}
           aria-pressed={selected}
           title={disabled ? disabledTitle : undefined}
           onKeyDown={(event) => {

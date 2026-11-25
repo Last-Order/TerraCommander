@@ -77,7 +77,7 @@ export function DirectoryListing({
   const capabilities = useMemo(() => resolveEntryCapabilities(selectedEntries), [selectedEntries]);
   const menu = useDirectoryContextMenu({
     entries,
-    phase,
+    ready: phase === 'ready',
     selectForContextMenu,
   });
   const modals = useDirectoryEntryModals({

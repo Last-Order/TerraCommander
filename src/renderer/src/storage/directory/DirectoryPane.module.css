@@ -18,10 +18,12 @@
 
 .crumb svg {
   flex: none;
+  color: var(--storage-muted);
 }
 
 .crumb span,
 .crumb button {
+  padding: 0.25rem 0.5rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -42,17 +44,8 @@
   gap: 0.25rem;
 }
 
-.crumb button,
-.crumb span {
-  padding: 0.25rem 0.5rem;
-}
-
 .crumb span {
   font-weight: 500;
-}
-
-.crumb svg {
-  color: var(--storage-muted);
 }
 
 .emptyDirectory {

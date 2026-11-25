@@ -9,11 +9,7 @@ import {
   type FocusEvent,
   type KeyboardEvent,
 } from 'react';
-import {
-  isDirectoryNavigationKey,
-  resolveDirectoryNavigationIndex,
-  resolveSpaceSelectionModifiers,
-} from './directory-navigation';
+import { isDirectoryNavigationKey, resolveDirectoryNavigationIndex } from './directory-navigation';
 import type {
   DirectoryRevealTarget,
   DirectoryRow,
@@ -230,7 +226,7 @@ export function useDirectoryVirtualizer({
       const current = rows[currentIndex];
       if (!current) return;
       event.preventDefault();
-      onSelect(current.entry.ref.locator, resolveSpaceSelectionModifiers(event));
+      onSelect(current.entry.ref.locator, { toggle: event.ctrlKey, range: event.shiftKey });
       return;
     }
 

@@ -47,12 +47,7 @@ export function validatePaste({
     clipboard.entries.some(
       (entry) =>
         entry.kind === 'directory' &&
-        targetAncestors.some(
-          (ancestor) =>
-            ancestor.connectionId === entry.ref.connectionId &&
-            ancestor.spaceId === entry.ref.spaceId &&
-            ancestor.locator === entry.ref.locator,
-        ),
+        targetAncestors.some((ancestor) => entryKey(ancestor) === entryKey(entry.ref)),
     )
   ) {
     return { status: 'rejected', reason: 'selfContainment' };

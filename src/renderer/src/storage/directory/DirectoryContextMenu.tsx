@@ -26,7 +26,7 @@ export interface DirectoryBlankActions {
   onRefresh: () => void;
 }
 
-export interface DirectoryEntryActions {
+interface DirectoryEntryActions {
   onCopy: () => void;
   onCut: () => void;
   onDownload: () => void;
@@ -103,7 +103,7 @@ function DirectoryEntryMenuItems({
   const { t } = useTranslation('storage');
   const { canCopy, canCut, canDownload, canRename, canDelete } = capabilities;
   const { onCopy, onCut, onDownload, onRename, onInformation, onDelete } = actions;
-  const selectionBusy = useSelectionBusy(selectedEntries, true);
+  const selectionBusy = useSelectionBusy(selectedEntries);
 
   return (
     <>
