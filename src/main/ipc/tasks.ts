@@ -5,12 +5,7 @@ import { localConnectionId } from '@shared/storage-browser';
 import { isTrustedRenderer } from '../security';
 import type { ApplicationServices } from '../services/application-services';
 import type { StorageTaskService } from '../services/tasks/storage-task-service';
-import {
-  capabilitiesSchema,
-  entryNameSchema,
-  entryRefSchema,
-  entrySchema,
-} from '../storage/core/validation';
+import { entryNameSchema, entryRefSchema, entrySchema } from '../storage/core/validation';
 import type { TrustedIpc } from './helpers';
 
 const connectionId = z.union([z.literal(localConnectionId), z.uuid()]);
@@ -63,7 +58,6 @@ const pasteEntriesSchema = z.strictObject({
   targetParent: refSchema,
   targetDirectoryPath: pathSchema,
   targetAncestors: z.array(refSchema).optional(),
-  targetCapabilities: capabilitiesSchema.optional(),
 });
 
 const uploadFileSchema = z.strictObject({ parent: remoteRefSchema, directoryPath: pathSchema });

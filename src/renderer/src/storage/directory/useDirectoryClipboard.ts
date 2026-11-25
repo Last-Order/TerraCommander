@@ -27,12 +27,7 @@ export function useDirectoryClipboard({ blocked }: DirectoryClipboardOptions) {
   const { t } = useTranslation(['storage', 'errors']);
   const { onAuthRequired } = useStorageWorkspace();
   const queue = useStorageTaskQueue();
-  const {
-    ref: parent,
-    path: directoryPath,
-    capabilities: targetCapabilities,
-    ancestors: targetAncestors,
-  } = useCurrentDirectory();
+  const { ref: parent, path: directoryPath, ancestors: targetAncestors } = useCurrentDirectory();
   const clipboard = useStorageClipboard((state) => state.clipboard);
   const setClipboard = useStorageClipboard((state) => state.setClipboard);
   const [pasteConflict, setPasteConflict] = useState<PasteConflictState | null>(null);
@@ -109,7 +104,6 @@ export function useDirectoryClipboard({ blocked }: DirectoryClipboardOptions) {
         targetParent: parent,
         targetDirectoryPath: directoryPath,
         targetAncestors,
-        targetCapabilities,
       });
       if (response.status === 'rejected') {
         const notice = {

@@ -34,14 +34,12 @@ export function createStorageServices({
   const storage = new StorageAccess(connections.registry);
   const spaces = new StorageSpaceCatalog(preferences, storage, connections);
 
-  let downloads!: DownloadService;
   const operations = new StorageEntryOperations({
     storage,
     connections,
     spaces,
-    beforeSourceMutation: (ref) => downloads.assertSourceAvailable(ref),
   });
-  downloads = new DownloadService({
+  const downloads = new DownloadService({
     stat: (ref, context) => operations.statEntry(ref, context),
     read: (ref, options, context) => operations.readEntry(ref, options, context),
     list: (ref, request, context) => operations.listDirectory(ref, request, context),

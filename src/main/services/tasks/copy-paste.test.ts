@@ -24,6 +24,7 @@ function createMockBrowser() {
   const resolveLocalPath = vi.fn<StorageTaskOperations['resolveLocalPath']>();
   const listDirectory = vi.fn<StorageTaskOperations['listDirectory']>();
   const spaceSemantics = vi.fn<StorageTaskOperations['spaceSemantics']>(async () => undefined);
+  const spaceCapabilities = vi.fn<StorageTaskOperations['spaceCapabilities']>(async () => ({}));
   const createDirectory = vi.fn<StorageTaskOperations['createDirectory']>();
   const renameEntry = vi.fn<StorageTaskOperations['renameEntry']>();
   const copyWithin = vi.fn<StorageTaskOperations['copyWithin']>();
@@ -50,6 +51,7 @@ function createMockBrowser() {
     runWork: vi.fn<DownloadService['runWork']>(async () => ({ status: 'completed' })),
     pauseWork: vi.fn<DownloadService['pauseWork']>(async () => undefined),
     cancelOwner: vi.fn(),
+    assertSourceAvailable: vi.fn(),
   };
   const uploads = new UploadService({
     stat: statEntry,
@@ -70,6 +72,7 @@ function createMockBrowser() {
       resolveLocalPath,
       listDirectory,
       spaceSemantics,
+      spaceCapabilities,
       createDirectory,
       renameEntry,
       copyWithin,
@@ -86,6 +89,7 @@ function createMockBrowser() {
     resolveLocalPath,
     listDirectory,
     spaceSemantics,
+    spaceCapabilities,
     createDirectory,
     copyWithin,
     moveWithin,
@@ -894,7 +898,8 @@ it('rejects pasting a directory into itself or a descendant via targetAncestors'
 });
 
 it('enforces route-specific capabilities in planPaste without blocking copyWithin or moveWithin on target write', async () => {
-  const { browser, copyWithin, moveWithin, resolveLocalPath } = createMockBrowser();
+  const { browser, copyWithin, moveWithin, resolveLocalPath, spaceCapabilities } =
+    createMockBrowser();
   const service = new StorageTaskService(browser);
   const localRoot: EntryRef = { connectionId: localConnectionId, spaceId: 'local-1', locator: '.' };
   const remoteSrc: EntryRef = { connectionId: cloudConnectionA, spaceId: 'drive', locator: 'src' };
@@ -918,7 +923,8 @@ it('enforces route-specific capabilities in planPaste without blocking copyWithi
     capabilities: { moveWithin: { support: 'supported' } },
   };
 
-  // Upload requires target write and (for folders) createDirectory
+  // Upload requires target space write and (for folders) createDirectory
+  spaceCapabilities.mockResolvedValueOnce({ write: { support: 'unsupported' } });
   await expect(
     service.pasteEntries(1, {
       mode: 'copy',
@@ -927,11 +933,11 @@ it('enforces route-specific capabilities in planPaste without blocking copyWithi
       entries: [localFile],
       targetParent: remoteDst,
       targetDirectoryPath: 'Dst',
-      targetCapabilities: { write: { support: 'unsupported' } },
     }),
   ).resolves.toEqual({ status: 'rejected', reason: 'permission-denied' });
   expect(resolveLocalPath).not.toHaveBeenCalled();
 
+  spaceCapabilities.mockResolvedValueOnce({ createDirectory: { support: 'unsupported' } });
   await expect(
     service.pasteEntries(1, {
       mode: 'copy',
@@ -940,11 +946,11 @@ it('enforces route-specific capabilities in planPaste without blocking copyWithi
       entries: [{ ...localFile, kind: 'directory', name: 'dir' }],
       targetParent: remoteDst,
       targetDirectoryPath: 'Dst',
-      targetCapabilities: { createDirectory: { support: 'unsupported' } },
     }),
   ).resolves.toEqual({ status: 'rejected', reason: 'unsupported' });
 
-  // Download requires local target write
+  // Download requires local target space write
+  spaceCapabilities.mockResolvedValueOnce({ write: { support: 'unsupported' } });
   await expect(
     service.pasteEntries(1, {
       mode: 'copy',
@@ -953,11 +959,11 @@ it('enforces route-specific capabilities in planPaste without blocking copyWithi
       entries: [remoteFile],
       targetParent: localRoot,
       targetDirectoryPath: 'C:',
-      targetCapabilities: { write: { support: 'unsupported' } },
     }),
   ).resolves.toEqual({ status: 'rejected', reason: 'permission-denied' });
 
-  // Same-connection file copy uses copyWithin, not target write
+  // Same-connection file copy uses copyWithin, not target space write
+  spaceCapabilities.mockClear();
   copyWithin.mockResolvedValueOnce({ ...remoteFile, ref: { ...remoteDst, locator: 'file-2' } });
   await expect(
     service.pasteEntries(1, {
@@ -967,9 +973,9 @@ it('enforces route-specific capabilities in planPaste without blocking copyWithi
       entries: [remoteFile],
       targetParent: remoteDst,
       targetDirectoryPath: 'Dst',
-      targetCapabilities: { write: { support: 'unsupported' } },
     }),
   ).resolves.toEqual({ status: 'started' });
+  expect(spaceCapabilities).not.toHaveBeenCalled();
 
   // Same-connection file copy rejects when source copyWithin is unsupported
   await expect(
@@ -983,7 +989,8 @@ it('enforces route-specific capabilities in planPaste without blocking copyWithi
     }),
   ).resolves.toEqual({ status: 'rejected', reason: 'unsupported' });
 
-  // Same-connection folder copy rejects when target createDirectory is unsupported
+  // Same-connection folder copy rejects when target space createDirectory is unsupported
+  spaceCapabilities.mockResolvedValueOnce({ createDirectory: { support: 'unsupported' } });
   await expect(
     service.pasteEntries(1, {
       mode: 'copy',
@@ -992,11 +999,11 @@ it('enforces route-specific capabilities in planPaste without blocking copyWithi
       entries: [remoteFolder],
       targetParent: remoteDst,
       targetDirectoryPath: 'Dst',
-      targetCapabilities: { createDirectory: { support: 'unsupported' } },
     }),
   ).resolves.toEqual({ status: 'rejected', reason: 'unsupported' });
 
-  // Same-connection move uses moveWithin, not target write or createDirectory
+  // Same-connection move uses moveWithin, not target space write or createDirectory
+  spaceCapabilities.mockClear();
   moveWithin.mockResolvedValueOnce(remoteFolder);
   await expect(
     service.pasteEntries(1, {
@@ -1006,12 +1013,9 @@ it('enforces route-specific capabilities in planPaste without blocking copyWithi
       entries: [remoteFolder],
       targetParent: remoteDst,
       targetDirectoryPath: 'Dst',
-      targetCapabilities: {
-        write: { support: 'unsupported' },
-        createDirectory: { support: 'unsupported' },
-      },
     }),
   ).resolves.toEqual({ status: 'started' });
+  expect(spaceCapabilities).not.toHaveBeenCalled();
 
   // Same-connection move rejects when source moveWithin is unsupported
   await expect(

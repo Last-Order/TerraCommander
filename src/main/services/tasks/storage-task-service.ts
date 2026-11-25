@@ -152,6 +152,7 @@ export interface StorageTaskServiceOptions {
 export type StorageTaskOperations = Pick<
   StorageEntryOperations,
   | 'spaceSemantics'
+  | 'spaceCapabilities'
   | 'listDirectory'
   | 'resolveLocalPath'
   | 'createDirectory'
@@ -195,9 +196,7 @@ export class StorageTaskService {
         this.emitDirectoryChanged(change);
       },
       removeMovedSource: ({ parent, entry }: { parent: Entry['ref']; entry: Entry }) =>
-        removeMovedSources(this.operations, parent, [entry], (change) =>
-          this.emitDirectoryChanged(change),
-        ),
+        this.removeMovedEntries(parent, [entry]),
     };
     this.queue = new TaskQueue<InternalTaskDefinitions, InternalGroupDefinitions, TaskCategory>(
       {
@@ -646,12 +645,7 @@ export class StorageTaskService {
         onSettled: async () => {
           releaseReservedNames();
           if (removeSources && groupId !== undefined && this.isGroupFullyCompleted(groupId)) {
-            await removeMovedSources(
-              this.operations,
-              request.sourceParent,
-              removeSources,
-              (change) => this.emitDirectoryChanged(change),
-            );
+            await this.removeMovedEntries(request.sourceParent, removeSources);
           }
         },
       },
@@ -739,10 +733,13 @@ export class StorageTaskService {
   private createRenameHandler(): TaskHandler<RenameTaskRequest, Entry, TaskCategory> {
     return {
       category: 'operation',
-      execute: async ({ entry, name }) => ({
-        status: 'completed',
-        result: await this.operations.renameEntry(entry.ref, name),
-      }),
+      execute: async ({ entry, name }) => {
+        this.downloads.assertSourceAvailable(entry.ref);
+        return {
+          status: 'completed',
+          result: await this.operations.renameEntry(entry.ref, name),
+        };
+      },
       onSuccess: ({ parent, entry }, result) => {
         this.emitDirectoryChanged({
           kind: 'renamed',
@@ -765,6 +762,7 @@ export class StorageTaskService {
     return {
       category: 'operation',
       execute: async ({ entry }) => {
+        this.downloads.assertSourceAvailable(entry.ref);
         await this.operations.deleteEntry(entry.ref);
         return { status: 'completed', result: undefined };
       },
@@ -783,13 +781,16 @@ export class StorageTaskService {
   private createCopyHandler(): TaskHandler<CopyTaskRequest, Entry, TaskCategory> {
     return {
       category: 'operation',
-      execute: async ({ entry, targetParent, targetName }) => ({
-        status: 'completed',
-        result: await this.operations.copyWithin(entry.ref, {
-          parent: targetParent,
-          name: targetName,
-        }),
-      }),
+      execute: async ({ entry, targetParent, targetName }) => {
+        this.downloads.assertSourceAvailable(entry.ref);
+        return {
+          status: 'completed',
+          result: await this.operations.copyWithin(entry.ref, {
+            parent: targetParent,
+            name: targetName,
+          }),
+        };
+      },
       onSuccess: ({ targetParent }, result) => {
         this.emitDirectoryChanged({ kind: 'added', parent: targetParent, entry: result });
       },
@@ -805,13 +806,16 @@ export class StorageTaskService {
   private createMoveHandler(): TaskHandler<MoveTaskRequest, Entry, TaskCategory> {
     return {
       category: 'operation',
-      execute: async ({ entry, targetParent, targetName }) => ({
-        status: 'completed',
-        result: await this.operations.moveWithin(entry.ref, {
-          parent: targetParent,
-          name: targetName,
-        }),
-      }),
+      execute: async ({ entry, targetParent, targetName }) => {
+        this.downloads.assertSourceAvailable(entry.ref);
+        return {
+          status: 'completed',
+          result: await this.operations.moveWithin(entry.ref, {
+            parent: targetParent,
+            name: targetName,
+          }),
+        };
+      },
       onSuccess: ({ sourceParent, entry, targetParent }, result) => {
         this.emitDirectoryChanged({ kind: 'removed', parent: sourceParent, ref: entry.ref });
         this.emitDirectoryChanged({ kind: 'added', parent: targetParent, entry: result });
@@ -823,6 +827,20 @@ export class StorageTaskService {
         }
       },
     };
+  }
+
+  private removeMovedEntries(sourceParent: Entry['ref'], entries: readonly Entry[]): Promise<void> {
+    return removeMovedSources(
+      {
+        deleteEntry: (ref) => {
+          this.downloads.assertSourceAvailable(ref);
+          return this.operations.deleteEntry(ref);
+        },
+      },
+      sourceParent,
+      entries,
+      (change) => this.emitDirectoryChanged(change),
+    );
   }
 
   private isGroupFullyCompleted(groupId: number): boolean {
@@ -1068,12 +1086,7 @@ export class StorageTaskService {
       onSettled: async () => {
         onFinish();
         if (sourceCleanup && groupId !== undefined && this.isGroupFullyCompleted(groupId)) {
-          await removeMovedSources(
-            this.operations,
-            sourceCleanup.sourceParent,
-            sourceCleanup.entries,
-            (change) => this.emitDirectoryChanged(change),
-          );
+          await this.removeMovedEntries(sourceCleanup.sourceParent, sourceCleanup.entries);
         }
       },
       release: onRelease,

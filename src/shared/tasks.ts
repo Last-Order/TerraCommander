@@ -1,4 +1,4 @@
-import type { Capabilities, Entry, EntryRef } from './storage';
+import type { Entry, EntryRef } from './storage';
 import type { BrowserResult } from './storage-browser';
 
 export interface TaskMessage {
@@ -151,7 +151,6 @@ export interface PasteEntriesRequest {
   targetParent: EntryRef;
   targetDirectoryPath: string;
   targetAncestors?: readonly EntryRef[] | undefined;
-  targetCapabilities?: Capabilities | undefined;
 }
 
 export interface DownloadTaskDisplayInput {

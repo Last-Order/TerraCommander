@@ -14,7 +14,7 @@ import { toBrowserErrorCode, toTaskFailure } from './task-errors';
 
 export type CopyPasteOperations = Pick<
   StorageEntryOperations,
-  'listDirectory' | 'resolveLocalPath' | 'createDirectory' | 'deleteEntry'
+  'listDirectory' | 'resolveLocalPath' | 'createDirectory' | 'deleteEntry' | 'spaceCapabilities'
 >;
 
 export interface CopyDiscoveryItem {
@@ -146,7 +146,6 @@ export async function planPaste(
   }
 
   const hasDirectory = uniqueEntries.some((entry) => entry.kind === 'directory');
-  const targetCapabilities = request.targetCapabilities;
 
   if (
     hasDirectory &&
@@ -162,10 +161,11 @@ export async function planPaste(
 
   // Local -> Cloud: resolve OS paths via local provider integration for upload.
   if (sourceConnectionId === localConnectionId && targetConnectionId !== localConnectionId) {
-    if (targetCapabilities?.write?.support === 'unsupported') {
+    const targetCapabilities = await operations.spaceCapabilities(request.targetParent);
+    if (targetCapabilities.write?.support === 'unsupported') {
       return { kind: 'rejected', reason: 'permission-denied' };
     }
-    if (hasDirectory && targetCapabilities?.createDirectory?.support === 'unsupported') {
+    if (hasDirectory && targetCapabilities.createDirectory?.support === 'unsupported') {
       return { kind: 'rejected', reason: 'unsupported' };
     }
     if (
@@ -186,10 +186,11 @@ export async function planPaste(
 
   // Cloud -> Local: resolve target local directory via local provider integration for download.
   if (sourceConnectionId !== localConnectionId && targetConnectionId === localConnectionId) {
-    if (targetCapabilities?.write?.support === 'unsupported') {
+    const targetCapabilities = await operations.spaceCapabilities(request.targetParent);
+    if (targetCapabilities.write?.support === 'unsupported') {
       return { kind: 'rejected', reason: 'permission-denied' };
     }
-    if (hasDirectory && targetCapabilities?.createDirectory?.support === 'unsupported') {
+    if (hasDirectory && targetCapabilities.createDirectory?.support === 'unsupported') {
       return { kind: 'rejected', reason: 'unsupported' };
     }
     if (
@@ -263,8 +264,11 @@ export async function planPaste(
     return { kind: 'move', items, entries: uniqueEntries };
   }
 
-  if (hasDirectory && targetCapabilities?.createDirectory?.support === 'unsupported') {
-    return { kind: 'rejected', reason: 'unsupported' };
+  if (hasDirectory) {
+    const targetCapabilities = await operations.spaceCapabilities(request.targetParent);
+    if (targetCapabilities.createDirectory?.support === 'unsupported') {
+      return { kind: 'rejected', reason: 'unsupported' };
+    }
   }
   if (
     uniqueEntries.some(

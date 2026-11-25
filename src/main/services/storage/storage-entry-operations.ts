@@ -22,7 +22,6 @@ export interface StorageEntryOperationsOptions {
   storage: StorageAccess;
   connections: StorageConnectionManager;
   spaces: StorageSpaceCatalog;
-  beforeSourceMutation?: (ref: EntryRef) => void;
 }
 
 /** Space-bounded entry operations and metadata queries shared by browsing, transfers, and tasks. */
@@ -30,13 +29,11 @@ export class StorageEntryOperations {
   private readonly storage: StorageAccess;
   private readonly connections: StorageConnectionManager;
   private readonly spaces: StorageSpaceCatalog;
-  private readonly beforeSourceMutation: ((ref: EntryRef) => void) | undefined;
 
   constructor(options: StorageEntryOperationsOptions) {
     this.storage = options.storage;
     this.connections = options.connections;
     this.spaces = options.spaces;
-    this.beforeSourceMutation = options.beforeSourceMutation;
   }
 
   spaceSemantics(ref: EntryRef): Promise<SpaceSemantics | undefined> {
@@ -96,7 +93,6 @@ export class StorageEntryOperations {
   }
 
   copyWithin(ref: EntryRef, target: CreateTarget, context?: OperationContext): Promise<Entry> {
-    this.beforeSourceMutation?.(ref);
     return this.spaces.withBrowsableSpace(ref, () =>
       this.spaces.withBrowsableSpace(target.parent, () =>
         this.storage.copyWithin(ref, target, context),
@@ -105,7 +101,6 @@ export class StorageEntryOperations {
   }
 
   moveWithin(ref: EntryRef, target: CreateTarget, context?: OperationContext): Promise<Entry> {
-    this.beforeSourceMutation?.(ref);
     return this.spaces.withBrowsableSpace(ref, () =>
       this.spaces.withBrowsableSpace(target.parent, () =>
         this.storage.moveWithin(ref, target, context),
@@ -114,12 +109,10 @@ export class StorageEntryOperations {
   }
 
   renameEntry(ref: EntryRef, name: string, context?: OperationContext): Promise<Entry> {
-    this.beforeSourceMutation?.(ref);
     return this.spaces.withBrowsableSpace(ref, () => this.storage.rename(ref, name, context));
   }
 
   deleteEntry(ref: EntryRef, context?: OperationContext): Promise<void> {
-    this.beforeSourceMutation?.(ref);
     return this.spaces.withBrowsableSpace(ref, () => this.storage.remove(ref, context));
   }
 }

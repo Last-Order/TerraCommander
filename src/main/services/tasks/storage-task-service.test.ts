@@ -90,6 +90,7 @@ function setup() {
     pauseWork: vi.fn<DownloadService['pauseWork']>(async () => {
       await pause();
     }),
+    assertSourceAvailable: vi.fn(),
   };
   const createDirectory = vi.fn(async ({ name }: { name: string }) => ({
     ...folderEntry,
@@ -107,6 +108,7 @@ function setup() {
     copyWithin,
     moveWithin,
     spaceSemantics,
+    spaceCapabilities: vi.fn(async () => ({})),
     listDirectory: vi.fn(async () => ({ entries: [] })),
     resolveLocalPath: vi.fn(),
   };
@@ -545,10 +547,14 @@ it('uploads mixed files and folders as a task group, emits directory changes, an
       copyWithin: vi.fn(),
       moveWithin: vi.fn(),
       spaceSemantics: vi.fn(async () => undefined),
+      spaceCapabilities: vi.fn(async () => ({})),
       listDirectory: vi.fn(async () => ({ entries: [] })),
       resolveLocalPath: vi.fn(),
     },
-    downloads: { cancelOwner: vi.fn() } as unknown as DownloadService,
+    downloads: {
+      cancelOwner: vi.fn(),
+      assertSourceAvailable: vi.fn(),
+    } as unknown as DownloadService,
     uploads,
   });
   const events: StorageTaskEvent[] = [];
