@@ -1,58 +1,37 @@
-import { StorageAccess, StorageError, type StorageLogger } from '@main/storage';
-import type { ReopenableByteSource, WriteExecution } from '@main/storage/core/contracts';
-import type { CreateTarget, Entry, EntryRef, SpaceSemantics } from '@shared/storage';
+import { StorageError, type StorageAccess } from '@main/storage';
+import type { EntryRef } from '@shared/storage';
 import type {
   SpaceChoice,
   StorageConnectionSummary,
   StorageProvider,
 } from '@shared/storage-browser';
-import type { AccountRuntime } from '../application-services';
-import { DownloadService } from '../downloads/download-service';
-import { UploadService } from '../uploads/upload-service';
 import { measureDirectorySize } from './measure-directory-size';
-import { StorageConnectionManager } from './storage-connections';
-import type { StoragePreferences } from './storage-preferences';
-import type { StorageProviderIntegration } from './storage-provider';
-import { StorageSpaceCatalog } from './storage-spaces';
+import type { StorageConnectionManager } from './storage-connections';
+import type { StorageEntryOperations } from './storage-entry-operations';
+import type { StorageSpaceCatalog } from './storage-spaces';
 
-export interface StorageBrowserOptions {
-  preferences: StoragePreferences;
-  getAccounts: (signal?: AbortSignal) => Promise<AccountRuntime>;
-  logger: StorageLogger;
-  providers: readonly StorageProviderIntegration[];
+export interface StorageBrowserDependencies {
+  connections: StorageConnectionManager;
+  storage: StorageAccess;
+  spaces: StorageSpaceCatalog;
+  operations: StorageEntryOperations;
 }
 
+/** Renderer-facing browsing, connection, space selection, and directory measurement facade. */
 export class StorageBrowser {
-  readonly downloads: DownloadService;
-  readonly uploads: UploadService;
   private readonly connections: StorageConnectionManager;
   private readonly storage: StorageAccess;
   private readonly spaces: StorageSpaceCatalog;
+  private readonly operations: StorageEntryOperations;
   private directoryMeasurement:
     | { id: string; owner: number | undefined; controller: AbortController }
     | undefined;
 
-  constructor({ preferences, getAccounts, logger, providers }: StorageBrowserOptions) {
-    this.connections = new StorageConnectionManager(getAccounts, logger, providers);
-    this.storage = new StorageAccess(this.connections.registry);
-    this.spaces = new StorageSpaceCatalog(preferences, this.storage, this.connections);
-    this.downloads = new DownloadService({
-      stat: (ref, context) =>
-        this.spaces.withBrowsableSpace(ref, () => this.storage.stat(ref, context)),
-      read: (ref, options, context) =>
-        this.spaces.withBrowsableSpace(ref, () => this.storage.read(ref, options, context)),
-      list: (ref, request, context) =>
-        this.spaces.withBrowsableSpace(ref, () => this.storage.list(ref, request, context)),
-    });
-    this.uploads = new UploadService({
-      stat: (ref, context) =>
-        this.spaces.withBrowsableSpace(ref, () => this.storage.stat(ref, context)),
-      createDirectory: (target, context) =>
-        this.spaces.withBrowsableSpace(target.parent, () =>
-          this.storage.createDirectory(target, context),
-        ),
-      prepareUpload: (parent, name, source) => this.prepareUpload(parent, name, source),
-    });
+  constructor({ connections, storage, spaces, operations }: StorageBrowserDependencies) {
+    this.connections = connections;
+    this.storage = storage;
+    this.spaces = spaces;
+    this.operations = operations;
   }
 
   listConnections(): Promise<StorageConnectionSummary[]> {
@@ -84,63 +63,7 @@ export class StorageBrowser {
   }
 
   listDirectory(parent: EntryRef, cursor?: string) {
-    return this.spaces.withBrowsableSpace(parent, () => this.storage.list(parent, { cursor }));
-  }
-
-  spaceSemantics(ref: EntryRef): Promise<SpaceSemantics | undefined> {
-    return this.spaces.spaceSemantics(ref);
-  }
-
-  prepareUpload(parent: EntryRef, name: string, source: ReopenableByteSource): WriteExecution {
-    const execution = this.storage.createWriteSession(
-      { kind: 'create', parent, name, policy: 'create-only' },
-      source,
-    );
-    return {
-      run: (context) => this.spaces.withBrowsableSpace(parent, () => execution.run(context)),
-    };
-  }
-
-  statEntry(ref: EntryRef): Promise<Entry> {
-    return this.spaces.withBrowsableSpace(ref, () => this.storage.stat(ref));
-  }
-
-  resolveLocalPath(ref: EntryRef): Promise<{ path: string; kind: Entry['kind']; dev?: number }> {
-    const integration = this.connections.builtInIntegration(ref.connectionId);
-    if (!integration?.resolvePath) {
-      return Promise.reject(new StorageError('InvalidArgument'));
-    }
-    return this.spaces.withBrowsableSpace(ref, () => integration.resolvePath!(ref));
-  }
-
-  createDirectory(target: CreateTarget): Promise<Entry> {
-    return this.spaces.withBrowsableSpace(target.parent, () =>
-      this.storage.createDirectory(target),
-    );
-  }
-
-  copyWithin(ref: EntryRef, target: CreateTarget): Promise<Entry> {
-    this.downloads.assertSourceAvailable(ref);
-    return this.spaces.withBrowsableSpace(ref, () =>
-      this.spaces.withBrowsableSpace(target.parent, () => this.storage.copyWithin(ref, target)),
-    );
-  }
-
-  moveWithin(ref: EntryRef, target: CreateTarget): Promise<Entry> {
-    this.downloads.assertSourceAvailable(ref);
-    return this.spaces.withBrowsableSpace(ref, () =>
-      this.spaces.withBrowsableSpace(target.parent, () => this.storage.moveWithin(ref, target)),
-    );
-  }
-
-  renameEntry(ref: EntryRef, name: string) {
-    this.downloads.assertSourceAvailable(ref);
-    return this.spaces.withBrowsableSpace(ref, () => this.storage.rename(ref, name));
-  }
-
-  deleteEntry(ref: EntryRef): Promise<void> {
-    this.downloads.assertSourceAvailable(ref);
-    return this.spaces.withBrowsableSpace(ref, () => this.storage.remove(ref));
+    return this.operations.listDirectory(parent, cursor);
   }
 
   async measureDirectorySize(
@@ -176,19 +99,12 @@ export class StorageBrowser {
   }
 
   cancelOwnerOperations(owner: number): void {
-    this.downloads.cancelOwner(owner);
-    this.uploads.cancelOwner(owner);
     if (this.directoryMeasurement?.owner === owner) this.directoryMeasurement.controller.abort();
     this.cancelAuthorization(owner);
   }
 
-  async dispose(): Promise<void> {
-    this.connections.cancelAuthorization();
+  dispose(): void {
     this.directoryMeasurement?.controller.abort();
-    try {
-      await Promise.allSettled([this.downloads.dispose(), this.uploads.dispose()]);
-    } finally {
-      await this.connections.dispose();
-    }
+    this.directoryMeasurement = undefined;
   }
 }

@@ -34,12 +34,14 @@ import type {
   UploadPathsRequest,
 } from '@shared/tasks';
 import { DownloadError } from '../downloads/download-paths';
+import type { DownloadService } from '../downloads/download-service';
 import type {
   DownloadPlanItem,
   DownloadWork,
   PreparedDownloadBatch,
 } from '../downloads/download-types';
-import type { StorageBrowser } from '../storage/storage-browser';
+import type { StorageEntryOperations } from '../storage/storage-entry-operations';
+import type { UploadService } from '../uploads/upload-service';
 import type { PreparedUploadBatch, UploadPlanItem, UploadWork } from '../uploads/upload-types';
 import { prepareBatchGroup } from './batch-discovery';
 import {
@@ -147,8 +149,29 @@ export interface StorageTaskServiceOptions {
   transferConcurrency?: number | undefined;
 }
 
+export type StorageTaskOperations = Pick<
+  StorageEntryOperations,
+  | 'spaceSemantics'
+  | 'listDirectory'
+  | 'resolveLocalPath'
+  | 'createDirectory'
+  | 'renameEntry'
+  | 'deleteEntry'
+  | 'copyWithin'
+  | 'moveWithin'
+>;
+
+export interface StorageTaskDependencies {
+  operations: StorageTaskOperations;
+  downloads: DownloadService;
+  uploads: UploadService;
+}
+
 /** Owns session task scheduling, directory discovery, and snapshot projection. */
 export class StorageTaskService {
+  private readonly operations: StorageTaskOperations;
+  private readonly downloads: DownloadService;
+  private readonly uploads: UploadService;
   private readonly queue: TaskQueue<
     InternalTaskDefinitions,
     InternalGroupDefinitions,
@@ -160,10 +183,10 @@ export class StorageTaskService {
   private readonly unsubscribeQueue: () => void;
   private disposal: Promise<void> | undefined;
 
-  constructor(
-    private readonly browser: StorageBrowser,
-    options: StorageTaskServiceOptions = {},
-  ) {
+  constructor(dependencies: StorageTaskDependencies, options: StorageTaskServiceOptions = {}) {
+    this.operations = dependencies.operations;
+    this.downloads = dependencies.downloads;
+    this.uploads = dependencies.uploads;
     const callbacks = {
       emitAuthRequired: (connectionId: string) => {
         this.emit({ type: 'auth-required', connectionId });
@@ -172,7 +195,7 @@ export class StorageTaskService {
         this.emitDirectoryChanged(change);
       },
       removeMovedSource: ({ parent, entry }: { parent: Entry['ref']; entry: Entry }) =>
-        removeMovedSources(this.browser, parent, [entry], (change) =>
+        removeMovedSources(this.operations, parent, [entry], (change) =>
           this.emitDirectoryChanged(change),
         ),
     };
@@ -185,12 +208,12 @@ export class StorageTaskService {
         move: this.createMoveHandler(),
         download: createTransferHandler(
           'transfer',
-          createDownloadTransferConfig(this.browser.downloads, callbacks),
+          createDownloadTransferConfig(this.downloads, callbacks),
           callbacks,
         ),
         upload: createTransferHandler(
           'transfer',
-          createUploadTransferConfig(this.browser.uploads, callbacks),
+          createUploadTransferConfig(this.uploads, callbacks),
           callbacks,
         ),
       },
@@ -202,8 +225,8 @@ export class StorageTaskService {
       },
     );
     this.session = new TransferSessionCoordinator({
-      downloads: this.browser.downloads,
-      uploads: this.browser.uploads,
+      downloads: this.downloads,
+      uploads: this.uploads,
       enqueueDownload: (request, entry, work, sourceCleanup) =>
         this.enqueueStandaloneDownload(request, entry, work, sourceCleanup),
       enqueueDownloadGroup: (request, prepared, sourceCleanup) =>
@@ -247,7 +270,7 @@ export class StorageTaskService {
   }
 
   private async resolveSpaceSemantics(ref: Entry['ref']): Promise<ResolvedSpaceSemantics> {
-    const semantics = await this.browser.spaceSemantics?.(ref);
+    const semantics = await this.operations.spaceSemantics?.(ref);
     return {
       allowsDuplicateNames: semantics?.allowsDuplicateNames === true,
       caseInsensitive: semantics?.caseSensitive === false,
@@ -369,7 +392,7 @@ export class StorageTaskService {
   }
 
   async pasteEntries(owner: number, request: PasteEntriesRequest): Promise<PasteEntriesResponse> {
-    const plan = await planPaste(this.browser, request);
+    const plan = await planPaste(this.operations, request);
     if (plan.kind === 'empty') return { status: 'started' };
     if (plan.kind === 'rejected') return { status: 'rejected', reason: plan.reason };
     if (plan.kind === 'upload') {
@@ -589,7 +612,7 @@ export class StorageTaskService {
       {
         prepare: (context) =>
           prepareCopyGroup(
-            this.browser,
+            this.operations,
             request,
             items,
             (change) => this.emitDirectoryChanged(change),
@@ -623,8 +646,11 @@ export class StorageTaskService {
         onSettled: async () => {
           releaseReservedNames();
           if (removeSources && groupId !== undefined && this.isGroupFullyCompleted(groupId)) {
-            await removeMovedSources(this.browser, request.sourceParent, removeSources, (change) =>
-              this.emitDirectoryChanged(change),
+            await removeMovedSources(
+              this.operations,
+              request.sourceParent,
+              removeSources,
+              (change) => this.emitDirectoryChanged(change),
             );
           }
         },
@@ -646,6 +672,12 @@ export class StorageTaskService {
 
   cancelOwnerConfirmations(owner: number): void {
     this.session.cancelOwnerConfirmations(owner);
+  }
+
+  cancelOwnerOperations(owner: number): void {
+    this.session.cancelOwnerConfirmations(owner);
+    this.downloads.cancelOwner(owner);
+    this.uploads.cancelOwner(owner);
   }
 
   pause(taskId: number): Promise<void> {
@@ -689,7 +721,7 @@ export class StorageTaskService {
       category: 'operation',
       execute: async ({ parent, name }) => ({
         status: 'completed',
-        result: await this.browser.createDirectory({ parent, name }),
+        result: await this.operations.createDirectory({ parent, name }),
       }),
       onSuccess: ({ parent }, result) => {
         this.emitDirectoryChanged({ kind: 'added', parent, entry: result });
@@ -709,7 +741,7 @@ export class StorageTaskService {
       category: 'operation',
       execute: async ({ entry, name }) => ({
         status: 'completed',
-        result: await this.browser.renameEntry(entry.ref, name),
+        result: await this.operations.renameEntry(entry.ref, name),
       }),
       onSuccess: ({ parent, entry }, result) => {
         this.emitDirectoryChanged({
@@ -733,7 +765,7 @@ export class StorageTaskService {
     return {
       category: 'operation',
       execute: async ({ entry }) => {
-        await this.browser.deleteEntry(entry.ref);
+        await this.operations.deleteEntry(entry.ref);
         return { status: 'completed', result: undefined };
       },
       onSuccess: ({ parent, entry }) => {
@@ -753,7 +785,7 @@ export class StorageTaskService {
       category: 'operation',
       execute: async ({ entry, targetParent, targetName }) => ({
         status: 'completed',
-        result: await this.browser.copyWithin(entry.ref, {
+        result: await this.operations.copyWithin(entry.ref, {
           parent: targetParent,
           name: targetName,
         }),
@@ -775,7 +807,7 @@ export class StorageTaskService {
       category: 'operation',
       execute: async ({ entry, targetParent, targetName }) => ({
         status: 'completed',
-        result: await this.browser.moveWithin(entry.ref, {
+        result: await this.operations.moveWithin(entry.ref, {
           parent: targetParent,
           name: targetName,
         }),
@@ -846,8 +878,8 @@ export class StorageTaskService {
       },
       request.parent.connectionId,
       (context) => this.prepareDownloadGroup(request, prepared, context),
-      () => this.browser.downloads.finishBatch(queueOwnerId, prepared.id),
-      () => this.browser.downloads.releaseBatch(queueOwnerId, prepared.id),
+      () => this.downloads.finishBatch(queueOwnerId, prepared.id),
+      () => this.downloads.releaseBatch(queueOwnerId, prepared.id),
       sourceCleanup,
     );
   }
@@ -864,9 +896,9 @@ export class StorageTaskService {
         getItemLabel: (item) => item.path,
         isDirectory: (item) => item.entry.kind === 'directory',
         discoverDirectory: (itemId, offset) =>
-          this.browser.downloads.discoverBatchDirectory(queueOwnerId, prepared.id, itemId, offset),
+          this.downloads.discoverBatchDirectory(queueOwnerId, prepared.id, itemId, offset),
         cancelDirectoryItem: (itemId) =>
-          this.browser.downloads.cancelBatchItem(queueOwnerId, prepared.id, itemId),
+          this.downloads.cancelBatchItem(queueOwnerId, prepared.id, itemId),
         cancelErrorMessage: 'Download directory preparation cancellation failed.',
         fatalErrorCodes: fatalDirectoryErrorCodes,
         enqueueFile: async (item, prepContext) => {
@@ -947,8 +979,8 @@ export class StorageTaskService {
       },
       request.parent.connectionId,
       (context) => this.prepareUploadGroup(request, prepared, context),
-      () => this.browser.uploads.finishBatch(queueOwnerId, prepared.id),
-      () => this.browser.uploads.releaseBatch(queueOwnerId, prepared.id),
+      () => this.uploads.finishBatch(queueOwnerId, prepared.id),
+      () => this.uploads.releaseBatch(queueOwnerId, prepared.id),
       sourceCleanup,
     );
   }
@@ -959,7 +991,7 @@ export class StorageTaskService {
     context: TaskGroupPreparationContext<InternalTaskDefinitions>,
   ): Promise<void> {
     if (prepared.needsValidation) {
-      await this.browser.uploads.validateDestination(
+      await this.uploads.validateDestination(
         request.parent,
         prepared.needsValidation.requireCreateDirectory,
         context.signal,
@@ -973,9 +1005,9 @@ export class StorageTaskService {
         getItemLabel: (item) => item.path,
         isDirectory: (item) => item.kind === 'directory',
         discoverDirectory: (itemId, offset) =>
-          this.browser.uploads.discoverBatchDirectory(queueOwnerId, prepared.id, itemId, offset),
+          this.uploads.discoverBatchDirectory(queueOwnerId, prepared.id, itemId, offset),
         cancelDirectoryItem: (itemId) =>
-          this.browser.uploads.cancelBatchItem(queueOwnerId, prepared.id, itemId),
+          this.uploads.cancelBatchItem(queueOwnerId, prepared.id, itemId),
         cancelErrorMessage: 'Upload directory preparation cancellation failed.',
         fatalErrorCodes: fatalUploadDirectoryErrorCodes,
         beforeDirectory: (item, prepContext) => {
@@ -1037,7 +1069,7 @@ export class StorageTaskService {
         onFinish();
         if (sourceCleanup && groupId !== undefined && this.isGroupFullyCompleted(groupId)) {
           await removeMovedSources(
-            this.browser,
+            this.operations,
             sourceCleanup.sourceParent,
             sourceCleanup.entries,
             (change) => this.emitDirectoryChanged(change),

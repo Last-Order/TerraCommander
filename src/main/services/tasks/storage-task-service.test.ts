@@ -10,9 +10,12 @@ import type { StorageTaskEvent } from '@shared/tasks';
 import { DownloadError } from '../downloads/download-paths';
 import type { DownloadService } from '../downloads/download-service';
 import type { DownloadProgress, DownloadRunResult } from '../downloads/download-types';
-import type { StorageBrowser } from '../storage/storage-browser';
 import { UploadService } from '../uploads/upload-service';
-import { StorageTaskService } from './storage-task-service';
+import {
+  StorageTaskService,
+  type StorageTaskDependencies,
+  type StorageTaskOperations,
+} from './storage-task-service';
 
 const connectionId = '5e45885a-89f0-462e-9821-7195cba174e5';
 const parent = { connectionId, spaceId: 'drive', locator: 'folder' };
@@ -96,22 +99,28 @@ function setup() {
   const deleteEntry = vi.fn(async () => undefined);
   const copyWithin = vi.fn(async () => ({ ...fileEntry, name: 'report.txt' }));
   const moveWithin = vi.fn(async () => ({ ...fileEntry, name: 'report.txt' }));
-  const spaceSemantics = vi.fn<StorageBrowser['spaceSemantics']>(async () => undefined);
-  const browser = {
+  const spaceSemantics = vi.fn<StorageTaskOperations['spaceSemantics']>(async () => undefined);
+  const operations: StorageTaskOperations = {
     createDirectory,
     renameEntry,
     deleteEntry,
     copyWithin,
     moveWithin,
     spaceSemantics,
-    downloads,
-  } as unknown as StorageBrowser;
-  const service = new StorageTaskService(browser);
+    listDirectory: vi.fn(async () => ({ entries: [] })),
+    resolveLocalPath: vi.fn(),
+  };
+  const dependencies: StorageTaskDependencies = {
+    operations,
+    downloads: downloads as unknown as DownloadService,
+    uploads: { cancelOwner: vi.fn() } as unknown as UploadService,
+  };
+  const service = new StorageTaskService(dependencies);
   const events: StorageTaskEvent[] = [];
   service.subscribe((event) => events.push(event));
   return {
     service,
-    browser,
+    operations,
     downloads,
     createDirectory,
     renameEntry,
@@ -528,10 +537,20 @@ it('uploads mixed files and folders as a task group, emits directory changes, an
     createDirectory,
     prepareUpload,
   });
-  const browser = {
+  const service = new StorageTaskService({
+    operations: {
+      createDirectory,
+      renameEntry: vi.fn(),
+      deleteEntry: vi.fn(),
+      copyWithin: vi.fn(),
+      moveWithin: vi.fn(),
+      spaceSemantics: vi.fn(async () => undefined),
+      listDirectory: vi.fn(async () => ({ entries: [] })),
+      resolveLocalPath: vi.fn(),
+    },
+    downloads: { cancelOwner: vi.fn() } as unknown as DownloadService,
     uploads,
-  } as unknown as StorageBrowser;
-  const service = new StorageTaskService(browser);
+  });
   const events: StorageTaskEvent[] = [];
   service.subscribe((event) => events.push(event));
 

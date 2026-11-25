@@ -11,8 +11,8 @@ import { AccountError } from '../accounts/core/errors';
 import { ApplicationServices } from '../services/application-services';
 import { DownloadPreferences } from '../services/downloads/download-preferences';
 import { createDefaultStorageProviders } from '../services/storage/providers/default-providers';
-import { StorageBrowser } from '../services/storage/storage-browser';
 import { StoragePreferences } from '../services/storage/storage-preferences';
+import { createStorageServices } from '../services/storage/storage-services';
 import { StorageTaskService } from '../services/tasks/storage-task-service';
 import { TransferPreferences } from '../services/tasks/transfer-preferences';
 import { StorageError, type WriteExecution } from '../storage';
@@ -60,7 +60,7 @@ function setup() {
   const window = { webContents } as unknown as BrowserWindow;
   const event = { sender: webContents, senderFrame: webContents.mainFrame };
   const preferences = new StoragePreferences({ read: () => undefined, write() {} });
-  const browser = new StorageBrowser({
+  const storage = createStorageServices({
     preferences,
     getAccounts: async () => {
       throw new Error('Accounts must not be initialized.');
@@ -72,14 +72,14 @@ function setup() {
   activeServices.push(services);
   const transferPreferences = new TransferPreferences({ read: () => undefined, write() {} });
   vi.spyOn(services.transferPreferences, 'get').mockResolvedValue(transferPreferences);
-  const getBrowser = vi.spyOn(services.storageBrowser, 'get').mockResolvedValue(browser);
-  const createDirectory = vi.spyOn(browser, 'createDirectory').mockResolvedValue({
+  const getBrowser = vi.spyOn(services.storage, 'get').mockResolvedValue(storage);
+  const createDirectory = vi.spyOn(storage.operations, 'createDirectory').mockResolvedValue({
     ref: { connectionId: 'local', spaceId: 'disk', locator: 'projects' },
     name: 'projects',
     kind: 'directory',
     capabilities: { list: { support: 'supported' } },
   });
-  const deleteEntry = vi.spyOn(browser, 'deleteEntry').mockResolvedValue(undefined);
+  const deleteEntry = vi.spyOn(storage.operations, 'deleteEntry').mockResolvedValue(undefined);
   const setLanguage = vi.fn((preference: LanguagePreference) => ({
     preference,
     language: preference === 'en' ? ('en' as const) : ('zh-CN' as const),
@@ -102,7 +102,7 @@ function setup() {
     event,
     parent,
     entry,
-    browser,
+    storage,
     getBrowser,
     createDirectory,
     deleteEntry,
@@ -242,11 +242,11 @@ it('reads download settings without loading storage or accounts', async () => {
 });
 
 it('uploads the selected file with speed reporting, pause and resume in the task queue', async () => {
-  const { event, browser, parent, entry, send } = setup();
+  const { event, storage, parent, entry, send } = setup();
   const upload = handlers.get(channels.uploadFileTask)!;
   const remoteParent = { ...parent, connectionId: '5e45885a-89f0-462e-9821-7195cba174e5' };
   const request = { parent: remoteParent, directoryPath: '/Drive' };
-  const target = vi.spyOn(browser.uploads, 'validateDestination').mockResolvedValue(undefined);
+  const target = vi.spyOn(storage.uploads, 'validateDestination').mockResolvedValue(undefined);
   const uploaded = { ...entry, ref: { ...remoteParent, locator: 'uploaded-file' } };
   const run = vi
     .fn<WriteExecution['run']>()
@@ -261,7 +261,7 @@ it('uploads the selected file with speed reporting, pause and resume in the task
       return interrupted;
     })
     .mockResolvedValueOnce(uploaded);
-  const write = vi.spyOn(browser, 'prepareUpload').mockReturnValue({ run });
+  const write = vi.spyOn(storage.operations, 'prepareUpload').mockReturnValue({ run });
   const snapshot = () => handlers.get(channels.getTaskSnapshot)!(event);
 
   expect(await upload(event, { ...request, path: 'D:\\other.txt' })).toEqual({
@@ -441,13 +441,18 @@ it('uses BrowserResult contracts for app info and language handlers', async () =
 });
 
 it('cancels owner-scoped browser operations and pending task confirmations on crash or navigation', async () => {
-  const { event, browser, services, emitWebContents } = setup();
-  const taskService = new StorageTaskService(browser);
+  const { event, storage, services, emitWebContents } = setup();
+  const taskService = new StorageTaskService({
+    operations: storage.operations,
+    downloads: storage.downloads,
+    uploads: storage.uploads,
+  });
   vi.spyOn(services.tasks, 'get').mockResolvedValue(taskService);
-  const cancelOwner = vi.spyOn(browser, 'cancelOwnerOperations');
-  const cancelDownloads = vi.spyOn(browser.downloads, 'cancelOwner');
-  const cancelAuth = vi.spyOn(browser, 'cancelAuthorization');
-  const cancelConfirmations = vi.spyOn(taskService, 'cancelOwnerConfirmations');
+  const cancelOwner = vi.spyOn(storage.browser, 'cancelOwnerOperations');
+  const cancelDownloads = vi.spyOn(storage.downloads, 'cancelOwner');
+  const cancelUploads = vi.spyOn(storage.uploads, 'cancelOwner');
+  const cancelAuth = vi.spyOn(storage.browser, 'cancelAuthorization');
+  const cancelTaskOwner = vi.spyOn(taskService, 'cancelOwnerOperations');
 
   await handlers.get(channels.listConnections)!(event);
   await handlers.get(channels.getTaskSnapshot)!(event);
@@ -456,26 +461,31 @@ it('cancels owner-scoped browser operations and pending task confirmations on cr
   expect(cancelOwner).toHaveBeenCalledTimes(1);
   expect(cancelOwner).toHaveBeenLastCalledWith(1);
   expect(cancelDownloads).toHaveBeenCalledTimes(1);
+  expect(cancelUploads).toHaveBeenCalledTimes(1);
   expect(cancelAuth).toHaveBeenCalledTimes(1);
-  expect(cancelConfirmations).toHaveBeenCalledTimes(1);
-  expect(cancelConfirmations).toHaveBeenLastCalledWith(1);
+  expect(cancelTaskOwner).toHaveBeenCalledTimes(1);
+  expect(cancelTaskOwner).toHaveBeenLastCalledWith(1);
 
   emitWebContents('did-start-navigation', undefined, 'about:blank', false, false);
   expect(cancelOwner).toHaveBeenCalledTimes(1);
-  expect(cancelConfirmations).toHaveBeenCalledTimes(1);
+  expect(cancelTaskOwner).toHaveBeenCalledTimes(1);
 
   emitWebContents('did-start-navigation', undefined, 'https://example.com', false, true);
   expect(cancelOwner).toHaveBeenCalledTimes(2);
-  expect(cancelConfirmations).toHaveBeenCalledTimes(2);
+  expect(cancelTaskOwner).toHaveBeenCalledTimes(2);
 
   await taskService.dispose();
 });
 
 it('pauses an upload on retryable failure and resumes the existing write session', async () => {
-  const { event, browser, parent, services, send } = setup();
-  const taskService = new StorageTaskService(browser);
+  const { event, storage, parent, services, send } = setup();
+  const taskService = new StorageTaskService({
+    operations: storage.operations,
+    downloads: storage.downloads,
+    uploads: storage.uploads,
+  });
   vi.spyOn(services.tasks, 'get').mockResolvedValue(taskService);
-  const target = vi.spyOn(browser.uploads, 'validateDestination').mockResolvedValue(undefined);
+  const target = vi.spyOn(storage.uploads, 'validateDestination').mockResolvedValue(undefined);
   const remoteParent = { ...parent, connectionId: '5e45885a-89f0-462e-9821-7195cba174e5' };
   const entry = {
     ref: { ...remoteParent, locator: 'uploaded-retry' },
@@ -491,7 +501,7 @@ it('pauses an upload on retryable failure and resumes the existing write session
       throw new StorageError('NetworkError', { retryHint: 'safe' });
     })
     .mockResolvedValueOnce(entry);
-  const prepare = vi.spyOn(browser, 'prepareUpload').mockReturnValue({ run });
+  const prepare = vi.spyOn(storage.operations, 'prepareUpload').mockReturnValue({ run });
 
   await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-upload-retry-'));
   const path = join(temporary.path, entry.name);
@@ -537,10 +547,10 @@ it('pauses an upload on retryable failure and resumes the existing write session
 });
 
 it('requires folder creation support for a folder upload destination', async () => {
-  const { event, browser, parent } = setup();
+  const { event, storage, parent } = setup();
   const uploadFolder = handlers.get(channels.uploadFolderTask)!;
   const remoteParent = { ...parent, connectionId: '5e45885a-89f0-462e-9821-7195cba174e5' };
-  const target = vi.spyOn(browser.uploads, 'validateDestination').mockResolvedValue(undefined);
+  const target = vi.spyOn(storage.uploads, 'validateDestination').mockResolvedValue(undefined);
   picker.mockResolvedValueOnce({ canceled: true, filePaths: [] });
 
   expect(await uploadFolder(event, { parent: remoteParent, directoryPath: '/Drive' })).toEqual({

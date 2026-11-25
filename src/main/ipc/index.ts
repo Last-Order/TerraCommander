@@ -34,7 +34,7 @@ export function registerIpcHandlers(
   const observedBrowsers = new WeakMap<StorageBrowser, Set<number>>();
 
   async function getStorageBrowser(window: BrowserWindow): Promise<StorageBrowser> {
-    const browser = await services.storageBrowser.get();
+    const { browser } = await services.storage.get();
     if (
       window.webContents.isDestroyed() ||
       !isTrustedRenderer(window.webContents.mainFrame.url, entryUrl)

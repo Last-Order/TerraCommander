@@ -9,8 +9,9 @@ import type {
   UploadPathsRequest,
 } from '@shared/tasks';
 import { DownloadError } from '../downloads/download-paths';
+import type { DownloadService } from '../downloads/download-service';
 import type { DownloadWork, PreparedDownloadBatch } from '../downloads/download-types';
-import type { StorageBrowser } from '../storage/storage-browser';
+import type { UploadService } from '../uploads/upload-service';
 import type { PreparedUploadBatch, UploadWork } from '../uploads/upload-types';
 import { toBrowserErrorCode } from './task-errors';
 
@@ -46,8 +47,8 @@ type PendingConfirmation =
     };
 
 export interface TransferSessionHost {
-  downloads: StorageBrowser['downloads'];
-  uploads: StorageBrowser['uploads'];
+  downloads: DownloadService;
+  uploads: UploadService;
   enqueueDownload: (
     request: PrepareDownloadRequest,
     entry: Entry,

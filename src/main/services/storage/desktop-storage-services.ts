@@ -3,13 +3,13 @@ import log from 'electron-log/main';
 import Store from 'electron-store';
 import type { AccountRuntime } from '../application-services';
 import { createDefaultStorageProviders } from './providers/default-providers';
-import { StorageBrowser } from './storage-browser';
 import { StoragePreferences } from './storage-preferences';
 import { createStoredSpaceValidator } from './storage-provider';
+import { createStorageServices, type StorageServices } from './storage-services';
 
-export function createDesktopStorageBrowser(
+export function createDesktopStorageServices(
   getAccounts: (signal?: AbortSignal) => Promise<AccountRuntime>,
-) {
+): StorageServices {
   const store = new Store<Record<string, unknown>>({
     cwd: app.getPath('userData'),
     name: 'storage-sidebar',
@@ -26,7 +26,7 @@ export function createDesktopStorageBrowser(
     },
     { validateSpace: createStoredSpaceValidator(providers) },
   );
-  return new StorageBrowser({
+  return createStorageServices({
     preferences,
     getAccounts,
     logger: { event: (name, fields) => log.info(name, fields) },

@@ -9,8 +9,13 @@ import type {
   PasteRejectionReason,
   StorageDirectoryChange,
 } from '@shared/tasks';
-import type { StorageBrowser } from '../storage/storage-browser';
+import type { StorageEntryOperations } from '../storage/storage-entry-operations';
 import { toBrowserErrorCode, toTaskFailure } from './task-errors';
+
+export type CopyPasteOperations = Pick<
+  StorageEntryOperations,
+  'listDirectory' | 'resolveLocalPath' | 'createDirectory' | 'deleteEntry'
+>;
 
 export interface CopyDiscoveryItem {
   sourceEntry: Entry;
@@ -83,7 +88,7 @@ export function isSubpath(parentPath: string, childPath: string): boolean {
 }
 
 async function listAllNames(
-  browser: StorageBrowser,
+  operations: CopyPasteOperations,
   parent: EntryRef,
   caseInsensitive = false,
   signal?: AbortSignal,
@@ -92,7 +97,7 @@ async function listAllNames(
   let cursor: string | undefined;
   do {
     if (signal?.aborted) return names;
-    const page = await browser.listDirectory(parent, cursor);
+    const page = await operations.listDirectory(parent, cursor);
     if (signal?.aborted) return names;
     for (const entry of page.entries) {
       names.add(caseInsensitive ? entry.name.toLowerCase() : entry.name);
@@ -104,7 +109,7 @@ async function listAllNames(
 
 /** Validates a paste request and resolves it into an upload, download, copy, or move plan. */
 export async function planPaste(
-  browser: StorageBrowser,
+  operations: CopyPasteOperations,
   request: PasteEntriesRequest,
 ): Promise<PastePlan> {
   const mode = request.mode ?? 'copy';
@@ -171,7 +176,7 @@ export async function planPaste(
     }
     const paths: string[] = [];
     for (const entry of uniqueEntries) {
-      const resolved = await browser.resolveLocalPath(entry.ref);
+      const resolved = await operations.resolveLocalPath(entry.ref);
       paths.push(resolved.path);
     }
     return mode === 'cut'
@@ -193,7 +198,7 @@ export async function planPaste(
     ) {
       return { kind: 'rejected', reason: 'unsupported' };
     }
-    const target = await browser.resolveLocalPath(request.targetParent);
+    const target = await operations.resolveLocalPath(request.targetParent);
     if (target.kind !== 'directory') throw new StorageError('InvalidArgument');
     return mode === 'cut'
       ? {
@@ -208,11 +213,11 @@ export async function planPaste(
   // Same-connection copy or move (Local -> Local or same-account Cloud -> Cloud).
   let crossDevice = false;
   if (sourceConnectionId === localConnectionId) {
-    const target = await browser.resolveLocalPath(request.targetParent);
+    const target = await operations.resolveLocalPath(request.targetParent);
     if (target.kind !== 'directory') throw new StorageError('InvalidArgument');
     for (const entry of uniqueEntries) {
       if (mode === 'copy' && entry.kind !== 'directory') continue;
-      const source = await browser.resolveLocalPath(entry.ref);
+      const source = await operations.resolveLocalPath(entry.ref);
       if (
         entry.kind === 'directory' &&
         (target.path === source.path || isSubpath(source.path, target.path))
@@ -293,14 +298,14 @@ export async function planPaste(
 
 /** Deletes source entries after a cross-device or cross-connection move completes cleanly. */
 export async function removeMovedSources(
-  browser: StorageBrowser,
+  operations: Pick<CopyPasteOperations, 'deleteEntry'>,
   sourceParent: EntryRef,
   entries: readonly Entry[],
   emitDirectoryChanged: (change: StorageDirectoryChange) => void,
 ): Promise<void> {
   for (const entry of entries) {
     try {
-      await browser.deleteEntry(entry.ref);
+      await operations.deleteEntry(entry.ref);
       emitDirectoryChanged({ kind: 'removed', parent: sourceParent, ref: entry.ref });
     } catch {
       console.error('Failed to remove source entry after move.', {
@@ -329,7 +334,7 @@ type CopyGroupPreparationContext = Pick<
 >;
 
 export async function prepareCopyGroup(
-  browser: StorageBrowser,
+  operations: CopyPasteOperations,
   request: PasteEntriesRequest,
   initialItems: readonly CopyDiscoveryItem[],
   emitDirectoryChanged: (change: StorageDirectoryChange) => void,
@@ -342,7 +347,7 @@ export async function prepareCopyGroup(
 
   if (options?.sameDirectory) {
     const usedNames = await listAllNames(
-      browser,
+      operations,
       request.targetParent,
       caseInsensitive,
       context.signal,
@@ -408,7 +413,7 @@ export async function prepareCopyGroup(
     visitedDirectories.add(dirKey);
 
     try {
-      const createdDir = await browser.createDirectory({
+      const createdDir = await operations.createDirectory({
         parent: item.targetParent,
         name: item.targetName,
       });
@@ -420,7 +425,7 @@ export async function prepareCopyGroup(
       let cursor: string | undefined;
       do {
         if (context.signal.aborted) return;
-        const page = await browser.listDirectory(item.sourceEntry.ref, cursor);
+        const page = await operations.listDirectory(item.sourceEntry.ref, cursor);
         for (const child of page.entries) {
           pending.push({
             sourceEntry: child,

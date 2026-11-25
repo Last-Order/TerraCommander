@@ -1,7 +1,7 @@
 import type { AppLanguage } from '@shared/language';
 import type { DownloadPreferences } from './downloads/download-preferences';
 import { LazyService } from './lazy-service';
-import type { StorageBrowser } from './storage/storage-browser';
+import type { StorageServices } from './storage/storage-services';
 import type { StorageTaskService } from './tasks/storage-task-service';
 import type { TransferPreferences } from './tasks/transfer-preferences';
 
@@ -17,7 +17,7 @@ interface ApplicationServicesOptions {
 /** Lightweight host: constructing it neither loads integrations nor opens their stores. */
 export class ApplicationServices {
   readonly accounts: LazyService<AccountRuntime>;
-  readonly storageBrowser: LazyService<StorageBrowser>;
+  readonly storage: LazyService<StorageServices>;
   readonly downloadPreferences: LazyService<DownloadPreferences>;
   readonly transferPreferences: LazyService<TransferPreferences>;
   readonly tasks: LazyService<StorageTaskService>;
@@ -59,28 +59,35 @@ export class ApplicationServices {
       },
       dispose: (runtime) => runtime.dispose(),
     });
-    this.storageBrowser = new LazyService({
+    this.storage = new LazyService({
       create: async (signal) => {
         await options.whenReady();
         signal.throwIfAborted();
-        const { createDesktopStorageBrowser } = await import('./storage/desktop-storage-browser');
+        const { createDesktopStorageServices } = await import('./storage/desktop-storage-services');
         signal.throwIfAborted();
-        return createDesktopStorageBrowser((operation) => this.accounts.get(operation));
+        return createDesktopStorageServices((operation) => this.accounts.get(operation));
       },
-      dispose: (browser) => browser.dispose(),
+      dispose: (storage) => storage.dispose(),
     });
     this.tasks = new LazyService({
       create: async (signal) => {
-        const [browser, transferPreferences] = await Promise.all([
-          this.storageBrowser.get(signal),
+        const [storage, transferPreferences] = await Promise.all([
+          this.storage.get(signal),
           this.transferPreferences.get(signal),
         ]);
         signal.throwIfAborted();
         const { StorageTaskService } = await import('./tasks/storage-task-service');
         signal.throwIfAborted();
-        const service = new StorageTaskService(browser, {
-          transferConcurrency: transferPreferences.get().concurrencyLimit,
-        });
+        const service = new StorageTaskService(
+          {
+            operations: storage.operations,
+            downloads: storage.downloads,
+            uploads: storage.uploads,
+          },
+          {
+            transferConcurrency: transferPreferences.get().concurrencyLimit,
+          },
+        );
         const unsubscribe = transferPreferences.subscribe((settings) => {
           service.setTransferConcurrency(settings.concurrencyLimit);
         });
@@ -110,7 +117,7 @@ export class ApplicationServices {
       // Close slots immediately and directly; get() would initialize unused services.
       shutdowns.push(
         this.tasks.dispose(),
-        this.storageBrowser.dispose(),
+        this.storage.dispose(),
         this.accounts.dispose(),
         this.downloadPreferences.dispose(),
         this.transferPreferences.dispose(),

@@ -7,8 +7,9 @@ import type {
   TaskProgress,
   UploadTaskDisplayInput,
 } from '@shared/tasks';
+import type { DownloadService } from '../downloads/download-service';
 import type { DownloadWorkRef } from '../downloads/download-types';
-import type { StorageBrowser } from '../storage/storage-browser';
+import type { UploadService } from '../uploads/upload-service';
 import type { UploadWorkRef } from '../uploads/upload-types';
 import { toBrowserErrorCode, toTaskFailure } from './task-errors';
 import { queueOwnerId } from './transfer-session-coordinator';
@@ -156,7 +157,7 @@ export function createTransferHandler<TInput, TResult, TCategory extends string 
 }
 
 export function createDownloadTransferConfig(
-  downloads: StorageBrowser['downloads'],
+  downloads: DownloadService,
   callbacks: Pick<TransferCallbacks, 'emitDirectoryChanged' | 'removeMovedSource'>,
 ): TransferHandlerConfig<InternalDownloadInput, void> {
   return {
@@ -207,7 +208,7 @@ export function createDownloadTransferConfig(
 }
 
 export function createUploadTransferConfig(
-  uploads: StorageBrowser['uploads'],
+  uploads: UploadService,
   callbacks: Pick<TransferCallbacks, 'emitDirectoryChanged' | 'removeMovedSource'>,
 ): TransferHandlerConfig<InternalUploadInput, Entry> {
   return {

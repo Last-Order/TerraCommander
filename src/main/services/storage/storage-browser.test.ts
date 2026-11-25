@@ -9,9 +9,13 @@ import { localConnectionId } from '@shared/storage-browser';
 import { createDefaultStorageProviders } from './providers/default-providers';
 import { createGoogleDriveStorageProvider } from './providers/google-drive-storage-provider';
 import { createLocalStorageProvider } from './providers/local-storage-provider';
-import { StorageBrowser } from './storage-browser';
 import { StoragePreferences } from './storage-preferences';
 import { createStoredSpaceValidator } from './storage-provider';
+import {
+  createStorageServices,
+  type StorageServices,
+  type StorageServicesOptions,
+} from './storage-services';
 
 function memorySnapshotStore() {
   let saved: unknown;
@@ -23,9 +27,9 @@ function memorySnapshotStore() {
   };
 }
 
-function createBrowser(
+function createServices(
   snapshotStore: { read(): unknown; write(snapshot: unknown): void },
-  getAccounts: ConstructorParameters<typeof StorageBrowser>[0]['getAccounts'],
+  getAccounts: StorageServicesOptions['getAccounts'],
   localVolumes?: () => Promise<string[]>,
 ) {
   const providers = localVolumes
@@ -34,7 +38,7 @@ function createBrowser(
   const preferences = new StoragePreferences(snapshotStore, {
     validateSpace: createStoredSpaceValidator(providers),
   });
-  return new StorageBrowser({
+  return createStorageServices({
     preferences,
     getAccounts,
     logger: { event() {} },
@@ -49,24 +53,24 @@ it('deletes local files without initializing accounts', async () => {
   const getAccounts = vi.fn(async () => {
     throw new Error('Local deletion must not initialize accounts.');
   });
-  const browser = createBrowser(memorySnapshotStore(), getAccounts, async () => [temporary.path]);
+  const storage = createServices(memorySnapshotStore(), getAccounts, async () => [temporary.path]);
   try {
-    const [choice] = await browser.listSpaces(localConnectionId);
+    const [choice] = await storage.browser.listSpaces(localConnectionId);
     if (!choice) throw new Error('Expected a local space');
     const { space } = choice;
     const ref = { ...space.root, locator: 'notes.txt' };
-    await browser.deleteEntry(ref);
-    expect((await browser.listDirectory(space.root)).entries).toEqual([]);
+    await storage.operations.deleteEntry(ref);
+    expect((await storage.browser.listDirectory(space.root)).entries).toEqual([]);
     expect(getAccounts).not.toHaveBeenCalled();
   } finally {
-    await browser.dispose();
+    await storage.dispose();
   }
 });
 
 it('routes a shared Drive deletion through the saved account connection', async () => {
   const { runtime } = accountFixture();
   const snapshotStore = memorySnapshotStore();
-  let browser: StorageBrowser | undefined;
+  let storage: StorageServices | undefined;
   const file = {
     id: 'notes',
     name: 'notes.txt',
@@ -95,13 +99,13 @@ it('routes a shared Drive deletion through the saved account connection', async 
         },
       ],
     });
-    browser = createBrowser(snapshotStore, async () => runtime);
+    storage = createServices(snapshotStore, async () => runtime);
     const ref = { connectionId: account.id, spaceId: 'shared:team', locator: file.id };
-    await browser.deleteEntry(ref);
+    await storage.operations.deleteEntry(ref);
     expect(request.mock.calls.map(([, init]) => init?.method ?? 'GET')).toEqual(['GET', 'PATCH']);
   } finally {
     vi.unstubAllGlobals();
-    await browser?.dispose();
+    await storage?.dispose();
     await runtime.dispose();
   }
 });
@@ -126,32 +130,34 @@ it('restores a chosen local space and confines browsing to its saved root', asyn
     store: new MemoryAccountStore(),
     cipher: new FakeAccountCipher(),
   });
-  function openBrowser() {
-    return createBrowser(
+  function openServices() {
+    return createServices(
       snapshotStore,
       async () => accounts,
       async () => [resolvedRoot],
     );
   }
-  const browser = openBrowser();
+  const first = openServices();
   let space;
   try {
-    expect(await browser.listConnections()).toEqual([]);
-    const [choice] = await browser.listSpaces(localConnectionId);
+    expect(await first.browser.listConnections()).toEqual([]);
+    const [choice] = await first.browser.listSpaces(localConnectionId);
     if (!choice) throw new Error('Expected a local space');
     space = choice.space;
-    await browser.saveSpaces(localConnectionId, [space.id]);
+    await first.browser.saveSpaces(localConnectionId, [space.id]);
   } finally {
-    await browser.dispose();
+    await first.dispose();
   }
 
-  const restored = openBrowser();
+  const restored = openServices();
   try {
-    expect(await restored.listConnections()).toMatchObject([
+    expect(await restored.browser.listConnections()).toMatchObject([
       { id: localConnectionId, spaces: [space] },
     ]);
-    expect(await restored.listSpaces(localConnectionId)).toEqual([{ space, available: true }]);
-    const page = await restored.listDirectory(space.root);
+    expect(await restored.browser.listSpaces(localConnectionId)).toEqual([
+      { space, available: true },
+    ]);
+    const page = await restored.browser.listDirectory(space.root);
     expect(page.entries).toMatchObject([
       {
         name: 'file.txt',
@@ -165,13 +171,15 @@ it('restores a chosen local space and confines browsing to its saved root', asyn
     ]);
     const folder = page.entries.find(({ name }) => name === 'nested');
     if (!folder) throw new Error('Expected the nested folder');
-    expect(await restored.listDirectory(folder.ref)).toEqual({ entries: [] });
-    expect(await restored.measureDirectorySize('size', [space.root])).toBe(10);
-    await expect(restored.listDirectory({ ...space.root, locator: '..' })).rejects.toMatchObject({
+    expect(await restored.browser.listDirectory(folder.ref)).toEqual({ entries: [] });
+    expect(await restored.browser.measureDirectorySize('size', [space.root])).toBe(10);
+    await expect(
+      restored.browser.listDirectory({ ...space.root, locator: '..' }),
+    ).rejects.toMatchObject({
       code: 'InvalidArgument',
     });
     await expect(
-      restored.listDirectory({ ...space.root, locator: 'redirect' }),
+      restored.browser.listDirectory({ ...space.root, locator: 'redirect' }),
     ).rejects.toMatchObject({ code: 'InvalidArgument' });
   } finally {
     await restored.dispose();
@@ -188,20 +196,20 @@ it('lists a local directory beyond the default page size in one response', async
   await Promise.all(names.map((name) => writeFile(join(temporary.path, name), '')));
 
   const { runtime } = accountFixture();
-  const browser = createBrowser(
+  const storage = createServices(
     memorySnapshotStore(),
     async () => runtime,
     async () => [temporary.path],
   );
   try {
-    const [choice] = await browser.listSpaces(localConnectionId);
+    const [choice] = await storage.browser.listSpaces(localConnectionId);
     if (!choice) throw new Error('Expected a local space');
     const { space } = choice;
-    const page = await browser.listDirectory(space.root);
+    const page = await storage.browser.listDirectory(space.root);
     expect(page.entries.map(({ name }) => name)).toEqual(names);
     expect(page.nextCursor).toBeUndefined();
   } finally {
-    await browser.dispose();
+    await storage.dispose();
     await runtime.dispose();
   }
 });
@@ -219,11 +227,11 @@ it('persists discovered spaces separately from legacy selections and refreshes t
   );
   vi.stubGlobal('fetch', request);
 
-  function openBrowser() {
-    return createBrowser(snapshotStore, async () => runtime);
+  function openServices() {
+    return createServices(snapshotStore, async () => runtime);
   }
 
-  let browser: StorageBrowser | undefined;
+  let storage: StorageServices | undefined;
   try {
     const account = await runtime.accounts.add('google-drive', { method: 'browser' });
     const saved = {
@@ -240,10 +248,10 @@ it('persists discovered spaces separately from legacy selections and refreshes t
       ],
     };
     snapshotStore.write(saved);
-    browser = openBrowser();
+    storage = openServices();
     const [choices, concurrentChoices] = await Promise.all([
-      browser.listSpaces(account.id),
-      browser.listSpaces(account.id),
+      storage.browser.listSpaces(account.id),
+      storage.browser.listSpaces(account.id),
     ]);
     const expectedSpaces = choices.slice(0, 2).map(({ space }) => space);
     expect(choices.map(({ space }) => space.id)).toEqual([
@@ -257,38 +265,38 @@ it('persists discovered spaces separately from legacy selections and refreshes t
       ...saved,
       connections: [{ ...saved.connections[0], discovered: choices.map(({ space }) => space) }],
     });
-    await browser.dispose();
+    await storage.dispose();
 
     request.mockReset().mockRejectedValue(new TypeError('offline'));
-    browser = openBrowser();
-    expect(await browser.listConnections()).toMatchObject([
+    storage = openServices();
+    expect(await storage.browser.listConnections()).toMatchObject([
       { id: account.id, spaces: expectedSpaces },
     ]);
-    expect(await browser.listSpaces(account.id)).toEqual(choices);
+    expect(await storage.browser.listSpaces(account.id)).toEqual(choices);
     expect(request).not.toHaveBeenCalled();
-    await expect(browser.listSpaces(account.id, true)).rejects.toMatchObject({
+    await expect(storage.browser.listSpaces(account.id, true)).rejects.toMatchObject({
       code: 'NetworkError',
     });
-    expect(await browser.listSpaces(account.id)).toEqual(choices);
+    expect(await storage.browser.listSpaces(account.id)).toEqual(choices);
     expect(request).toHaveBeenCalledTimes(1);
 
     request.mockResolvedValueOnce(Response.json({ drives: [{ id: 'new', name: 'New' }] }));
-    const refreshed = await browser.listSpaces(account.id, true);
+    const refreshed = await storage.browser.listSpaces(account.id, true);
     expect(refreshed.map(({ space, available }) => [space.id, available])).toEqual([
       ['my-drive', true],
       ['shared:new', true],
       ['shared:team', false],
     ]);
-    await browser.saveSpaces(account.id, []);
-    await browser.dispose();
+    await storage.browser.saveSpaces(account.id, []);
+    await storage.dispose();
 
-    browser = openBrowser();
-    expect(await browser.listConnections()).toMatchObject([{ id: account.id, spaces: [] }]);
-    expect(await browser.listSpaces(account.id)).toEqual(refreshed.slice(0, 2));
+    storage = openServices();
+    expect(await storage.browser.listConnections()).toMatchObject([{ id: account.id, spaces: [] }]);
+    expect(await storage.browser.listSpaces(account.id)).toEqual(refreshed.slice(0, 2));
     expect(request).toHaveBeenCalledTimes(2);
   } finally {
     vi.unstubAllGlobals();
-    await browser?.dispose();
+    await storage?.dispose();
     await runtime.dispose();
   }
 });
@@ -342,9 +350,9 @@ it('returns the local connection summary from addConnection without persisting s
   const getAccounts = vi.fn(async () => {
     throw new Error('Adding local connection must not initialize accounts.');
   });
-  const browser = createBrowser(memorySnapshotStore(), getAccounts, async () => [temporary.path]);
+  const storage = createServices(memorySnapshotStore(), getAccounts, async () => [temporary.path]);
   try {
-    const initial = await browser.addConnection('local');
+    const initial = await storage.browser.addConnection('local');
     expect(initial).toEqual({
       id: localConnectionId,
       provider: 'local',
@@ -355,17 +363,17 @@ it('returns the local connection summary from addConnection without persisting s
     });
     expect(getAccounts).not.toHaveBeenCalled();
 
-    const [choice] = await browser.listSpaces(localConnectionId);
+    const [choice] = await storage.browser.listSpaces(localConnectionId);
     if (!choice) throw new Error('Expected a local space');
-    await browser.saveSpaces(localConnectionId, [choice.space.id]);
+    await storage.browser.saveSpaces(localConnectionId, [choice.space.id]);
 
-    const configured = await browser.addConnection('local');
+    const configured = await storage.browser.addConnection('local');
     expect(configured).toEqual({
       ...initial,
       spaces: [choice.space],
     });
     expect(getAccounts).not.toHaveBeenCalled();
   } finally {
-    await browser.dispose();
+    await storage.dispose();
   }
 });

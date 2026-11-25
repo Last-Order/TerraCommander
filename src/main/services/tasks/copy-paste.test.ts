@@ -7,23 +7,28 @@ import { localAdapterFactory, localSpace } from '@main/storage/providers/local/l
 import type { Entry, EntryPage, EntryRef } from '@shared/storage';
 import { localConnectionId } from '@shared/storage-browser';
 import type { DownloadService } from '../downloads/download-service';
-import type { StorageBrowser } from '../storage/storage-browser';
+import type { StorageEntryOperations } from '../storage/storage-entry-operations';
 import { UploadService } from '../uploads/upload-service';
 import { allocateCopyName, isSubpath } from './copy-paste';
-import { StorageTaskService } from './storage-task-service';
+import {
+  StorageTaskService,
+  type StorageTaskDependencies,
+  type StorageTaskOperations,
+} from './storage-task-service';
 
 const cloudConnectionA = '5e45885a-89f0-462e-9821-7195cba174e5';
 const cloudConnectionB = '7c3a1120-2a4c-4c5c-9c8b-1d2e3f4a5b6c';
 
 function createMockBrowser() {
-  const statEntry = vi.fn<StorageBrowser['statEntry']>();
-  const resolveLocalPath = vi.fn<StorageBrowser['resolveLocalPath']>();
-  const listDirectory = vi.fn<StorageBrowser['listDirectory']>();
-  const spaceSemantics = vi.fn<StorageBrowser['spaceSemantics']>(async () => undefined);
-  const createDirectory = vi.fn<StorageBrowser['createDirectory']>();
-  const copyWithin = vi.fn<StorageBrowser['copyWithin']>();
-  const moveWithin = vi.fn<StorageBrowser['moveWithin']>();
-  const deleteEntry = vi.fn<StorageBrowser['deleteEntry']>(async () => undefined);
+  const statEntry = vi.fn<StorageEntryOperations['statEntry']>();
+  const resolveLocalPath = vi.fn<StorageTaskOperations['resolveLocalPath']>();
+  const listDirectory = vi.fn<StorageTaskOperations['listDirectory']>();
+  const spaceSemantics = vi.fn<StorageTaskOperations['spaceSemantics']>(async () => undefined);
+  const createDirectory = vi.fn<StorageTaskOperations['createDirectory']>();
+  const renameEntry = vi.fn<StorageTaskOperations['renameEntry']>();
+  const copyWithin = vi.fn<StorageTaskOperations['copyWithin']>();
+  const moveWithin = vi.fn<StorageTaskOperations['moveWithin']>();
+  const deleteEntry = vi.fn<StorageTaskOperations['deleteEntry']>(async () => undefined);
   const downloads = {
     prepare: vi.fn(async () => ({
       ref: { planId: 'single-plan', itemId: 0 },
@@ -44,6 +49,7 @@ function createMockBrowser() {
     pause: vi.fn(async () => undefined),
     runWork: vi.fn<DownloadService['runWork']>(async () => ({ status: 'completed' })),
     pauseWork: vi.fn<DownloadService['pauseWork']>(async () => undefined),
+    cancelOwner: vi.fn(),
   };
   const uploads = new UploadService({
     stat: statEntry,
@@ -59,18 +65,20 @@ function createMockBrowser() {
       }) satisfies WriteExecution,
   });
 
-  const browser = {
-    statEntry,
-    resolveLocalPath,
-    listDirectory,
-    spaceSemantics,
-    createDirectory,
-    copyWithin,
-    moveWithin,
-    deleteEntry,
+  const browser: StorageTaskDependencies = {
+    operations: {
+      resolveLocalPath,
+      listDirectory,
+      spaceSemantics,
+      createDirectory,
+      renameEntry,
+      copyWithin,
+      moveWithin,
+      deleteEntry,
+    },
     downloads: downloads as unknown as DownloadService,
     uploads,
-  } as unknown as StorageBrowser;
+  };
 
   return {
     browser,

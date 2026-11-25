@@ -116,7 +116,7 @@ export function registerTaskIpc(
           // Renderer frame may close while a main-process task event is emitting.
         }
       });
-      ipc.observeRendererSession(window, (id) => tasks.cancelOwnerConfirmations(id));
+      ipc.observeRendererSession(window, (id) => tasks.cancelOwnerOperations(id));
       window.webContents.once('destroyed', () => {
         unsubscribe();
         owners.delete(owner);
