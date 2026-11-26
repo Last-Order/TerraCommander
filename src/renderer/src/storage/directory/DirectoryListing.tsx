@@ -24,7 +24,7 @@ import { DirectoryEntryModals } from './modals/DirectoryEntryModals';
 import { useDirectoryEntryModals } from './modals/useDirectoryEntryModals';
 import { DirectorySearch } from './search/DirectorySearch';
 import { useDirectorySearch } from './search/useDirectorySearch';
-import { buildDirectoryRows, indexDirectoryRows } from './state/directory-rows';
+import { buildDirectoryRows } from './state/directory-rows';
 import { useDirectorySortStore } from './state/directory-sort';
 import { DirectoryViewContext } from './state/directory-view-context';
 import { createDirectoryViewStore } from './state/directory-view-store';
@@ -80,17 +80,12 @@ export function DirectoryListing({
       buildDirectoryRows(entries, optimisticNames, snapshot ? sort : null, i18n.resolvedLanguage),
     [entries, optimisticNames, snapshot, sort, i18n.resolvedLanguage],
   );
-  const rowIndexByLocator = useMemo(() => indexDirectoryRows(rows), [rows]);
 
   const [viewStore] = useState(() =>
     createDirectoryViewStore({
       entries,
       ready: phase === 'ready',
       rows,
-      rowIndexByLocator,
-      canSort,
-      loadingWithoutEntries,
-      hasError,
     }),
   );
 
@@ -99,21 +94,8 @@ export function DirectoryListing({
       entries,
       ready: phase === 'ready',
       rows,
-      rowIndexByLocator,
-      canSort,
-      loadingWithoutEntries,
-      hasError,
     });
-  }, [
-    viewStore,
-    entries,
-    phase,
-    rows,
-    rowIndexByLocator,
-    canSort,
-    loadingWithoutEntries,
-    hasError,
-  ]);
+  }, [viewStore, entries, phase, rows]);
 
   useLayoutEffect(
     () =>
@@ -160,9 +142,6 @@ export function DirectoryListing({
     ready: phase === 'ready',
     selectForContextMenu,
   });
-  useLayoutEffect(() => {
-    viewStore.getState().setNavigationBlocked(menu.opened);
-  }, [viewStore, menu.opened]);
 
   const modals = useDirectoryEntryModals({
     selectedEntries,
@@ -239,6 +218,10 @@ export function DirectoryListing({
           {(loadingWithoutEntries || entries.size > 0) && (
             <DirectoryTable
               scrollElement={scrollElement}
+              canSort={canSort}
+              loadingWithoutEntries={loadingWithoutEntries}
+              hasError={hasError}
+              interactionBlocked={menu.opened}
               onContextMenu={menu.showEntryMenu}
               onOpen={onOpen}
             />

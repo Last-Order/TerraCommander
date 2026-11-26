@@ -5,6 +5,7 @@ import { isDirectoryNavigationKey, resolveDirectoryNavigationIndex } from './dir
 interface UseDirectoryKeyboardNavigationOptions {
   tableRef: RefObject<HTMLTableElement | null>;
   scrollElement: HTMLDivElement | null;
+  blocked: boolean;
   virtualized: boolean;
   getPageStep: () => number;
   syncScrollPadding: () => void;
@@ -13,6 +14,7 @@ interface UseDirectoryKeyboardNavigationOptions {
 export function useDirectoryKeyboardNavigation({
   tableRef,
   scrollElement,
+  blocked,
   virtualized,
   getPageStep,
   syncScrollPadding,
@@ -47,8 +49,7 @@ export function useDirectoryKeyboardNavigation({
       if (
         event.defaultPrevented ||
         event.isComposing ||
-        state.navigationBlocked ||
-        state.loadingWithoutEntries ||
+        blocked ||
         event.altKey ||
         event.metaKey ||
         !isDirectoryNavigationKey(event.key) ||
@@ -83,7 +84,7 @@ export function useDirectoryKeyboardNavigation({
 
     doc.addEventListener('keydown', onDocumentKeyDown);
     return () => doc.removeEventListener('keydown', onDocumentKeyDown);
-  }, [store, tableRef, scrollElement, getPageStep, navigateTo]);
+  }, [store, tableRef, scrollElement, blocked, getPageStep, navigateTo]);
 
   const onFocus = (event: FocusEvent<HTMLTableElement>) => {
     const row = event.target.closest<HTMLTableRowElement>('tr[data-index]');
@@ -94,12 +95,7 @@ export function useDirectoryKeyboardNavigation({
 
   const onKeyDown = (event: KeyboardEvent<HTMLTableElement>) => {
     const state = store.getState();
-    if (
-      event.defaultPrevented ||
-      event.nativeEvent.isComposing ||
-      state.navigationBlocked ||
-      state.loadingWithoutEntries
-    ) {
+    if (event.defaultPrevented || event.nativeEvent.isComposing || blocked) {
       return;
     }
     if (!(event.target instanceof HTMLButtonElement)) return;

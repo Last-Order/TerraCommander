@@ -7,8 +7,7 @@ import { useStorageTaskQueue } from '@renderer/storage/tasks/storage-task-queue-
 import type { Entry } from '@shared/storage';
 import type { PasteEntriesRequest } from '@shared/tasks';
 import { useCurrentDirectory } from '../current-directory-context';
-import { useDirectoryView, useDirectoryViewStore } from '../state/directory-view-context';
-import type { DirectoryViewState } from '../state/directory-view-store';
+import { useDirectoryViewStore } from '../state/directory-view-context';
 import { useStorageClipboard } from '../state/storage-clipboard';
 import { useSelectionBusy } from '../state/useDirectoryEffects';
 import { useSelectedEntries } from '../state/useSelectedEntries';
@@ -31,8 +30,8 @@ interface ActiveDirectoryDrag {
   locators: ReadonlySet<string>;
 }
 
-function isDragBlocked(state: DirectoryViewState): boolean {
-  return state.loadingWithoutEntries || state.hasError || state.navigationBlocked;
+interface UseDirectoryDragOptions {
+  blocked: boolean;
 }
 
 function closestRowElement(target: EventTarget | null): HTMLTableRowElement | null {
@@ -43,13 +42,12 @@ function closestRowElement(target: EventTarget | null): HTMLTableRowElement | nu
   return null;
 }
 
-export function useDirectoryDrag() {
+export function useDirectoryDrag({ blocked }: UseDirectoryDragOptions) {
   const { t } = useTranslation(['storage', 'errors']);
   const { directoryEffects, onAuthRequired } = useStorageWorkspace();
   const queue = useStorageTaskQueue();
   const { ref: parent, path: directoryPath, ancestors } = useCurrentDirectory();
   const viewStore = useDirectoryViewStore();
-  const blocked = useDirectoryView(isDragBlocked);
   const selectedEntries = useSelectedEntries();
   const selectionBusy = useSelectionBusy(selectedEntries);
   const selectionDraggable =
@@ -92,7 +90,7 @@ export function useDirectoryDrag() {
     (index: number, event: DragEvent<HTMLTableRowElement>) => {
       const state = viewStore.getState();
       const draggedRow = state.rows[index];
-      if (!draggedRow || isDragBlocked(state)) {
+      if (!draggedRow || blocked) {
         event.preventDefault();
         return;
       }
@@ -149,7 +147,7 @@ export function useDirectoryDrag() {
       setActiveDrag(nextDrag);
       setDropTargetLocator(null);
     },
-    [viewStore, directoryEffects, removeDragPreview],
+    [viewStore, blocked, directoryEffects, removeDragPreview],
   );
 
   const executeMove = async (request: PasteEntriesRequest) => {
@@ -206,7 +204,7 @@ export function useDirectoryDrag() {
       draggedEntries: drag.entries,
       draggedLocators: drag.locators,
       isBusy: (ref) => directoryEffects.isBusy(ref),
-      blocked: isDragBlocked(state),
+      blocked,
     });
     return validTarget ? row : undefined;
   };

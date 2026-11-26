@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Entry } from '@shared/storage';
-import { buildDirectoryRows, indexDirectoryRows } from './directory-rows';
+import { buildDirectoryRows } from './directory-rows';
 import { createDirectoryViewStore } from './directory-view-store';
 
 function createEntry(locator: string, name = locator): Entry {
@@ -21,29 +21,37 @@ function createProjection(locators: readonly string[], ready = true) {
     entries,
     ready,
     rows,
-    rowIndexByLocator: indexDirectoryRows(rows),
-    canSort: ready,
-    loadingWithoutEntries: !ready && entries.size === 0,
-    hasError: false,
   };
 }
 
 describe('createDirectoryViewStore', () => {
-  it('syncs listing projection and prunes removed entries only when ready', () => {
+  it('syncs listing projection, indexes rows, and prunes removed entries only when ready', () => {
     const initial = createProjection(['a', 'b', 'c'], true);
     const store = createDirectoryViewStore(initial);
 
-    store.getState().selectMany(['a', 'b'], 'b');
+    expect(Array.from(store.getState().rowIndexByLocator.entries())).toEqual([
+      ['a', 0],
+      ['b', 1],
+      ['c', 2],
+    ]);
+
+    store.getState().selectOnly('a');
+    store.getState().selectEntry('b', { toggle: true, range: false });
     expect([...store.getState().selectedLocators]).toEqual(['a', 'b']);
     expect(store.getState().activeLocator).toBe('b');
 
-    // Non-ready listing update keeps existing selection intact.
+    // Non-ready listing update keeps existing selection intact while refreshing row indices.
     store.getState().syncListing(createProjection(['a'], false));
+    expect(Array.from(store.getState().rowIndexByLocator.entries())).toEqual([['a', 0]]);
     expect([...store.getState().selectedLocators]).toEqual(['a', 'b']);
     expect(store.getState().activeLocator).toBe('b');
 
     // Ready listing update prunes removed locators, anchor, and active atomically.
     store.getState().syncListing(createProjection(['a', 'c'], true));
+    expect(Array.from(store.getState().rowIndexByLocator.entries())).toEqual([
+      ['a', 0],
+      ['c', 1],
+    ]);
     expect([...store.getState().selectedLocators]).toEqual(['a']);
     expect(store.getState().anchorLocator).toBeNull();
     expect(store.getState().activeLocator).toBeNull();

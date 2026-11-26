@@ -81,20 +81,32 @@ function DirectorySkeletonRows() {
 
 interface DirectoryTableProps {
   scrollElement: HTMLDivElement | null;
+  canSort: boolean;
+  loadingWithoutEntries: boolean;
+  hasError: boolean;
+  interactionBlocked: boolean;
   onContextMenu: (entry: Entry, position: DirectoryContextMenuPosition) => void;
   onOpen: (entry: Entry) => void;
 }
 
-export function DirectoryTable({ scrollElement, onContextMenu, onOpen }: DirectoryTableProps) {
+export function DirectoryTable({
+  scrollElement,
+  canSort,
+  loadingWithoutEntries,
+  hasError,
+  interactionBlocked,
+  onContextMenu,
+  onOpen,
+}: DirectoryTableProps) {
   const { t, i18n } = useTranslation('storage');
   const viewStore = useDirectoryViewStore();
   const rows = useDirectoryView((state) => state.rows);
   const rowIndexByLocator = useDirectoryView((state) => state.rowIndexByLocator);
-  const canSort = useDirectoryView((state) => state.canSort);
-  const loadingWithoutEntries = useDirectoryView((state) => state.loadingWithoutEntries);
   const activeLocator = useDirectoryView((state) => state.activeLocator);
   const viewportCommand = useDirectoryView((state) => state.viewportCommand);
-  const drag = useDirectoryDrag();
+  const drag = useDirectoryDrag({
+    blocked: loadingWithoutEntries || hasError || interactionBlocked,
+  });
   const sort = useDirectorySortStore((state) => state.sort);
   const onSort = useDirectorySortStore((state) => state.toggleSort);
   const columnWidths = useDirectoryColumnWidthsStore((state) => state.widths);
@@ -132,6 +144,7 @@ export function DirectoryTable({ scrollElement, onContextMenu, onOpen }: Directo
   const { onFocus, onKeyDown } = useDirectoryKeyboardNavigation({
     tableRef,
     scrollElement,
+    blocked: loadingWithoutEntries || interactionBlocked,
     virtualized: enabled,
     getPageStep,
     syncScrollPadding,

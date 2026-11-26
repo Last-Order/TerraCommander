@@ -6,6 +6,7 @@ import type {
   DirectoryViewportRequest,
 } from '../directory-types';
 import type { DirectoryEntries } from './directory-cache';
+import { indexDirectoryRows } from './directory-rows';
 import {
   createEmptyDirectorySelection,
   migrateRenamedDirectorySelection,
@@ -13,7 +14,6 @@ import {
   selectAllDirectoryEntries,
   selectDirectoryEntry,
   selectDirectoryEntryForContextMenu,
-  selectManyDirectoryEntries,
   selectOnlyDirectoryEntry,
   setActiveDirectoryEntry,
   type DirectorySelectionState,
@@ -23,30 +23,20 @@ export interface DirectoryListingProjection {
   entries: DirectoryEntries;
   ready: boolean;
   rows: readonly DirectoryRow[];
-  rowIndexByLocator: ReadonlyMap<string, number>;
-  canSort: boolean;
-  loadingWithoutEntries: boolean;
-  hasError: boolean;
 }
 
 export interface DirectoryViewState {
   entries: DirectoryEntries;
   rows: readonly DirectoryRow[];
   rowIndexByLocator: ReadonlyMap<string, number>;
-  canSort: boolean;
-  loadingWithoutEntries: boolean;
-  hasError: boolean;
-  navigationBlocked: boolean;
   selectedLocators: ReadonlySet<string>;
   anchorLocator: string | null;
   activeLocator: string | null;
   viewportCommand: DirectoryViewportCommand | null;
   syncListing: (projection: DirectoryListingProjection) => void;
-  setNavigationBlocked: (blocked: boolean) => void;
   selectEntry: (locator: string, modifiers: DirectorySelectionModifiers) => void;
   selectAll: () => void;
   selectOnly: (locator: string | null) => void;
-  selectMany: (locators: readonly string[], primaryLocator?: string | null) => void;
   selectForContextMenu: (locator: string) => void;
   setActiveLocator: (locator: string | null) => void;
   migrateRename: (previousLocator: string, nextLocator: string) => void;
@@ -91,18 +81,16 @@ export function createDirectoryViewStore(
   initial?: Partial<DirectoryListingProjection>,
 ): DirectoryViewStore {
   const initialSelection = createEmptyDirectorySelection();
+  const initialRows = initial?.rows ?? emptyRows;
   let lastPrunedEntries: DirectoryEntries | undefined =
     initial?.ready && initial.entries ? initial.entries : undefined;
   let viewportSequence = 0;
 
   return createStore<DirectoryViewState>((set) => ({
     entries: initial?.entries ?? emptyEntries,
-    rows: initial?.rows ?? emptyRows,
-    rowIndexByLocator: initial?.rowIndexByLocator ?? emptyIndexByLocator,
-    canSort: initial?.canSort ?? false,
-    loadingWithoutEntries: initial?.loadingWithoutEntries ?? false,
-    hasError: initial?.hasError ?? false,
-    navigationBlocked: false,
+    rows: initialRows,
+    rowIndexByLocator:
+      initialRows.length > 0 ? indexDirectoryRows(initialRows) : emptyIndexByLocator,
     selectedLocators: initialSelection.locators,
     anchorLocator: initialSelection.anchor,
     activeLocator: initialSelection.active,
@@ -110,13 +98,8 @@ export function createDirectoryViewStore(
 
     syncListing: (projection) =>
       set((state) => {
-        const listingChanged =
-          state.entries !== projection.entries ||
-          state.rows !== projection.rows ||
-          state.rowIndexByLocator !== projection.rowIndexByLocator ||
-          state.canSort !== projection.canSort ||
-          state.loadingWithoutEntries !== projection.loadingWithoutEntries ||
-          state.hasError !== projection.hasError;
+        const entriesChanged = state.entries !== projection.entries;
+        const rowsChanged = state.rows !== projection.rows;
 
         let selectionUpdate: Partial<DirectoryViewState> | null = null;
         if (projection.ready && lastPrunedEntries !== projection.entries) {
@@ -126,27 +109,22 @@ export function createDirectoryViewStore(
           selectionUpdate = selectionPatch(current, pruned);
         }
 
-        if (!listingChanged && !selectionUpdate) return state;
+        if (!entriesChanged && !rowsChanged && !selectionUpdate) return state;
 
         return {
-          ...(listingChanged
+          ...(entriesChanged ? { entries: projection.entries } : {}),
+          ...(rowsChanged
             ? {
-                entries: projection.entries,
                 rows: projection.rows,
-                rowIndexByLocator: projection.rowIndexByLocator,
-                canSort: projection.canSort,
-                loadingWithoutEntries: projection.loadingWithoutEntries,
-                hasError: projection.hasError,
+                rowIndexByLocator:
+                  projection.rows.length > 0
+                    ? indexDirectoryRows(projection.rows)
+                    : emptyIndexByLocator,
               }
             : {}),
           ...selectionUpdate,
         };
       }),
-
-    setNavigationBlocked: (blocked) =>
-      set((state) =>
-        state.navigationBlocked === blocked ? state : { navigationBlocked: blocked },
-      ),
 
     selectEntry: (locator, modifiers) =>
       set((state) => {
@@ -172,13 +150,6 @@ export function createDirectoryViewStore(
       set((state) => {
         const current = readSelection(state);
         const next = selectOnlyDirectoryEntry(locator);
-        return selectionPatch(current, next) ?? state;
-      }),
-
-    selectMany: (locators, primaryLocator) =>
-      set((state) => {
-        const current = readSelection(state);
-        const next = selectManyDirectoryEntries(locators, primaryLocator);
         return selectionPatch(current, next) ?? state;
       }),
 
