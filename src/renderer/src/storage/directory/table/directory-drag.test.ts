@@ -36,10 +36,10 @@ function entry(
   };
 }
 
-function row(item: Entry, name = item.name): DirectoryRow {
+function row(item: Entry): DirectoryRow {
   return {
     entry: item,
-    name,
+    name: item.name,
     modifiedAt: undefined,
     size: undefined,
   };
@@ -50,8 +50,7 @@ describe('hasDirectoryEntryDrag', () => {
     expect(hasDirectoryEntryDrag([directoryDragMimeType])).toBe(true);
     expect(hasDirectoryEntryDrag(['Files', directoryDragMimeType])).toBe(true);
     expect(hasDirectoryEntryDrag(['Files'])).toBe(false);
-    expect(hasDirectoryEntryDrag(undefined)).toBe(false);
-    expect(hasDirectoryEntryDrag(null)).toBe(false);
+    expect(hasDirectoryEntryDrag([])).toBe(false);
   });
 });
 
@@ -121,7 +120,7 @@ describe('resolveDragStartEntries', () => {
     const folder = entry('dir-1', 'directory', {}, 'Folder');
     const fileA = entry('file-a', 'file', {}, 'a.txt');
     const fileB = entry('file-b', 'file', {}, 'b.txt');
-    const rows = [row(folder), row(fileA, 'a-optimistic.txt'), row(fileB)];
+    const rows = [row(folder), row(fileA), row(fileB)];
 
     const result = resolveDragStartEntries({
       draggedRow: rows[1]!,
@@ -133,7 +132,6 @@ describe('resolveDragStartEntries', () => {
     expect(result).toEqual({
       entries: [folder, fileA, fileB],
       locators: new Set(['dir-1', 'file-a', 'file-b']),
-      leadName: 'a-optimistic.txt',
       replaceSelectionWith: null,
     });
   });
@@ -167,7 +165,7 @@ describe('resolveDragStartEntries', () => {
   it('selects and drags a single unselected movable row', () => {
     const fileA = entry('file-a', 'file');
     const fileB = entry('file-b', 'file');
-    const rows = [row(fileA), row(fileB, 'b-renamed.txt')];
+    const rows = [row(fileA), row(fileB)];
 
     expect(
       resolveDragStartEntries({
@@ -179,7 +177,6 @@ describe('resolveDragStartEntries', () => {
     ).toEqual({
       entries: [fileB],
       locators: new Set(['file-b']),
-      leadName: 'b-renamed.txt',
       replaceSelectionWith: 'file-b',
     });
   });

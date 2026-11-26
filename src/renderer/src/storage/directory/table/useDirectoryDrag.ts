@@ -1,5 +1,5 @@
 import { notifications } from '@mantine/notifications';
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { errorKey, StorageBrowserError } from '@renderer/storage/storage-client';
 import { useStorageWorkspace } from '@renderer/storage/storage-workspace-context';
@@ -8,8 +8,10 @@ import type { Entry } from '@shared/storage';
 import type { PasteEntriesRequest } from '@shared/tasks';
 import { useCurrentDirectory } from '../current-directory-context';
 import { useDirectoryView, useDirectoryViewStore } from '../state/directory-view-context';
+import type { DirectoryViewState } from '../state/directory-view-store';
 import { useStorageClipboard } from '../state/storage-clipboard';
 import { useSelectionBusy } from '../state/useDirectoryEffects';
+import { useSelectedEntries } from '../state/useSelectedEntries';
 import {
   buildMoveIntoDirectoryRequest,
   canDragMoveEntry,
@@ -29,6 +31,10 @@ interface ActiveDirectoryDrag {
   locators: ReadonlySet<string>;
 }
 
+function isDragBlocked(state: DirectoryViewState): boolean {
+  return state.loadingWithoutEntries || state.hasError || state.navigationBlocked;
+}
+
 function closestRowElement(target: EventTarget | null): HTMLTableRowElement | null {
   if (target instanceof Element) return target.closest<HTMLTableRowElement>('tr[data-index]');
   if (target instanceof Node) {
@@ -43,25 +49,11 @@ export function useDirectoryDrag() {
   const queue = useStorageTaskQueue();
   const { ref: parent, path: directoryPath, ancestors } = useCurrentDirectory();
   const viewStore = useDirectoryViewStore();
-  const entries = useDirectoryView((state) => state.entries);
-  const selectedLocators = useDirectoryView((state) => state.selectedLocators);
-  const blocked = useDirectoryView(
-    (state) => state.loadingWithoutEntries || state.hasError || state.navigationBlocked,
-  );
-  const selectedEntries = useMemo(() => {
-    const selected: Entry[] = [];
-    for (const locator of selectedLocators) {
-      const entry = entries.get(locator);
-      if (entry) selected.push(entry);
-    }
-    return selected;
-  }, [entries, selectedLocators]);
+  const blocked = useDirectoryView(isDragBlocked);
+  const selectedEntries = useSelectedEntries();
   const selectionBusy = useSelectionBusy(selectedEntries);
   const selectionDraggable =
-    !blocked &&
-    selectedEntries.length > 0 &&
-    !selectionBusy &&
-    selectedEntries.every(canDragMoveEntry);
+    selectedEntries.length > 0 && !selectionBusy && selectedEntries.every(canDragMoveEntry);
 
   const [activeDrag, setActiveDrag] = useState<ActiveDirectoryDrag | null>(null);
   const [dropTargetLocator, setDropTargetLocator] = useState<string | null>(null);
@@ -85,23 +77,22 @@ export function useDirectoryDrag() {
     setDropTargetLocator(null);
   }, [removeDragPreview]);
 
-  const isDragging = activeDrag !== null;
-  useEffect(() => {
-    if (!isDragging) return;
-    const handleWindowDragEnd = () => clearDrag();
-    window.addEventListener('dragend', handleWindowDragEnd);
-    return () => window.removeEventListener('dragend', handleWindowDragEnd);
-  }, [isDragging, clearDrag]);
+  useEffect(
+    () =>
+      viewStore.subscribe((state) => {
+        const current = activeDragRef.current;
+        if (current && !state.rowIndexByLocator.has(current.anchorLocator)) {
+          clearDrag();
+        }
+      }),
+    [viewStore, clearDrag],
+  );
 
   const onRowDragStart = useCallback(
     (index: number, event: DragEvent<HTMLTableRowElement>) => {
       const state = viewStore.getState();
-      if (state.loadingWithoutEntries || state.hasError || state.navigationBlocked) {
-        event.preventDefault();
-        return;
-      }
       const draggedRow = state.rows[index];
-      if (!draggedRow) {
+      if (!draggedRow || isDragBlocked(state)) {
         event.preventDefault();
         return;
       }
@@ -121,10 +112,7 @@ export function useDirectoryDrag() {
       }
 
       event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData(
-        directoryDragMimeType,
-        JSON.stringify(resolved.entries.map((entry) => entry.ref.locator)),
-      );
+      event.dataTransfer.setData(directoryDragMimeType, '1');
 
       removeDragPreview();
       const host = event.currentTarget.closest('main') ?? event.currentTarget.ownerDocument.body;
@@ -134,7 +122,7 @@ export function useDirectoryDrag() {
       preview.setAttribute('aria-hidden', 'true');
       const nameSpan = doc.createElement('span');
       if (classes.dragPreviewName) nameSpan.className = classes.dragPreviewName;
-      nameSpan.textContent = resolved.leadName;
+      nameSpan.textContent = draggedRow.name;
       preview.append(nameSpan);
       if (resolved.entries.length > 1) {
         const countSpan = doc.createElement('span');
@@ -163,10 +151,6 @@ export function useDirectoryDrag() {
     },
     [viewStore, directoryEffects, removeDragPreview],
   );
-
-  const onRowDragEnd = useCallback(() => {
-    clearDrag();
-  }, [clearDrag]);
 
   const executeMove = async (request: PasteEntriesRequest) => {
     try {
@@ -212,64 +196,56 @@ export function useDirectoryDrag() {
     }
   };
 
+  const resolveDropTarget = (target: EventTarget | null, drag: ActiveDirectoryDrag) => {
+    const state = viewStore.getState();
+    if (!state.rowIndexByLocator.has(drag.anchorLocator)) return undefined;
+    const rowElement = closestRowElement(target);
+    const row = rowElement ? state.rows[Number(rowElement.dataset.index)] : undefined;
+    const validTarget = canDropEntriesIntoTarget({
+      target: row?.entry,
+      draggedEntries: drag.entries,
+      draggedLocators: drag.locators,
+      isBusy: (ref) => directoryEffects.isBusy(ref),
+      blocked: isDragBlocked(state),
+    });
+    return validTarget ? row : undefined;
+  };
+
   const tableDragProps = {
+    onDragEnd: clearDrag,
     onDragOver: (event: DragEvent<HTMLTableElement>) => {
-      if (!hasDirectoryEntryDrag(event.dataTransfer.types)) return;
-      const active = activeDragRef.current;
-      if (!active) return;
+      const drag = activeDragRef.current;
+      if (!drag || !hasDirectoryEntryDrag(event.dataTransfer.types)) return;
       event.preventDefault();
       event.stopPropagation();
 
-      const rowElement = closestRowElement(event.target);
-      const row = rowElement
-        ? viewStore.getState().rows[Number(rowElement.dataset.index)]
-        : undefined;
-      const validTarget = canDropEntriesIntoTarget({
-        target: row?.entry,
-        draggedEntries: active.entries,
-        draggedLocators: active.locators,
-        isBusy: (ref) => directoryEffects.isBusy(ref),
-        blocked,
-      });
-      event.dataTransfer.dropEffect = validTarget ? 'move' : 'none';
-      const nextTargetLocator = validTarget && row ? row.entry.ref.locator : null;
-      if (nextTargetLocator !== dropTargetLocator) {
-        setDropTargetLocator(nextTargetLocator);
-      }
+      const row = resolveDropTarget(event.target, drag);
+      event.dataTransfer.dropEffect = row ? 'move' : 'none';
+      setDropTargetLocator(row?.entry.ref.locator ?? null);
     },
     onDragLeave: (event: DragEvent<HTMLTableElement>) => {
       if (!hasDirectoryEntryDrag(event.dataTransfer.types)) return;
       const { currentTarget, relatedTarget } = event;
       if (relatedTarget instanceof Node && currentTarget.contains(relatedTarget)) return;
-      if (dropTargetLocator !== null) setDropTargetLocator(null);
+      setDropTargetLocator(null);
     },
     onDrop: (event: DragEvent<HTMLTableElement>) => {
       if (!hasDirectoryEntryDrag(event.dataTransfer.types)) return;
       event.preventDefault();
       event.stopPropagation();
 
-      const active = activeDragRef.current;
-      const rowElement = closestRowElement(event.target);
-      const row = rowElement
-        ? viewStore.getState().rows[Number(rowElement.dataset.index)]
-        : undefined;
+      const drag = activeDragRef.current;
       clearDrag();
 
-      if (!active || !row) return;
-      const validTarget = canDropEntriesIntoTarget({
-        target: row.entry,
-        draggedEntries: active.entries,
-        draggedLocators: active.locators,
-        isBusy: (ref) => directoryEffects.isBusy(ref),
-        blocked,
-      });
-      if (!validTarget) return;
+      if (!drag) return;
+      const row = resolveDropTarget(event.target, drag);
+      if (!row) return;
 
       const request = buildMoveIntoDirectoryRequest({
         parent,
         directoryPath,
         ancestors,
-        entries: active.entries,
+        entries: drag.entries,
         targetDirectory: row.entry,
         targetDirectoryName: row.name,
       });
@@ -284,9 +260,6 @@ export function useDirectoryDrag() {
     draggedLocators: activeDrag?.locators,
     dropTargetLocator,
     onRowDragStart,
-    onRowDragEnd,
     tableDragProps,
   };
 }
-
-export type DirectoryDrag = ReturnType<typeof useDirectoryDrag>;

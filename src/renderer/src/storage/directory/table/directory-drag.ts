@@ -5,15 +5,14 @@ import type { StorageClipboard } from '../state/storage-clipboard';
 
 export const directoryDragMimeType = 'application/x-terracommander-entries';
 
-export interface ResolvedDragPayload {
+interface ResolvedDragPayload {
   entries: Entry[];
   locators: ReadonlySet<string>;
-  leadName: string;
   replaceSelectionWith: string | null;
 }
 
-export function hasDirectoryEntryDrag(types: Iterable<string> | null | undefined): boolean {
-  return types != null && Array.from(types).includes(directoryDragMimeType);
+export function hasDirectoryEntryDrag(types: readonly string[]): boolean {
+  return types.includes(directoryDragMimeType);
 }
 
 export function canDragMoveEntry(entry: Entry): boolean {
@@ -53,31 +52,21 @@ export function resolveDragStartEntries({
   isBusy: (ref: EntryRef) => boolean;
 }): ResolvedDragPayload | null {
   const draggedLocator = draggedRow.entry.ref.locator;
-  if (selectedLocators.has(draggedLocator)) {
-    const selectedRows = rows.filter((row) => selectedLocators.has(row.entry.ref.locator));
-    if (
-      selectedRows.length === 0 ||
-      selectedRows.some((row) => !canDragMoveEntry(row.entry) || isBusy(row.entry.ref))
-    ) {
-      return null;
-    }
-    return {
-      entries: selectedRows.map((row) => row.entry),
-      locators: new Set(selectedRows.map((row) => row.entry.ref.locator)),
-      leadName: draggedRow.name,
-      replaceSelectionWith: null,
-    };
-  }
-
-  if (!canDragMoveEntry(draggedRow.entry) || isBusy(draggedRow.entry.ref)) {
+  const selected = selectedLocators.has(draggedLocator);
+  const entries = selected
+    ? rows.filter(({ entry }) => selectedLocators.has(entry.ref.locator)).map(({ entry }) => entry)
+    : [draggedRow.entry];
+  if (
+    entries.length === 0 ||
+    entries.some((entry) => !canDragMoveEntry(entry) || isBusy(entry.ref))
+  ) {
     return null;
   }
 
   return {
-    entries: [draggedRow.entry],
-    locators: new Set([draggedLocator]),
-    leadName: draggedRow.name,
-    replaceSelectionWith: draggedLocator,
+    entries,
+    locators: new Set(entries.map(({ ref }) => ref.locator)),
+    replaceSelectionWith: selected ? null : draggedLocator,
   };
 }
 

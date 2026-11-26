@@ -179,7 +179,6 @@ export function DirectoryTable({ scrollElement, onContextMenu, onOpen }: Directo
       onContextMenu={onContextMenu}
       onOpen={onOpen}
       onDragStart={drag.onRowDragStart}
-      onDragEnd={drag.onRowDragEnd}
     />
   );
 

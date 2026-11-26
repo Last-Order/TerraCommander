@@ -31,7 +31,6 @@ interface DirectoryEntryRowProps extends DirectoryRow {
   onContextMenu: (entry: Entry, position: DirectoryContextMenuPosition) => void;
   onOpen: (entry: Entry) => void;
   onDragStart: (index: number, event: DragEvent<HTMLTableRowElement>) => void;
-  onDragEnd: () => void;
 }
 
 export const DirectoryEntryRow = memo(function DirectoryEntryRow({
@@ -51,7 +50,6 @@ export const DirectoryEntryRow = memo(function DirectoryEntryRow({
   onContextMenu,
   onOpen,
   onDragStart,
-  onDragEnd,
 }: DirectoryEntryRowProps) {
   const { locator } = entry.ref;
   const { ref: parent } = useCurrentDirectory();
@@ -89,7 +87,6 @@ export const DirectoryEntryRow = memo(function DirectoryEntryRow({
       data-disabled={disabled || undefined}
       aria-busy={disabled || undefined}
       onDragStart={draggable ? (event) => onDragStart(index, event) : undefined}
-      onDragEnd={onDragEnd}
       onClick={(event) => {
         event.currentTarget.querySelector('button')?.focus({ preventScroll: true });
         viewStore.getState().selectEntry(locator, {

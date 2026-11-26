@@ -9,7 +9,6 @@ import {
   type ReactNode,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useStore } from 'zustand';
 import { entryKey, type Entry } from '@shared/storage';
 import { useStorageWorkspace } from '../storage-workspace-context';
 import { DirectoryContextMenu } from './actions/DirectoryContextMenu';
@@ -33,6 +32,7 @@ import { resolveEntryCapabilities } from './state/entry-capabilities';
 import { summarizeSelection } from './state/selection-summary';
 import { useDirectoryRenames } from './state/useDirectoryEffects';
 import { useDirectoryListing } from './state/useDirectoryListing';
+import { useSelectedEntries } from './state/useSelectedEntries';
 import { DirectoryTable } from './table/DirectoryTable';
 import classes from './DirectoryListing.module.css';
 
@@ -135,15 +135,7 @@ export function DirectoryListing({
     return () => scrollElement.removeEventListener('click', clearOnBlankClick);
   }, [scrollElement, viewStore]);
 
-  const selectedLocators = useStore(viewStore, (state) => state.selectedLocators);
-  const selectedEntries = useMemo(() => {
-    const selected: Entry[] = [];
-    for (const locator of selectedLocators) {
-      const entry = entries.get(locator);
-      if (entry) selected.push(entry);
-    }
-    return selected;
-  }, [entries, selectedLocators]);
+  const selectedEntries = useSelectedEntries(viewStore);
 
   const selectionStatus = useMemo(() => summarizeSelection(selectedEntries), [selectedEntries]);
   useEffect(() => {
