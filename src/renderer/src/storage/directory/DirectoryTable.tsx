@@ -255,7 +255,7 @@ export function DirectoryTable({
       <thead>
         <tr>
           {columns.map(({ field, label, className, resizable }) => {
-            const direction = canSort && sort?.field === field ? sort.direction : undefined;
+            const direction = canSort && sort.field === field ? sort.direction : undefined;
             const Icon = direction ? sortIcons[direction] : ChevronsUpDown;
             return (
               <th key={field} scope="col" className={className} aria-sort={direction}>

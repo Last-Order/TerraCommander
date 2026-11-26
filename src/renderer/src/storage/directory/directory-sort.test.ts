@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_DIRECTORY_SORT,
   DIRECTORY_SORT_STORAGE_KEY,
   loadDirectorySort,
   saveDirectorySort,
@@ -21,19 +22,21 @@ function createMemoryStorage() {
 
 describe('directory-sort', () => {
   it('toggles sort direction and resets to ascending when switching fields', () => {
-    const first = toggleDirectorySort(null, 'name');
-    expect(first).toEqual({ field: 'name', direction: 'ascending' });
-    expect(toggleDirectorySort(first, 'name')).toEqual({ field: 'name', direction: 'descending' });
-    expect(toggleDirectorySort({ field: 'name', direction: 'descending' }, 'name')).toEqual({
+    const descending = toggleDirectorySort(DEFAULT_DIRECTORY_SORT, 'name');
+    expect(descending).toEqual({ field: 'name', direction: 'descending' });
+    expect(toggleDirectorySort(descending, 'name')).toEqual({
       field: 'name',
       direction: 'ascending',
     });
-    expect(toggleDirectorySort(first, 'size')).toEqual({ field: 'size', direction: 'ascending' });
+    expect(toggleDirectorySort(DEFAULT_DIRECTORY_SORT, 'size')).toEqual({
+      field: 'size',
+      direction: 'ascending',
+    });
   });
 
-  it('persists sort state and ignores missing or malformed stored values', () => {
+  it('persists sort state and falls back to default on missing or malformed values', () => {
     const storage = createMemoryStorage();
-    expect(loadDirectorySort(storage)).toBeNull();
+    expect(loadDirectorySort(storage)).toEqual(DEFAULT_DIRECTORY_SORT);
 
     saveDirectorySort({ field: 'size', direction: 'descending' }, storage);
     expect(loadDirectorySort(storage)).toEqual({ field: 'size', direction: 'descending' });
@@ -45,7 +48,7 @@ describe('directory-sort', () => {
       '{"field":"name","direction":"up"}',
     ]) {
       storage.setItem(DIRECTORY_SORT_STORAGE_KEY, invalid);
-      expect(loadDirectorySort(storage)).toBeNull();
+      expect(loadDirectorySort(storage)).toEqual(DEFAULT_DIRECTORY_SORT);
     }
   });
 });

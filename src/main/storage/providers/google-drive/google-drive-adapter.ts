@@ -190,7 +190,7 @@ class GoogleDriveAdapter implements StorageAdapter {
     const params = new URLSearchParams({
       q: `'${id}' in parents and trashed = false`,
       fields: `nextPageToken,incompleteSearch,files(${fileFields})`,
-      orderBy: 'name_natural',
+      orderBy: 'folder,name_natural',
       pageSize: String(Math.min(1000, pageSize)),
       spaces: 'drive',
       corpora: driveId ? 'drive' : 'user',

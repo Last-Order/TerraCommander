@@ -22,6 +22,10 @@ export function sortDirectoryRows(
   const order = direction === 'ascending' ? 1 : -1;
 
   rows.sort((a, b) => {
+    const aDir = a.entry.kind === 'directory';
+    const bDir = b.entry.kind === 'directory';
+    if (aDir !== bDir) return aDir ? -1 : 1;
+
     if (field === 'name') return compare(a.name, b.name) * order;
     const left = a[field];
     const right = b[field];

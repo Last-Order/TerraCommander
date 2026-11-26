@@ -46,24 +46,49 @@ describe('buildDirectoryRows', () => {
     ]);
   });
 
-  it('sorts by name numerically and keeps missing values last with name tie-breakers', () => {
+  it('places directories before files across sort fields and keeps missing values last', () => {
     const entries = new Map<string, Entry>([
-      ['b', entry('b', { name: 'file10.txt', size: 100 })],
-      ['a', entry('a', { name: 'file2.txt', size: 200 })],
-      ['d', entry('d', { kind: 'directory', name: 'beta' })],
-      ['c', entry('c', { kind: 'directory', name: 'alpha' })],
+      [
+        'b',
+        entry('b', { name: 'a-file10.txt', size: 100, modifiedAt: '2026-01-03T00:00:00.000Z' }),
+      ],
+      ['a', entry('a', { name: 'a-file2.txt', size: 200, modifiedAt: '2026-01-01T00:00:00.000Z' })],
+      ['e', entry('e', { name: 'a-file-nosize.txt' })],
+      [
+        'd',
+        entry('d', { kind: 'directory', name: 'z-beta', modifiedAt: '2026-01-02T00:00:00.000Z' }),
+      ],
+      [
+        'c',
+        entry('c', { kind: 'directory', name: 'z-alpha', modifiedAt: '2026-01-04T00:00:00.000Z' }),
+      ],
     ]);
 
     expect(
       buildDirectoryRows(entries, new Map(), { field: 'name', direction: 'ascending' }, 'en').map(
         (row) => row.name,
       ),
-    ).toEqual(['alpha', 'beta', 'file2.txt', 'file10.txt']);
+    ).toEqual(['z-alpha', 'z-beta', 'a-file-nosize.txt', 'a-file2.txt', 'a-file10.txt']);
+
+    expect(
+      buildDirectoryRows(entries, new Map(), { field: 'name', direction: 'descending' }, 'en').map(
+        (row) => row.name,
+      ),
+    ).toEqual(['z-beta', 'z-alpha', 'a-file10.txt', 'a-file2.txt', 'a-file-nosize.txt']);
 
     expect(
       buildDirectoryRows(entries, new Map(), { field: 'size', direction: 'descending' }, 'en').map(
         (row) => row.name,
       ),
-    ).toEqual(['file2.txt', 'file10.txt', 'alpha', 'beta']);
+    ).toEqual(['z-alpha', 'z-beta', 'a-file2.txt', 'a-file10.txt', 'a-file-nosize.txt']);
+
+    expect(
+      buildDirectoryRows(
+        entries,
+        new Map(),
+        { field: 'modifiedAt', direction: 'ascending' },
+        'en',
+      ).map((row) => row.name),
+    ).toEqual(['z-beta', 'z-alpha', 'a-file2.txt', 'a-file10.txt', 'a-file-nosize.txt']);
   });
 });

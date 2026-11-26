@@ -2,18 +2,22 @@ import { create } from 'zustand';
 import type { DirectorySort } from './directory-types';
 
 export const DIRECTORY_SORT_STORAGE_KEY = 'terra-commander:directory-sort';
+export const DEFAULT_DIRECTORY_SORT: DirectorySort = {
+  field: 'name',
+  direction: 'ascending',
+};
 
 const validFields = new Set<DirectorySort['field']>(['name', 'modifiedAt', 'size']);
 const validDirections = new Set<DirectorySort['direction']>(['ascending', 'descending']);
 
 export function toggleDirectorySort(
-  previous: DirectorySort | null,
+  previous: DirectorySort,
   field: DirectorySort['field'],
 ): DirectorySort {
   return {
     field,
     direction:
-      previous?.field === field && previous.direction === 'ascending' ? 'descending' : 'ascending',
+      previous.field === field && previous.direction === 'ascending' ? 'descending' : 'ascending',
   };
 }
 
@@ -50,33 +54,33 @@ function getDefaultStorage(): Storage | null {
 
 export function loadDirectorySort(
   storage: Pick<Storage, 'getItem'> | null = getDefaultStorage(),
-): DirectorySort | null {
-  if (!storage) return null;
+): DirectorySort {
+  if (!storage) return { ...DEFAULT_DIRECTORY_SORT };
   try {
-    return parseDirectorySort(storage.getItem(DIRECTORY_SORT_STORAGE_KEY));
+    return (
+      parseDirectorySort(storage.getItem(DIRECTORY_SORT_STORAGE_KEY)) ?? {
+        ...DEFAULT_DIRECTORY_SORT,
+      }
+    );
   } catch {
-    return null;
+    return { ...DEFAULT_DIRECTORY_SORT };
   }
 }
 
 export function saveDirectorySort(
-  sort: DirectorySort | null,
-  storage: Pick<Storage, 'setItem' | 'removeItem'> | null = getDefaultStorage(),
+  sort: DirectorySort,
+  storage: Pick<Storage, 'setItem'> | null = getDefaultStorage(),
 ): void {
   if (!storage) return;
   try {
-    if (sort === null) {
-      storage.removeItem(DIRECTORY_SORT_STORAGE_KEY);
-    } else {
-      storage.setItem(DIRECTORY_SORT_STORAGE_KEY, JSON.stringify(sort));
-    }
+    storage.setItem(DIRECTORY_SORT_STORAGE_KEY, JSON.stringify(sort));
   } catch {
     // Ignore storage write failures (e.g. quota exceeded or restricted storage).
   }
 }
 
 interface DirectorySortState {
-  sort: DirectorySort | null;
+  sort: DirectorySort;
   toggleSort: (field: DirectorySort['field']) => void;
 }
 
