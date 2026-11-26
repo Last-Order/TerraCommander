@@ -34,7 +34,7 @@
   overflow: auto;
   padding-block-end: calc(var(--task-panel-height) + 1rem);
   scroll-padding-block-start: 2.5rem;
-  scroll-padding-block-end: calc(var(--task-panel-height) + 1rem);
+  scroll-padding-block-end: calc(var(--task-panel-visible-height, 0px) + 1rem);
   scrollbar-gutter: stable;
 }
 

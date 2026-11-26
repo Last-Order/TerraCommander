@@ -9,7 +9,13 @@ import {
   type FocusEvent,
   type KeyboardEvent,
 } from 'react';
-import { isDirectoryNavigationKey, resolveDirectoryNavigationIndex } from './directory-navigation';
+import {
+  isDirectoryNavigationKey,
+  resolveDirectoryNavigationIndex,
+  resolveDirectoryPageStep,
+  resolveDirectoryScrollPadding,
+  type DirectoryScrollPadding,
+} from './directory-navigation';
 import type {
   DirectoryRevealTarget,
   DirectoryRow,
@@ -17,6 +23,11 @@ import type {
 } from './directory-types';
 
 const estimatedRowHeight = 36;
+
+function parsePixelValue(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
 
 interface UseDirectoryVirtualizerOptions {
   rows: readonly DirectoryRow[];
@@ -42,6 +53,7 @@ export function useDirectoryVirtualizer({
   const tableRef = useRef<HTMLTableElement>(null);
   const enabled = rows.length > 100;
   const [scrollMargin, setScrollMargin] = useState(0);
+  const [scrollPadding, setScrollPadding] = useState<DirectoryScrollPadding>({ start: 0, end: 0 });
   const [focusedLocator, setFocusedLocator] = useState<string | null>(null);
   const [focusTarget, setFocusTarget] = useState<{ locator: string } | null>(null);
   const focusedIndex = useMemo(
@@ -93,8 +105,30 @@ export function useDirectoryVirtualizer({
     overscan: 8,
     enabled,
     scrollMargin,
+    scrollPaddingStart: scrollPadding.start,
+    scrollPaddingEnd: scrollPadding.end,
     rangeExtractor,
   });
+
+  const readScrollPadding = useCallback((): DirectoryScrollPadding => {
+    if (!scrollElement) return { start: 0, end: 0 };
+    const style = getComputedStyle(scrollElement);
+    return resolveDirectoryScrollPadding({
+      viewportHeight: scrollElement.clientHeight,
+      headerHeight: tableRef.current?.tHead?.offsetHeight ?? 0,
+      scrollPaddingStart: parsePixelValue(style.scrollPaddingTop),
+      scrollPaddingEnd: parsePixelValue(style.scrollPaddingBottom),
+      rowHeight: estimatedRowHeight,
+    });
+  }, [scrollElement]);
+
+  const syncScrollPadding = useCallback(() => {
+    const next = readScrollPadding();
+    setScrollPadding((previous) =>
+      previous.start === next.start && previous.end === next.end ? previous : next,
+    );
+    return next;
+  }, [readScrollPadding]);
 
   useLayoutEffect(() => {
     const table = tableRef.current;
@@ -107,6 +141,7 @@ export function useDirectoryVirtualizer({
           scroll.getBoundingClientRect().top +
           scroll.scrollTop,
       );
+      syncScrollPadding();
     };
     measureOffset();
     const observer = new ResizeObserver(measureOffset);
@@ -118,7 +153,7 @@ export function useDirectoryVirtualizer({
       observer.observe(sibling);
     }
     return () => observer.disconnect();
-  }, [enabled, rows, scrollElement, canSort]);
+  }, [enabled, rows, scrollElement, canSort, syncScrollPadding]);
 
   useLayoutEffect(() => {
     if (revealIndex < 0) return;
@@ -152,10 +187,12 @@ export function useDirectoryVirtualizer({
 
   const getPageStep = useCallback(() => {
     if (!scrollElement) return 10;
-    const headerHeight = tableRef.current?.tHead?.offsetHeight ?? 0;
-    const visibleHeight = Math.max(0, scrollElement.clientHeight - headerHeight);
-    return Math.max(1, Math.floor(visibleHeight / estimatedRowHeight));
-  }, [scrollElement]);
+    return resolveDirectoryPageStep(
+      scrollElement.clientHeight,
+      readScrollPadding(),
+      estimatedRowHeight,
+    );
+  }, [scrollElement, readScrollPadding]);
 
   const navigateTo = useCallback(
     (nextIndex: number, modifiers: { ctrlKey: boolean; shiftKey: boolean }) => {
@@ -165,9 +202,12 @@ export function useDirectoryVirtualizer({
       if (!modifiers.ctrlKey) {
         onSelect(locator, { toggle: false, range: modifiers.shiftKey });
       }
+      if (enabled) {
+        syncScrollPadding();
+      }
       setFocusTarget({ locator });
     },
-    [rows, onSelect],
+    [rows, onSelect, enabled, syncScrollPadding],
   );
 
   useEffect(() => {
@@ -228,6 +268,7 @@ export function useDirectoryVirtualizer({
       const next = rows[nextIndex];
       if (!next) return;
       event.preventDefault();
+      syncScrollPadding();
       setFocusTarget({ locator: next.entry.ref.locator });
       return;
     }

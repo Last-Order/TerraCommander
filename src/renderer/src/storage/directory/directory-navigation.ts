@@ -19,6 +19,43 @@ export function isDirectoryNavigationKey(key: string): key is DirectoryNavigatio
   return navigationKeys.has(key);
 }
 
+export interface DirectoryScrollPadding {
+  start: number;
+  end: number;
+}
+
+export function resolveDirectoryScrollPadding({
+  viewportHeight,
+  headerHeight,
+  scrollPaddingStart,
+  scrollPaddingEnd,
+  rowHeight,
+}: {
+  viewportHeight: number;
+  headerHeight: number;
+  scrollPaddingStart: number;
+  scrollPaddingEnd: number;
+  rowHeight: number;
+}): DirectoryScrollPadding {
+  const safeViewport = Math.max(0, viewportHeight);
+  const safeRow = Math.max(1, rowHeight);
+  const rawStart = Math.max(0, headerHeight, scrollPaddingStart);
+  const rawEnd = Math.max(0, scrollPaddingEnd);
+  const start = Math.min(rawStart, Math.max(0, safeViewport - safeRow));
+  const end = Math.min(rawEnd, Math.max(0, safeViewport - start - safeRow));
+  return { start, end };
+}
+
+export function resolveDirectoryPageStep(
+  viewportHeight: number,
+  scrollPadding: DirectoryScrollPadding,
+  rowHeight: number,
+): number {
+  const safeRow = Math.max(1, rowHeight);
+  const visibleHeight = Math.max(0, viewportHeight - scrollPadding.start - scrollPadding.end);
+  return Math.max(1, Math.floor(visibleHeight / safeRow));
+}
+
 export function resolveDirectoryNavigationIndex(
   rowCount: number,
   currentIndex: number,
