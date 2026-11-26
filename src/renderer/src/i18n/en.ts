@@ -72,6 +72,7 @@ export const en = {
     crossSourcePasteUnsupported:
       'Transferring between different cloud accounts or providers is not supported yet.',
     pasteSelfContainmentError: 'Cannot paste a folder into itself or a subfolder.',
+    moveSelfContainmentError: 'Cannot move a folder into itself or a subfolder.',
     addEntry: 'Add',
     newFolder: 'New folder',
     folderName: 'Folder name',

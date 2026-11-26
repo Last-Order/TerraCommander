@@ -19,6 +19,7 @@ import { summarizeSelection } from './selection-summary';
 import { useDirectoryClipboard } from './useDirectoryClipboard';
 import { useDirectoryCommands } from './useDirectoryCommands';
 import { useDirectoryContextMenu } from './useDirectoryContextMenu';
+import { useDirectoryDrag } from './useDirectoryDrag';
 import { useDirectoryRenames } from './useDirectoryEffects';
 import { useDirectoryEntryModals } from './useDirectoryEntryModals';
 import { useDirectoryListing } from './useDirectoryListing';
@@ -113,6 +114,13 @@ export function DirectoryListing({
   const clipboard = useDirectoryClipboard({
     blocked: loadingWithoutEntries || error !== null,
   });
+  const drag = useDirectoryDrag({
+    rows,
+    selectedLocators,
+    selectedEntries,
+    selectOnly,
+    blocked: loadingWithoutEntries || error !== null || menu.opened,
+  });
   const commands = useDirectoryCommands({
     phase,
     refresh,
@@ -171,6 +179,7 @@ export function DirectoryListing({
               navigationBlocked={menu.opened}
               selectedLocators={selectedLocators}
               cutLocators={clipboard.cutLocators}
+              drag={drag}
               onSelect={selectEntry}
               onContextMenu={menu.showEntryMenu}
               onOpen={onOpen}

@@ -23,6 +23,7 @@ interface UseDirectoryVirtualizerOptions {
   scrollElement: HTMLDivElement | null;
   canSort: boolean;
   revealTarget?: DirectoryRevealTarget | null | undefined;
+  draggingLocator?: string | null | undefined;
   selectedLocators: ReadonlySet<string>;
   navigationBlocked: boolean;
   onSelect: (locator: string, modifiers: DirectorySelectionModifiers) => void;
@@ -33,6 +34,7 @@ export function useDirectoryVirtualizer({
   scrollElement,
   canSort,
   revealTarget = null,
+  draggingLocator = null,
   selectedLocators,
   navigationBlocked,
   onSelect,
@@ -63,16 +65,24 @@ export function useDirectoryVirtualizer({
         : rows.findIndex(({ entry }) => entry.ref.locator === revealTarget.locator),
     [rows, revealTarget],
   );
+  const draggingIndex = useMemo(
+    () =>
+      draggingLocator === null
+        ? -1
+        : rows.findIndex(({ entry }) => entry.ref.locator === draggingLocator),
+    [rows, draggingLocator],
+  );
   const rangeExtractor = useCallback(
     (range: Range) => {
-      // Keep keyboard focus mounted even when the user scrolls it out of view.
+      // Keep keyboard focus and active drag source mounted even when scrolled out of view.
       const indexes = new Set(defaultRangeExtractor(range));
       if (focusedIndex >= 0) indexes.add(focusedIndex);
       if (targetIndex >= 0) indexes.add(targetIndex);
       if (revealIndex >= 0) indexes.add(revealIndex);
+      if (draggingIndex >= 0) indexes.add(draggingIndex);
       return [...indexes].sort((a, b) => a - b);
     },
-    [focusedIndex, targetIndex, revealIndex],
+    [focusedIndex, targetIndex, revealIndex, draggingIndex],
   );
   // oxlint-disable-next-line react/incompatible-library -- React Compiler is not enabled in this app.
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLTableRowElement>({

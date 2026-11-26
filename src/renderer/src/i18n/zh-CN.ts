@@ -68,6 +68,7 @@ export const zhCN = {
     moveTask: '移动',
     crossSourcePasteUnsupported: '暂不支持跨账号或跨存储源粘贴。',
     pasteSelfContainmentError: '不能将文件夹粘贴到其自身或子文件夹中。',
+    moveSelfContainmentError: '不能将文件夹移动到其自身或子文件夹中。',
     addEntry: '添加',
     newFolder: '新建文件夹',
     folderName: '文件夹名称',

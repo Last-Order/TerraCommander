@@ -29,6 +29,7 @@ import type {
 } from './directory-types';
 import { DirectoryEntryRow } from './DirectoryEntryRow';
 import type { DirectoryContextMenuPosition } from './useDirectoryContextMenu';
+import type { DirectoryDrag } from './useDirectoryDrag';
 import { useDirectoryVirtualizer } from './useDirectoryVirtualizer';
 import classes from './DirectoryTable.module.css';
 
@@ -90,6 +91,7 @@ interface DirectoryTableProps {
   navigationBlocked: boolean;
   selectedLocators: ReadonlySet<string>;
   cutLocators: ReadonlySet<string> | undefined;
+  drag: DirectoryDrag;
   onSelect: (locator: string, modifiers: DirectorySelectionModifiers) => void;
   onContextMenu: (entry: Entry, position: DirectoryContextMenuPosition) => void;
   onOpen: (entry: Entry) => void;
@@ -104,6 +106,7 @@ export function DirectoryTable({
   navigationBlocked,
   selectedLocators,
   cutLocators,
+  drag,
   onSelect,
   onContextMenu,
   onOpen,
@@ -132,6 +135,7 @@ export function DirectoryTable({
       scrollElement,
       canSort,
       revealTarget,
+      draggingLocator: drag.draggingAnchorLocator,
       selectedLocators,
       navigationBlocked: navigationBlocked || loadingWithoutEntries,
       onSelect,
@@ -170,6 +174,10 @@ export function DirectoryTable({
       index={index}
       selected={selectedLocators.has(row.entry.ref.locator)}
       cut={cutLocators?.has(row.entry.ref.locator) ?? false}
+      selectionDraggable={drag.selectionDraggable}
+      dragBlocked={drag.blocked || resizingColumn !== null}
+      dragging={drag.draggedLocators?.has(row.entry.ref.locator) ?? false}
+      dropTarget={drag.dropTargetLocator === row.entry.ref.locator}
       disabledTitle={disabledTitle}
       dateFormatter={dateFormatter}
       sizeFormatter={sizeFormatter}
@@ -177,6 +185,8 @@ export function DirectoryTable({
       onSelect={onSelect}
       onContextMenu={onContextMenu}
       onOpen={onOpen}
+      onDragStart={drag.onRowDragStart}
+      onDragEnd={drag.onRowDragEnd}
     />
   );
 
@@ -251,6 +261,7 @@ export function DirectoryTable({
       onFocusCapture={onFocus}
       onBlurCapture={onBlur}
       onKeyDownCapture={onKeyDown}
+      {...drag.tableDragProps}
     >
       <thead>
         <tr>
