@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Entry } from '@shared/storage';
-import { buildDirectoryRows } from './directory-rows';
+import { buildDirectoryRows, indexDirectoryRows } from './directory-rows';
 
 function entry(locator: string, overrides: Partial<Entry> = {}): Entry {
   return {
@@ -90,5 +90,22 @@ describe('buildDirectoryRows', () => {
         'en',
       ).map((row) => row.name),
     ).toEqual(['z-beta', 'z-alpha', 'a-file2.txt', 'a-file10.txt', 'a-file-nosize.txt']);
+  });
+});
+
+describe('indexDirectoryRows', () => {
+  it('maps each entry locator to its current row index', () => {
+    const entries = new Map<string, Entry>([
+      ['first', entry('first')],
+      ['second', entry('second')],
+      ['third', entry('third')],
+    ]);
+    const rows = buildDirectoryRows(entries, new Map(), null, 'en');
+
+    expect(Array.from(indexDirectoryRows(rows).entries())).toEqual([
+      ['first', 0],
+      ['second', 1],
+      ['third', 2],
+    ]);
   });
 });

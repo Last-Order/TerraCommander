@@ -4,104 +4,92 @@ import { useStorageWorkspace } from '../storage-workspace-context';
 import { useCurrentDirectory } from './current-directory-context';
 import { isDirectoryBlankTarget } from './directory-blank-target';
 import type { DirectoryEntries } from './directory-cache';
+import {
+  createEmptyDirectorySelection,
+  migrateRenamedDirectorySelection,
+  pruneDirectorySelection,
+  selectAllDirectoryEntries,
+  selectDirectoryEntry,
+  selectDirectoryEntryForContextMenu,
+  selectManyDirectoryEntries,
+  selectOnlyDirectoryEntry,
+  setActiveDirectoryEntry,
+  type DirectorySelectionState,
+} from './directory-selection';
 import type { DirectoryRow, DirectorySelectionModifiers } from './directory-types';
-
-interface SelectionState {
-  locators: ReadonlySet<string>;
-  anchor: string | null;
-}
 
 interface SelectionOptions {
   entries: DirectoryEntries;
   ready: boolean;
   rows: readonly DirectoryRow[];
+  rowIndexByLocator: ReadonlyMap<string, number>;
   scrollElement: HTMLDivElement | null;
 }
 
-export function useDirectorySelection({ entries, ready, rows, scrollElement }: SelectionOptions) {
+export function useDirectorySelection({
+  entries,
+  ready,
+  rows,
+  rowIndexByLocator,
+  scrollElement,
+}: SelectionOptions) {
   const { directoryCache: cache } = useStorageWorkspace();
   const { ref: parent } = useCurrentDirectory();
-  const [selection, setSelection] = useState<SelectionState>(() => ({
-    locators: new Set(),
-    anchor: null,
-  }));
+  const [selection, setSelection] = useState<DirectorySelectionState>(
+    createEmptyDirectorySelection,
+  );
   const [prunedEntries, setPrunedEntries] = useState<DirectoryEntries | undefined>(() =>
     ready ? entries : undefined,
   );
 
   if (ready && prunedEntries !== entries) {
     setPrunedEntries(entries);
-    if (selection.locators.size > 0 || selection.anchor !== null) {
-      const remaining = [...selection.locators].filter((locator) => entries.has(locator));
-      const anchor =
-        selection.anchor !== null && entries.has(selection.anchor) ? selection.anchor : null;
-      if (remaining.length < selection.locators.size || anchor !== selection.anchor) {
-        setSelection({
-          locators:
-            remaining.length < selection.locators.size ? new Set(remaining) : selection.locators,
-          anchor,
-        });
-      }
-    }
+    const pruned = pruneDirectorySelection(selection, entries);
+    if (pruned !== selection) setSelection(pruned);
   }
 
   useLayoutEffect(
     () =>
       cache.subscribeRenames((change) => {
         if (entryKey(change.parent) !== entryKey(parent)) return;
-        const previous = change.previous.locator;
-        const locator = change.entry.ref.locator;
-        setSelection((current) => {
-          const anchor = current.anchor === previous ? locator : current.anchor;
-          if (!current.locators.has(previous)) {
-            return anchor === current.anchor ? current : { ...current, anchor };
-          }
-          const locators = new Set(current.locators);
-          locators.delete(previous);
-          locators.add(locator);
-          return { locators, anchor };
-        });
+        setSelection((current) =>
+          migrateRenamedDirectorySelection(
+            current,
+            change.previous.locator,
+            change.entry.ref.locator,
+          ),
+        );
       }),
     [cache, parent],
   );
 
   const selectEntry = useCallback(
-    (locator: string, { toggle, range }: DirectorySelectionModifiers) => {
-      const end = rows.findIndex(({ entry }) => entry.ref.locator === locator);
-      if (end < 0) return;
-
-      setSelection((current) => {
-        const start = range
-          ? rows.findIndex(({ entry }) => entry.ref.locator === current.anchor)
-          : -1;
-        const anchor = start < 0 ? locator : current.anchor;
-        if (start >= 0) {
-          const locators = toggle ? new Set(current.locators) : new Set<string>();
-          for (const { entry } of rows.slice(Math.min(start, end), Math.max(start, end) + 1)) {
-            locators.add(entry.ref.locator);
-          }
-          return { locators, anchor };
-        }
-        if (!toggle) return { locators: new Set([locator]), anchor };
-
-        const locators = new Set(current.locators);
-        if (!range && locators.has(locator)) locators.delete(locator);
-        else locators.add(locator);
-        return { locators, anchor };
-      });
+    (locator: string, modifiers: DirectorySelectionModifiers) => {
+      setSelection((current) =>
+        selectDirectoryEntry(current, rows, rowIndexByLocator, locator, modifiers),
+      );
     },
-    [rows],
+    [rows, rowIndexByLocator],
   );
+
   const selectAll = useCallback(() => {
-    setSelection((current) => ({
-      locators: new Set(rows.map(({ entry }) => entry.ref.locator)),
-      anchor: rows.some(({ entry }) => entry.ref.locator === current.anchor)
-        ? current.anchor
-        : (rows[0]?.entry.ref.locator ?? null),
-    }));
-  }, [rows]);
+    setSelection((current) => selectAllDirectoryEntries(current, rows, rowIndexByLocator));
+  }, [rows, rowIndexByLocator]);
+
   const selectOnly = useCallback((locator: string | null) => {
-    setSelection({ locators: new Set(locator === null ? [] : [locator]), anchor: locator });
+    setSelection(selectOnlyDirectoryEntry(locator));
+  }, []);
+
+  const selectMany = useCallback((locators: readonly string[], primaryLocator?: string | null) => {
+    setSelection(selectManyDirectoryEntries(locators, primaryLocator));
+  }, []);
+
+  const selectForContextMenu = useCallback((locator: string) => {
+    setSelection((current) => selectDirectoryEntryForContextMenu(current, locator));
+  }, []);
+
+  const setActiveLocator = useCallback((locator: string | null) => {
+    setSelection((current) => setActiveDirectoryEntry(current, locator));
   }, []);
 
   useEffect(() => {
@@ -114,12 +102,6 @@ export function useDirectorySelection({ entries, ready, rows, scrollElement }: S
     scrollElement.addEventListener('click', clearOnBlankClick);
     return () => scrollElement.removeEventListener('click', clearOnBlankClick);
   }, [scrollElement, selectOnly]);
-  const selectForContextMenu = useCallback((locator: string) => {
-    setSelection((current) => ({
-      locators: current.locators.has(locator) ? current.locators : new Set([locator]),
-      anchor: locator,
-    }));
-  }, []);
 
   const selectedEntries = useMemo(() => {
     const selected: Entry[] = [];
@@ -132,10 +114,14 @@ export function useDirectorySelection({ entries, ready, rows, scrollElement }: S
 
   return {
     selectedLocators: selection.locators,
+    anchorLocator: selection.anchor,
+    activeLocator: selection.active,
     selectedEntries,
     selectEntry,
     selectAll,
     selectOnly,
+    selectMany,
     selectForContextMenu,
+    setActiveLocator,
   };
 }

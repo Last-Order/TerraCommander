@@ -36,10 +36,6 @@ export function useDirectorySearch(
     if (search.opened && search.query) onMatch(search.locator);
   }, [search, onMatch]);
 
-  const revealTarget = useMemo(
-    () => (!search.opened || search.locator === null ? null : { locator: search.locator }),
-    [search],
-  );
   const open = () => {
     setSearch((previous) =>
       previous.opened ? previous : { opened: true, query: '', locator: null },
@@ -59,7 +55,6 @@ export function useDirectorySearch(
     query: search.query,
     index,
     total: matches.length,
-    revealTarget,
     open,
     close: () => setSearch((previous) => ({ ...previous, opened: false })),
     changeQuery: (query: string) => setSearch({ opened: true, query, locator: null }),

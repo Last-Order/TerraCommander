@@ -35,6 +35,15 @@ export function sortDirectoryRows(
   });
 }
 
+export function indexDirectoryRows(rows: readonly DirectoryRow[]): ReadonlyMap<string, number> {
+  const indexByLocator = new Map<string, number>();
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    if (row) indexByLocator.set(row.entry.ref.locator, index);
+  }
+  return indexByLocator;
+}
+
 export function buildDirectoryRows(
   entries: ReadonlyMap<string, Entry>,
   optimisticNames: ReadonlyMap<string, string>,

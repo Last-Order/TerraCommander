@@ -5,7 +5,7 @@ import type { Entry } from '@shared/storage';
 import { useStorageWorkspace } from '../storage-workspace-context';
 import { useCurrentDirectory } from './current-directory-context';
 import { isDirectoryBlankTarget } from './directory-blank-target';
-import { buildDirectoryRows } from './directory-rows';
+import { buildDirectoryRows, indexDirectoryRows } from './directory-rows';
 import { useDirectorySortStore } from './directory-sort';
 import { DirectoryContextMenu } from './DirectoryContextMenu';
 import { DirectoryDropZone } from './DirectoryDropZone';
@@ -26,6 +26,7 @@ import { useDirectoryListing } from './useDirectoryListing';
 import { useDirectorySearch } from './useDirectorySearch';
 import { useDirectorySelection } from './useDirectorySelection';
 import { useDirectoryUpload } from './useDirectoryUpload';
+import { useDirectoryViewportCommand } from './useDirectoryViewportCommand';
 import classes from './DirectoryListing.module.css';
 
 interface ListingProps {
@@ -64,20 +65,25 @@ export function DirectoryListing({
       buildDirectoryRows(entries, optimisticNames, snapshot ? sort : null, i18n.resolvedLanguage),
     [entries, optimisticNames, snapshot, sort, i18n.resolvedLanguage],
   );
+  const rowIndexByLocator = useMemo(() => indexDirectoryRows(rows), [rows]);
 
   const {
     selectedLocators,
+    activeLocator,
     selectedEntries,
     selectEntry,
     selectAll,
     selectOnly,
     selectForContextMenu,
+    setActiveLocator,
   } = useDirectorySelection({
     entries,
     ready: phase === 'ready',
     rows,
+    rowIndexByLocator,
     scrollElement,
   });
+  const viewport = useDirectoryViewportCommand();
   const selectionStatus = useMemo(() => summarizeSelection(selectedEntries), [selectedEntries]);
   useEffect(() => {
     selectionSummary.getState().setSummary(selectionStatus);
@@ -103,12 +109,16 @@ export function DirectoryListing({
   const upload = useDirectoryUpload({ blocked: loading || error !== null });
 
   const { closeMenu } = menu;
+  const { request: requestViewport } = viewport;
   const selectSearchMatch = useCallback(
     (locator: string | null) => {
       selectOnly(locator);
       closeMenu();
+      if (locator !== null) {
+        requestViewport({ locator, align: 'center', focus: false });
+      }
     },
-    [selectOnly, closeMenu],
+    [selectOnly, closeMenu, requestViewport],
   );
   const search = useDirectorySearch(rows, selectSearchMatch);
   const clipboard = useDirectoryClipboard({
@@ -121,6 +131,13 @@ export function DirectoryListing({
     selectOnly,
     blocked: loadingWithoutEntries || error !== null || menu.opened,
   });
+  const pinnedLocators = useMemo(() => {
+    const pinned: string[] = [];
+    if (activeLocator !== null) pinned.push(activeLocator);
+    if (viewport.command !== null) pinned.push(viewport.command.locator);
+    if (drag.draggingAnchorLocator !== null) pinned.push(drag.draggingAnchorLocator);
+    return pinned;
+  }, [activeLocator, viewport.command, drag.draggingAnchorLocator]);
   const commands = useDirectoryCommands({
     phase,
     refresh,
@@ -173,14 +190,20 @@ export function DirectoryListing({
             <DirectoryTable
               scrollElement={scrollElement}
               rows={rows}
-              revealTarget={search.revealTarget}
+              rowIndexByLocator={rowIndexByLocator}
+              pinnedLocators={pinnedLocators}
+              viewportCommand={viewport.command}
               canSort={snapshot !== undefined && !loading}
               loadingWithoutEntries={loadingWithoutEntries}
               navigationBlocked={menu.opened}
               selectedLocators={selectedLocators}
+              activeLocator={activeLocator}
               cutLocators={clipboard.cutLocators}
               drag={drag}
               onSelect={selectEntry}
+              onActiveChange={setActiveLocator}
+              onRequestViewport={viewport.request}
+              onViewportCommandHandled={viewport.clear}
               onContextMenu={menu.showEntryMenu}
               onOpen={onOpen}
             />

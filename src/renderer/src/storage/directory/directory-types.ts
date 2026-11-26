@@ -17,6 +17,17 @@ export interface DirectorySelectionModifiers {
   range: boolean;
 }
 
-export interface DirectoryRevealTarget {
+export type DirectoryViewportAlignment = 'auto' | 'center';
+
+export interface DirectoryViewportCommand {
+  seq: number;
   locator: string;
+  align: DirectoryViewportAlignment;
+  focus: boolean;
+}
+
+export interface DirectoryViewportRequest {
+  locator: string;
+  align?: DirectoryViewportAlignment | undefined;
+  focus?: boolean | undefined;
 }
