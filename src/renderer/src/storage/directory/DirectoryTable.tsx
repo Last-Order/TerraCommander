@@ -21,16 +21,11 @@ import {
 } from './directory-columns';
 import { isDirectoryNavigationKey } from './directory-navigation';
 import { useDirectorySortStore } from './directory-sort';
-import type {
-  DirectoryRow,
-  DirectorySelectionModifiers,
-  DirectorySort,
-  DirectoryViewportCommand,
-  DirectoryViewportRequest,
-} from './directory-types';
+import type { DirectoryRow, DirectorySort } from './directory-types';
+import { useDirectoryView, useDirectoryViewStore } from './directory-view-context';
 import { DirectoryEntryRow } from './DirectoryEntryRow';
 import type { DirectoryContextMenuPosition } from './useDirectoryContextMenu';
-import type { DirectoryDrag } from './useDirectoryDrag';
+import { useDirectoryDrag } from './useDirectoryDrag';
 import { useDirectoryKeyboardNavigation } from './useDirectoryKeyboardNavigation';
 import { useDirectoryVirtualizer } from './useDirectoryVirtualizer';
 import classes from './DirectoryTable.module.css';
@@ -86,46 +81,20 @@ function DirectorySkeletonRows() {
 
 interface DirectoryTableProps {
   scrollElement: HTMLDivElement | null;
-  rows: readonly DirectoryRow[];
-  rowIndexByLocator: ReadonlyMap<string, number>;
-  pinnedLocators: readonly string[];
-  viewportCommand: DirectoryViewportCommand | null;
-  canSort: boolean;
-  loadingWithoutEntries: boolean;
-  navigationBlocked: boolean;
-  selectedLocators: ReadonlySet<string>;
-  activeLocator: string | null;
-  cutLocators: ReadonlySet<string> | undefined;
-  drag: DirectoryDrag;
-  onSelect: (locator: string, modifiers: DirectorySelectionModifiers) => void;
-  onActiveChange: (locator: string | null) => void;
-  onRequestViewport: (request: DirectoryViewportRequest) => void;
-  onViewportCommandHandled: (seq: number) => void;
   onContextMenu: (entry: Entry, position: DirectoryContextMenuPosition) => void;
   onOpen: (entry: Entry) => void;
 }
 
-export function DirectoryTable({
-  scrollElement,
-  rows,
-  rowIndexByLocator,
-  pinnedLocators,
-  viewportCommand,
-  canSort,
-  loadingWithoutEntries,
-  navigationBlocked,
-  selectedLocators,
-  activeLocator,
-  cutLocators,
-  drag,
-  onSelect,
-  onActiveChange,
-  onRequestViewport,
-  onViewportCommandHandled,
-  onContextMenu,
-  onOpen,
-}: DirectoryTableProps) {
+export function DirectoryTable({ scrollElement, onContextMenu, onOpen }: DirectoryTableProps) {
   const { t, i18n } = useTranslation('storage');
+  const viewStore = useDirectoryViewStore();
+  const rows = useDirectoryView((state) => state.rows);
+  const rowIndexByLocator = useDirectoryView((state) => state.rowIndexByLocator);
+  const canSort = useDirectoryView((state) => state.canSort);
+  const loadingWithoutEntries = useDirectoryView((state) => state.loadingWithoutEntries);
+  const activeLocator = useDirectoryView((state) => state.activeLocator);
+  const viewportCommand = useDirectoryView((state) => state.viewportCommand);
+  const drag = useDirectoryDrag();
   const sort = useDirectorySortStore((state) => state.sort);
   const onSort = useDirectorySortStore((state) => state.toggleSort);
   const columnWidths = useDirectoryColumnWidthsStore((state) => state.widths);
@@ -143,6 +112,13 @@ export function DirectoryTable({
     [locale],
   );
   const [tabNavigation, setTabNavigation] = useState(false);
+  const pinnedLocators = useMemo(() => {
+    const pinned: string[] = [];
+    if (activeLocator !== null) pinned.push(activeLocator);
+    if (viewportCommand !== null) pinned.push(viewportCommand.locator);
+    if (drag.draggingAnchorLocator !== null) pinned.push(drag.draggingAnchorLocator);
+    return pinned;
+  }, [activeLocator, viewportCommand, drag.draggingAnchorLocator]);
   const { tableRef, enabled, scrollMargin, virtualizer, getPageStep, syncScrollPadding } =
     useDirectoryVirtualizer({
       rows,
@@ -151,22 +127,14 @@ export function DirectoryTable({
       canSort,
       pinnedLocators,
       viewportCommand,
-      onViewportCommandHandled,
+      onViewportCommandHandled: viewStore.getState().clearViewportCommand,
     });
   const { onFocus, onKeyDown } = useDirectoryKeyboardNavigation({
     tableRef,
     scrollElement,
-    rows,
-    rowIndexByLocator,
     virtualized: enabled,
-    selectedLocators,
-    activeLocator,
-    navigationBlocked: navigationBlocked || loadingWithoutEntries,
     getPageStep,
     syncScrollPadding,
-    onSelect,
-    onActiveChange,
-    onRequestViewport,
   });
 
   useEffect(() => {
@@ -200,8 +168,6 @@ export function DirectoryTable({
       key={row.entry.ref.locator}
       {...row}
       index={index}
-      selected={selectedLocators.has(row.entry.ref.locator)}
-      cut={cutLocators?.has(row.entry.ref.locator) ?? false}
       selectionDraggable={drag.selectionDraggable}
       dragBlocked={drag.blocked || resizingColumn !== null}
       dragging={drag.draggedLocators?.has(row.entry.ref.locator) ?? false}
@@ -210,7 +176,6 @@ export function DirectoryTable({
       dateFormatter={dateFormatter}
       sizeFormatter={sizeFormatter}
       measure={enabled ? virtualizer.measureElement : undefined}
-      onSelect={onSelect}
       onContextMenu={onContextMenu}
       onOpen={onOpen}
       onDragStart={drag.onRowDragStart}

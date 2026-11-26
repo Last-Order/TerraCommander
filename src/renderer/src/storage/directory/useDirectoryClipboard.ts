@@ -1,7 +1,7 @@
 import { notifications } from '@mantine/notifications';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { entryKey, type Entry } from '@shared/storage';
+import type { Entry } from '@shared/storage';
 import { errorKey, StorageBrowserError } from '../storage-client';
 import { useStorageWorkspace } from '../storage-workspace-context';
 import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
@@ -49,12 +49,6 @@ export function useDirectoryClipboard({ blocked }: DirectoryClipboardOptions) {
 
   const canPaste = clipboard !== null && clipboard.entries.length > 0 && !blocked;
   const isCutActive = clipboard?.mode === 'cut';
-
-  const cutLocators = useMemo(() => {
-    if (!clipboard || clipboard.mode !== 'cut') return undefined;
-    if (entryKey(clipboard.sourceParent) !== entryKey(parent)) return undefined;
-    return new Set(clipboard.entries.map((entry) => entry.ref.locator));
-  }, [clipboard, parent]);
 
   const writeClipboard = (mode: 'copy' | 'cut', entries: readonly Entry[]) => {
     if (entries.length === 0) return;
@@ -161,7 +155,6 @@ export function useDirectoryClipboard({ blocked }: DirectoryClipboardOptions) {
 
   return {
     canPaste,
-    cutLocators,
     isCutActive,
     pasteConflict: pasteConflictModal,
     copy,

@@ -1,12 +1,23 @@
 import { VisuallyHidden } from '@mantine/core';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
-import type { Entry } from '@shared/storage';
+import { useStore } from 'zustand';
+import { entryKey, type Entry } from '@shared/storage';
 import { useStorageWorkspace } from '../storage-workspace-context';
 import { useCurrentDirectory } from './current-directory-context';
 import { isDirectoryBlankTarget } from './directory-blank-target';
 import { buildDirectoryRows, indexDirectoryRows } from './directory-rows';
 import { useDirectorySortStore } from './directory-sort';
+import { DirectoryViewContext } from './directory-view-context';
+import { createDirectoryViewStore } from './directory-view-store';
 import { DirectoryContextMenu } from './DirectoryContextMenu';
 import { DirectoryDropZone } from './DirectoryDropZone';
 import { DirectorySearch } from './DirectorySearch';
@@ -19,14 +30,11 @@ import { summarizeSelection } from './selection-summary';
 import { useDirectoryClipboard } from './useDirectoryClipboard';
 import { useDirectoryCommands } from './useDirectoryCommands';
 import { useDirectoryContextMenu } from './useDirectoryContextMenu';
-import { useDirectoryDrag } from './useDirectoryDrag';
 import { useDirectoryRenames } from './useDirectoryEffects';
 import { useDirectoryEntryModals } from './useDirectoryEntryModals';
 import { useDirectoryListing } from './useDirectoryListing';
 import { useDirectorySearch } from './useDirectorySearch';
-import { useDirectorySelection } from './useDirectorySelection';
 import { useDirectoryUpload } from './useDirectoryUpload';
-import { useDirectoryViewportCommand } from './useDirectoryViewportCommand';
 import classes from './DirectoryListing.module.css';
 
 interface ListingProps {
@@ -45,7 +53,7 @@ export function DirectoryListing({
   children,
 }: ListingProps) {
   const { t, i18n } = useTranslation('storage');
-  const { selectionSummary } = useStorageWorkspace();
+  const { directoryCache: cache, selectionSummary } = useStorageWorkspace();
   const { ref: parent } = useCurrentDirectory();
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const sort = useDirectorySortStore((state) => state.sort);
@@ -57,6 +65,8 @@ export function DirectoryListing({
   });
   const loading = phase === 'loading' || phase === 'refreshing';
   const loadingWithoutEntries = phase === 'loading' && entries.size === 0;
+  const canSort = snapshot !== undefined && !loading;
+  const hasError = error !== null;
 
   const optimisticNames = useDirectoryRenames(parent);
 
@@ -67,23 +77,69 @@ export function DirectoryListing({
   );
   const rowIndexByLocator = useMemo(() => indexDirectoryRows(rows), [rows]);
 
-  const {
-    selectedLocators,
-    activeLocator,
-    selectedEntries,
-    selectEntry,
-    selectAll,
-    selectOnly,
-    selectForContextMenu,
-    setActiveLocator,
-  } = useDirectorySelection({
+  const [viewStore] = useState(() =>
+    createDirectoryViewStore({
+      entries,
+      ready: phase === 'ready',
+      rows,
+      rowIndexByLocator,
+      canSort,
+      loadingWithoutEntries,
+      hasError,
+    }),
+  );
+
+  useLayoutEffect(() => {
+    viewStore.getState().syncListing({
+      entries,
+      ready: phase === 'ready',
+      rows,
+      rowIndexByLocator,
+      canSort,
+      loadingWithoutEntries,
+      hasError,
+    });
+  }, [
+    viewStore,
     entries,
-    ready: phase === 'ready',
+    phase,
     rows,
     rowIndexByLocator,
-    scrollElement,
-  });
-  const viewport = useDirectoryViewportCommand();
+    canSort,
+    loadingWithoutEntries,
+    hasError,
+  ]);
+
+  useLayoutEffect(
+    () =>
+      cache.subscribeRenames((change) => {
+        if (entryKey(change.parent) !== entryKey(parent)) return;
+        viewStore.getState().migrateRename(change.previous.locator, change.entry.ref.locator);
+      }),
+    [cache, parent, viewStore],
+  );
+
+  useEffect(() => {
+    if (!scrollElement) return;
+    const clearOnBlankClick = (event: MouseEvent) => {
+      if (event.ctrlKey || event.shiftKey || event.metaKey) return;
+      if (!isDirectoryBlankTarget(event.target)) return;
+      viewStore.getState().selectOnly(null);
+    };
+    scrollElement.addEventListener('click', clearOnBlankClick);
+    return () => scrollElement.removeEventListener('click', clearOnBlankClick);
+  }, [scrollElement, viewStore]);
+
+  const selectedLocators = useStore(viewStore, (state) => state.selectedLocators);
+  const selectedEntries = useMemo(() => {
+    const selected: Entry[] = [];
+    for (const locator of selectedLocators) {
+      const entry = entries.get(locator);
+      if (entry) selected.push(entry);
+    }
+    return selected;
+  }, [entries, selectedLocators]);
+
   const selectionStatus = useMemo(() => summarizeSelection(selectedEntries), [selectedEntries]);
   useEffect(() => {
     selectionSummary.getState().setSummary(selectionStatus);
@@ -94,12 +150,23 @@ export function DirectoryListing({
     },
     [selectionSummary],
   );
+
   const capabilities = useMemo(() => resolveEntryCapabilities(selectedEntries), [selectedEntries]);
+  const selectForContextMenu = useCallback(
+    (locator: string) => viewStore.getState().selectForContextMenu(locator),
+    [viewStore],
+  );
+  const selectAll = useCallback(() => viewStore.getState().selectAll(), [viewStore]);
+
   const menu = useDirectoryContextMenu({
     entries,
     ready: phase === 'ready',
     selectForContextMenu,
   });
+  useLayoutEffect(() => {
+    viewStore.getState().setNavigationBlocked(menu.opened);
+  }, [viewStore, menu.opened]);
+
   const modals = useDirectoryEntryModals({
     selectedEntries,
     capabilities,
@@ -109,35 +176,21 @@ export function DirectoryListing({
   const upload = useDirectoryUpload({ blocked: loading || error !== null });
 
   const { closeMenu } = menu;
-  const { request: requestViewport } = viewport;
   const selectSearchMatch = useCallback(
     (locator: string | null) => {
-      selectOnly(locator);
+      const state = viewStore.getState();
+      state.selectOnly(locator);
       closeMenu();
       if (locator !== null) {
-        requestViewport({ locator, align: 'center', focus: false });
+        state.requestViewport({ locator, align: 'center', focus: false });
       }
     },
-    [selectOnly, closeMenu, requestViewport],
+    [viewStore, closeMenu],
   );
   const search = useDirectorySearch(rows, selectSearchMatch);
   const clipboard = useDirectoryClipboard({
     blocked: loadingWithoutEntries || error !== null,
   });
-  const drag = useDirectoryDrag({
-    rows,
-    selectedLocators,
-    selectedEntries,
-    selectOnly,
-    blocked: loadingWithoutEntries || error !== null || menu.opened,
-  });
-  const pinnedLocators = useMemo(() => {
-    const pinned: string[] = [];
-    if (activeLocator !== null) pinned.push(activeLocator);
-    if (viewport.command !== null) pinned.push(viewport.command.locator);
-    if (drag.draggingAnchorLocator !== null) pinned.push(drag.draggingAnchorLocator);
-    return pinned;
-  }, [activeLocator, viewport.command, drag.draggingAnchorLocator]);
   const commands = useDirectoryCommands({
     phase,
     refresh,
@@ -155,7 +208,7 @@ export function DirectoryListing({
   const centeredState = (error && entries.size === 0) || (!error && snapshot?.size === 0);
 
   return (
-    <>
+    <DirectoryViewContext.Provider value={viewStore}>
       <DirectoryToolbar actions={commands.blankActions} upload={upload} moreButton={moreButton}>
         {children}
       </DirectoryToolbar>
@@ -189,21 +242,6 @@ export function DirectoryListing({
           {(loadingWithoutEntries || entries.size > 0) && (
             <DirectoryTable
               scrollElement={scrollElement}
-              rows={rows}
-              rowIndexByLocator={rowIndexByLocator}
-              pinnedLocators={pinnedLocators}
-              viewportCommand={viewport.command}
-              canSort={snapshot !== undefined && !loading}
-              loadingWithoutEntries={loadingWithoutEntries}
-              navigationBlocked={menu.opened}
-              selectedLocators={selectedLocators}
-              activeLocator={activeLocator}
-              cutLocators={clipboard.cutLocators}
-              drag={drag}
-              onSelect={selectEntry}
-              onActiveChange={setActiveLocator}
-              onRequestViewport={viewport.request}
-              onViewportCommandHandled={viewport.clear}
               onContextMenu={menu.showEntryMenu}
               onOpen={onOpen}
             />
@@ -230,6 +268,6 @@ export function DirectoryListing({
         pasteConflict={clipboard.pasteConflict}
         onClose={modals.closeModal}
       />
-    </>
+    </DirectoryViewContext.Provider>
   );
 }
