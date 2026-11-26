@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react';
+import { useStorageWorkspace } from '@renderer/storage/storage-workspace-context';
 import type { Entry } from '@shared/storage';
-import { useStorageWorkspace } from '../storage-workspace-context';
-import type { EntryCapabilities } from './entry-capabilities';
-import type { DirectoryModal } from './modals/DirectoryEntryModals';
-import type { EntrySelection } from './modals/EntryInformationModal';
+import type { EntryCapabilities } from '../state/entry-capabilities';
+import type { DirectoryModal } from './DirectoryEntryModals';
+import type { EntrySelection } from './EntryInformationModal';
 
 interface UseDirectoryEntryModalsOptions {
   selectedEntries: readonly Entry[];

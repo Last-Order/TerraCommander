@@ -1,4 +1,10 @@
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import type {
+  DirectoryRow,
+  DirectorySelectionModifiers,
+  DirectoryViewportCommand,
+  DirectoryViewportRequest,
+} from '../directory-types';
 import type { DirectoryEntries } from './directory-cache';
 import {
   createEmptyDirectorySelection,
@@ -12,12 +18,6 @@ import {
   setActiveDirectoryEntry,
   type DirectorySelectionState,
 } from './directory-selection';
-import type {
-  DirectoryRow,
-  DirectorySelectionModifiers,
-  DirectoryViewportCommand,
-  DirectoryViewportRequest,
-} from './directory-types';
 
 export interface DirectoryListingProjection {
   entries: DirectoryEntries;

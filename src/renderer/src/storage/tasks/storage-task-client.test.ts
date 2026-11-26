@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Entry, EntryRef } from '@shared/storage';
 import type { StorageTaskEvent, StorageTaskSnapshot, TasksApi } from '@shared/tasks';
-import { DirectoryCache } from '../directory/directory-cache';
-import { DirectoryEffectsStore } from '../directory/directory-effects';
+import { DirectoryCache } from '../directory/state/directory-cache';
+import { DirectoryEffectsStore } from '../directory/state/directory-effects';
 import { StorageTaskClient } from './storage-task-client';
 
 const parent: EntryRef = { connectionId: 'conn', spaceId: 'drive', locator: 'folder' };

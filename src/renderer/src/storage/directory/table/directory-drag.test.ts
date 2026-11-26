@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Capabilities, Entry, EntryRef } from '@shared/storage';
+import type { DirectoryRow } from '../directory-types';
+import type { StorageClipboard } from '../state/storage-clipboard';
 import {
   buildMoveIntoDirectoryRequest,
   canDragMoveEntry,
@@ -10,8 +12,6 @@ import {
   pruneCutClipboardForMovedEntries,
   resolveDragStartEntries,
 } from './directory-drag';
-import type { DirectoryRow } from './directory-types';
-import type { StorageClipboard } from './storage-clipboard';
 
 function ref(locator: string, overrides: Partial<EntryRef> = {}): EntryRef {
   return {

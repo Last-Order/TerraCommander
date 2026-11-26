@@ -1,12 +1,15 @@
 import { notifications } from '@mantine/notifications';
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { errorKey, StorageBrowserError } from '@renderer/storage/storage-client';
+import { useStorageWorkspace } from '@renderer/storage/storage-workspace-context';
+import { useStorageTaskQueue } from '@renderer/storage/tasks/storage-task-queue-context';
 import type { Entry } from '@shared/storage';
 import type { PasteEntriesRequest } from '@shared/tasks';
-import { errorKey, StorageBrowserError } from '../storage-client';
-import { useStorageWorkspace } from '../storage-workspace-context';
-import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
-import { useCurrentDirectory } from './current-directory-context';
+import { useCurrentDirectory } from '../current-directory-context';
+import { useDirectoryView, useDirectoryViewStore } from '../state/directory-view-context';
+import { useStorageClipboard } from '../state/storage-clipboard';
+import { useSelectionBusy } from '../state/useDirectoryEffects';
 import {
   buildMoveIntoDirectoryRequest,
   canDragMoveEntry,
@@ -16,9 +19,6 @@ import {
   pruneCutClipboardForMovedEntries,
   resolveDragStartEntries,
 } from './directory-drag';
-import { useDirectoryView, useDirectoryViewStore } from './directory-view-context';
-import { useStorageClipboard } from './storage-clipboard';
-import { useSelectionBusy } from './useDirectoryEffects';
 import classes from './DirectoryTable.module.css';
 
 const moveStatusNotification = 'directory-drag-move-status';

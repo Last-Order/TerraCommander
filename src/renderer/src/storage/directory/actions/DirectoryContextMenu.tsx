@@ -12,10 +12,10 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Entry } from '@shared/storage';
-import { useCurrentDirectory } from './current-directory-context';
-import type { EntryCapabilities } from './entry-capabilities';
+import { useCurrentDirectory } from '../current-directory-context';
+import type { EntryCapabilities } from '../state/entry-capabilities';
+import { useSelectionBusy } from '../state/useDirectoryEffects';
 import type { DirectoryContextMenuState } from './useDirectoryContextMenu';
-import { useSelectionBusy } from './useDirectoryEffects';
 
 export interface DirectoryBlankActions {
   createDirectoryEnabled: boolean;

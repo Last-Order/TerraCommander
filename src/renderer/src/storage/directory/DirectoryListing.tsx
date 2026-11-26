@@ -12,30 +12,35 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
 import { entryKey, type Entry } from '@shared/storage';
 import { useStorageWorkspace } from '../storage-workspace-context';
+import { DirectoryContextMenu } from './actions/DirectoryContextMenu';
+import { DirectoryUploadDropZone } from './actions/DirectoryUploadDropZone';
+import { useDirectoryClipboard } from './actions/useDirectoryClipboard';
+import { useDirectoryCommands } from './actions/useDirectoryCommands';
+import { useDirectoryContextMenu } from './actions/useDirectoryContextMenu';
+import { useDirectoryUpload } from './actions/useDirectoryUpload';
 import { useCurrentDirectory } from './current-directory-context';
-import { isDirectoryBlankTarget } from './directory-blank-target';
-import { buildDirectoryRows, indexDirectoryRows } from './directory-rows';
-import { useDirectorySortStore } from './directory-sort';
-import { DirectoryViewContext } from './directory-view-context';
-import { createDirectoryViewStore } from './directory-view-store';
-import { DirectoryContextMenu } from './DirectoryContextMenu';
-import { DirectoryDropZone } from './DirectoryDropZone';
-import { DirectorySearch } from './DirectorySearch';
 import { DirectoryStatus } from './DirectoryStatus';
-import { DirectoryTable } from './DirectoryTable';
 import { DirectoryToolbar } from './DirectoryToolbar';
-import { resolveEntryCapabilities } from './entry-capabilities';
 import { DirectoryEntryModals } from './modals/DirectoryEntryModals';
-import { summarizeSelection } from './selection-summary';
-import { useDirectoryClipboard } from './useDirectoryClipboard';
-import { useDirectoryCommands } from './useDirectoryCommands';
-import { useDirectoryContextMenu } from './useDirectoryContextMenu';
-import { useDirectoryRenames } from './useDirectoryEffects';
-import { useDirectoryEntryModals } from './useDirectoryEntryModals';
-import { useDirectoryListing } from './useDirectoryListing';
-import { useDirectorySearch } from './useDirectorySearch';
-import { useDirectoryUpload } from './useDirectoryUpload';
+import { useDirectoryEntryModals } from './modals/useDirectoryEntryModals';
+import { DirectorySearch } from './search/DirectorySearch';
+import { useDirectorySearch } from './search/useDirectorySearch';
+import { buildDirectoryRows, indexDirectoryRows } from './state/directory-rows';
+import { useDirectorySortStore } from './state/directory-sort';
+import { DirectoryViewContext } from './state/directory-view-context';
+import { createDirectoryViewStore } from './state/directory-view-store';
+import { resolveEntryCapabilities } from './state/entry-capabilities';
+import { summarizeSelection } from './state/selection-summary';
+import { useDirectoryRenames } from './state/useDirectoryEffects';
+import { useDirectoryListing } from './state/useDirectoryListing';
+import { DirectoryTable } from './table/DirectoryTable';
 import classes from './DirectoryListing.module.css';
+
+const nonBlankDirectoryTargetSelector = 'tr[data-index], thead, [data-directory-search]';
+
+function isDirectoryBlankTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && !target.closest(nonBlankDirectoryTargetSelector);
+}
 
 interface ListingProps {
   cacheable: boolean;
@@ -217,7 +222,7 @@ export function DirectoryListing({
           <output>{t('loadingDirectory')}</output>
         </VisuallyHidden>
       )}
-      <DirectoryDropZone upload={upload}>
+      <DirectoryUploadDropZone upload={upload}>
         <div
           ref={setScrollElement}
           className={
@@ -247,7 +252,7 @@ export function DirectoryListing({
             />
           )}
         </div>
-      </DirectoryDropZone>
+      </DirectoryUploadDropZone>
       <DirectoryContextMenu
         menu={menu.activeMenu}
         selectedEntries={selectedEntries}

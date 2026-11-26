@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { DirectoryRow } from './directory-types';
+import type { DirectoryRow } from '../directory-types';
 
 interface DirectorySearchState {
   opened: boolean;

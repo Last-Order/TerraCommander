@@ -1,10 +1,15 @@
 import { notifications } from '@mantine/notifications';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  errorKey,
+  resultOf,
+  StorageBrowserError,
+  type StorageErrorKey,
+} from '@renderer/storage/storage-client';
+import { useStorageWorkspace } from '@renderer/storage/storage-workspace-context';
 import { entryKey, type Entry } from '@shared/storage';
-import { errorKey, resultOf, StorageBrowserError, type StorageErrorKey } from '../storage-client';
-import { useStorageWorkspace } from '../storage-workspace-context';
-import { useCurrentDirectory } from './current-directory-context';
+import { useCurrentDirectory } from '../current-directory-context';
 import {
   addDirectoryEntry,
   removeDirectoryEntry,

@@ -2,12 +2,12 @@ import { notifications } from '@mantine/notifications';
 import { useEffect, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useKeyboardShortcuts } from '@renderer/shortcuts/useKeyboardShortcuts';
+import { useStorageWorkspace } from '@renderer/storage/storage-workspace-context';
 import type { Entry } from '@shared/storage';
-import { useStorageWorkspace } from '../storage-workspace-context';
-import { useCurrentDirectory } from './current-directory-context';
+import { useCurrentDirectory } from '../current-directory-context';
+import type { EntryCapabilities } from '../state/entry-capabilities';
+import type { DirectoryListingPhase } from '../state/useDirectoryListing';
 import type { DirectoryBlankActions } from './DirectoryContextMenu';
-import type { EntryCapabilities } from './entry-capabilities';
-import type { DirectoryListingPhase } from './useDirectoryListing';
 
 const selectAllLoadingNotification = 'directory-select-all-loading';
 

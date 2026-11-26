@@ -1,4 +1,4 @@
-import type { DirectoryRow, DirectorySelectionModifiers } from './directory-types';
+import type { DirectoryRow, DirectorySelectionModifiers } from '../directory-types';
 
 export interface DirectorySelectionState {
   locators: ReadonlySet<string>;

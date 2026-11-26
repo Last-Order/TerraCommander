@@ -2,13 +2,13 @@ import { ChevronRight, File, Folder, Link2, LockKeyhole, type LucideIcon } from 
 import { memo, type DragEvent } from 'react';
 import { formatSize } from '@renderer/format/size';
 import { entryKey, type Entry } from '@shared/storage';
-import { useCurrentDirectory } from './current-directory-context';
+import type { DirectoryContextMenuPosition } from '../actions/useDirectoryContextMenu';
+import { useCurrentDirectory } from '../current-directory-context';
+import type { DirectoryRow } from '../directory-types';
+import { useDirectoryView, useDirectoryViewStore } from '../state/directory-view-context';
+import { useStorageClipboard } from '../state/storage-clipboard';
+import { useEntryBusy } from '../state/useDirectoryEffects';
 import { canRowStartDrag } from './directory-drag';
-import type { DirectoryRow } from './directory-types';
-import { useDirectoryView, useDirectoryViewStore } from './directory-view-context';
-import { useStorageClipboard } from './storage-clipboard';
-import type { DirectoryContextMenuPosition } from './useDirectoryContextMenu';
-import { useEntryBusy } from './useDirectoryEffects';
 import classes from './DirectoryTable.module.css';
 
 const entryIcons: Record<Entry['kind'], LucideIcon> = {

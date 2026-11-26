@@ -1,7 +1,7 @@
 import { entryKey, type Entry, type EntryRef } from '@shared/storage';
 import type { PasteEntriesRequest } from '@shared/tasks';
-import type { DirectoryRow } from './directory-types';
-import type { StorageClipboard } from './storage-clipboard';
+import type { DirectoryRow } from '../directory-types';
+import type { StorageClipboard } from '../state/storage-clipboard';
 
 export const directoryDragMimeType = 'application/x-terracommander-entries';
 

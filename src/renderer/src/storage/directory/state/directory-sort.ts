@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { DirectorySort } from './directory-types';
+import type { DirectorySort } from '../directory-types';
 
 export const DIRECTORY_SORT_STORAGE_KEY = 'terra-commander:directory-sort';
 export const DEFAULT_DIRECTORY_SORT: DirectorySort = {

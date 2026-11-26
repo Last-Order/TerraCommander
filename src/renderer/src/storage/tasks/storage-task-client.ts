@@ -18,8 +18,8 @@ import type {
   UploadFileRequest,
   UploadPathsRequest,
 } from '@shared/tasks';
-import type { DirectoryCache } from '../directory/directory-cache';
-import type { DirectoryEffectsStore } from '../directory/directory-effects';
+import type { DirectoryCache } from '../directory/state/directory-cache';
+import type { DirectoryEffectsStore } from '../directory/state/directory-effects';
 import { resultOf, StorageBrowserError } from '../storage-client';
 
 function ignoreCommandFailure(): void {

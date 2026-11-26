@@ -1,6 +1,6 @@
 import { useCallback, useEffect, type FocusEvent, type KeyboardEvent, type RefObject } from 'react';
+import { useDirectoryViewStore } from '../state/directory-view-context';
 import { isDirectoryNavigationKey, resolveDirectoryNavigationIndex } from './directory-navigation';
-import { useDirectoryViewStore } from './directory-view-context';
 
 interface UseDirectoryKeyboardNavigationOptions {
   tableRef: RefObject<HTMLTableElement | null>;

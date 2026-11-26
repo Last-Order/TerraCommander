@@ -1,11 +1,11 @@
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { DirectoryRow, DirectoryViewportCommand } from '../directory-types';
 import {
   resolveDirectoryPageStep,
   resolveDirectoryScrollPadding,
   type DirectoryScrollPadding,
 } from './directory-navigation';
-import type { DirectoryRow, DirectoryViewportCommand } from './directory-types';
 
 const estimatedRowHeight = 36;
 

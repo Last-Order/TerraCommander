@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from 'react';
+import { useStorageWorkspace } from '@renderer/storage/storage-workspace-context';
 import type { Entry, EntryRef } from '@shared/storage';
-import { useStorageWorkspace } from '../storage-workspace-context';
 
 export function useEntryBusy(ref: EntryRef): boolean {
   const { directoryEffects } = useStorageWorkspace();

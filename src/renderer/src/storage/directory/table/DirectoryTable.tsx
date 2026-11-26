@@ -11,6 +11,10 @@ import {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Entry } from '@shared/storage';
+import type { DirectoryContextMenuPosition } from '../actions/useDirectoryContextMenu';
+import type { DirectoryRow, DirectorySort } from '../directory-types';
+import { useDirectorySortStore } from '../state/directory-sort';
+import { useDirectoryView, useDirectoryViewStore } from '../state/directory-view-context';
 import {
   DIRECTORY_NAME_MIN_WIDTH,
   resizeDirectoryColumns,
@@ -20,11 +24,7 @@ import {
   type ResizableDirectoryColumn,
 } from './directory-columns';
 import { isDirectoryNavigationKey } from './directory-navigation';
-import { useDirectorySortStore } from './directory-sort';
-import type { DirectoryRow, DirectorySort } from './directory-types';
-import { useDirectoryView, useDirectoryViewStore } from './directory-view-context';
 import { DirectoryEntryRow } from './DirectoryEntryRow';
-import type { DirectoryContextMenuPosition } from './useDirectoryContextMenu';
 import { useDirectoryDrag } from './useDirectoryDrag';
 import { useDirectoryKeyboardNavigation } from './useDirectoryKeyboardNavigation';
 import { useDirectoryVirtualizer } from './useDirectoryVirtualizer';

@@ -1,10 +1,10 @@
 import { notifications } from '@mantine/notifications';
 import { useState, type DragEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { errorKey } from '../storage-client';
-import { useStorageWorkspace } from '../storage-workspace-context';
-import { useStorageTaskQueue } from '../tasks/storage-task-queue-context';
-import { useCurrentDirectory } from './current-directory-context';
+import { errorKey } from '@renderer/storage/storage-client';
+import { useStorageWorkspace } from '@renderer/storage/storage-workspace-context';
+import { useStorageTaskQueue } from '@renderer/storage/tasks/storage-task-queue-context';
+import { useCurrentDirectory } from '../current-directory-context';
 
 const uploadErrorNotification = 'directory-upload-error';
 

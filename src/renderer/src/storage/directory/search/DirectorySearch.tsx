@@ -4,7 +4,7 @@ import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 import { useLayoutEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DirectorySearchController } from './useDirectorySearch';
-import listingClasses from './DirectoryListing.module.css';
+import listingClasses from '../DirectoryListing.module.css';
 import classes from './DirectorySearch.module.css';
 
 interface DirectorySearchProps {

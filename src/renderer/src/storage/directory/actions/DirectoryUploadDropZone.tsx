@@ -2,14 +2,14 @@ import { Upload } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DirectoryUpload } from './useDirectoryUpload';
-import classes from './DirectoryListing.module.css';
+import classes from '../DirectoryListing.module.css';
 
-interface DirectoryDropZoneProps {
+interface DirectoryUploadDropZoneProps {
   upload: Pick<DirectoryUpload, 'dropActive' | 'dropZoneProps'>;
   children: ReactNode;
 }
 
-export function DirectoryDropZone({ upload, children }: DirectoryDropZoneProps) {
+export function DirectoryUploadDropZone({ upload, children }: DirectoryUploadDropZoneProps) {
   const { t } = useTranslation('storage');
 
   return (

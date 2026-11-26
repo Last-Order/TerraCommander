@@ -1,5 +1,5 @@
 import type { Entry } from '@shared/storage';
-import type { DirectoryRow, DirectorySort } from './directory-types';
+import type { DirectoryRow, DirectorySort } from '../directory-types';
 
 const collators = new Map<string, Intl.Collator>();
 

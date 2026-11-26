@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react';
-import type { DirectoryCache } from './directory/directory-cache';
-import type { DirectoryEffectsStore } from './directory/directory-effects';
-import type { SelectionSummaryStore } from './directory/selection-summary';
+import type { DirectoryCache } from './directory/state/directory-cache';
+import type { DirectoryEffectsStore } from './directory/state/directory-effects';
+import type { SelectionSummaryStore } from './directory/state/selection-summary';
 
 export interface StorageWorkspaceContextValue {
   directoryCache: DirectoryCache;

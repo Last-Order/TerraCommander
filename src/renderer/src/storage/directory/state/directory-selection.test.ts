@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Entry } from '@shared/storage';
+import type { DirectoryRow } from '../directory-types';
 import { indexDirectoryRows } from './directory-rows';
 import {
   createEmptyDirectorySelection,
@@ -12,7 +13,6 @@ import {
   selectOnlyDirectoryEntry,
   setActiveDirectoryEntry,
 } from './directory-selection';
-import type { DirectoryRow } from './directory-types';
 
 function createRow(locator: string, name = locator): DirectoryRow {
   const entry: Entry = {
