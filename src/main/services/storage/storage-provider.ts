@@ -1,4 +1,4 @@
-import type { AdapterFactory } from '@main/storage';
+import type { AdapterFactory, OperationContext } from '@main/storage';
 import type { AccountSetupRequest, AccountSummary } from '@shared/accounts';
 import type { ConnectionDefinition, Entry, EntryRef, Space, SpaceSemantics } from '@shared/storage';
 import type {
@@ -6,6 +6,20 @@ import type {
   StorageProvider,
   StorageProviderAuthMode,
 } from '@shared/storage-browser';
+
+export type TransferMode = 'copy' | 'move';
+
+export type MoveStrategy = 'native' | 'copy-delete' | 'unsupported';
+
+export interface TransferSourceRef {
+  readonly ref: EntryRef;
+  readonly kind: Entry['kind'];
+}
+
+export interface TransferInspection {
+  readonly selfContained: boolean;
+  readonly moveStrategy: MoveStrategy;
+}
 
 export type StorageConnectionSource =
   | {
@@ -31,7 +45,13 @@ export interface StorageProviderIntegration {
   createAdapterFactory(): AdapterFactory;
   builtInSpace?(connectionId: string): Space | undefined;
   validateStoredSpace?(space: { id: string; locator?: string }): boolean;
-  resolvePath?(ref: EntryRef): Promise<{ path: string; kind: Entry['kind']; dev?: number }>;
+  resolvePath?(ref: EntryRef): Promise<{ path: string; kind: Entry['kind'] }>;
+  inspectTransfer?(
+    target: EntryRef,
+    sources: readonly TransferSourceRef[],
+    mode: TransferMode,
+    context?: OperationContext,
+  ): Promise<TransferInspection>;
 }
 
 export function createStoredSpaceValidator(

@@ -1,5 +1,20 @@
 import type { Entry, EntryRef } from '@shared/storage';
 import type { BrowserErrorCode } from '@shared/storage-browser';
+import type { StorageDirectory } from '../storage/storage-directory';
+import type { StorageEntryOperations } from '../storage/storage-entry-operations';
+import type { StorageFile } from '../storage/storage-file';
+
+export type DownloadFile = Pick<StorageFile, 'ref' | 'stat' | 'read'>;
+
+export interface DownloadDirectory extends Pick<StorageDirectory, 'ref' | 'list'> {
+  child(ref: EntryRef): DownloadDirectory;
+  file(ref: EntryRef): DownloadFile;
+}
+
+export interface DownloadOperations extends Pick<StorageEntryOperations, 'statEntry'> {
+  directory(ref: EntryRef): DownloadDirectory;
+  file(ref: EntryRef): DownloadFile;
+}
 
 export interface DownloadRequest {
   ref: EntryRef;

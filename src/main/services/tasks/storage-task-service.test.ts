@@ -10,6 +10,8 @@ import type { StorageTaskEvent } from '@shared/tasks';
 import { DownloadError } from '../downloads/download-paths';
 import type { DownloadService } from '../downloads/download-service';
 import type { DownloadProgress, DownloadRunResult } from '../downloads/download-types';
+import { createStorageDirectory } from '../storage/storage-directory';
+import type { StorageEntryOperations } from '../storage/storage-entry-operations';
 import { UploadService } from '../uploads/upload-service';
 import {
   StorageTaskService,
@@ -100,8 +102,13 @@ function setup() {
   const deleteEntry = vi.fn(async () => undefined);
   const copyWithin = vi.fn(async () => ({ ...fileEntry, name: 'report.txt' }));
   const moveWithin = vi.fn(async () => ({ ...fileEntry, name: 'report.txt' }));
-  const spaceSemantics = vi.fn<StorageTaskOperations['spaceSemantics']>(async () => undefined);
-  const operations: StorageTaskOperations = {
+  const spaceSemantics = vi.fn<StorageEntryOperations['spaceSemantics']>(async () => undefined);
+  const resolveLocalPath = vi.fn<StorageEntryOperations['resolveLocalPath']>();
+  const inspectTransfer = vi.fn<StorageEntryOperations['inspectTransfer']>(async () => ({
+    selfContained: false,
+    moveStrategy: 'native',
+  }));
+  const entryOperations = {
     createDirectory,
     renameEntry,
     deleteEntry,
@@ -110,7 +117,18 @@ function setup() {
     spaceSemantics,
     spaceCapabilities: vi.fn(async () => ({})),
     listDirectory: vi.fn(async () => ({ entries: [] })),
-    resolveLocalPath: vi.fn(),
+    resolveLocalPath,
+    inspectTransfer,
+    statEntry: vi.fn(),
+    prepareUpload: vi.fn(),
+    readEntry: vi.fn(),
+  } as unknown as StorageEntryOperations;
+  const operations: StorageTaskOperations = {
+    directory: (ref) => createStorageDirectory(entryOperations, ref),
+    resolveLocalPath,
+    inspectTransfer,
+    renameEntry,
+    deleteEntry,
   };
   const dependencies: StorageTaskDependencies = {
     operations,
@@ -529,27 +547,43 @@ it('uploads mixed files and folders as a task group, emits directory changes, an
       })),
     };
   });
-  const uploads = new UploadService({
-    stat: async (ref) => ({
+  const resolveLocalPath = vi.fn<StorageEntryOperations['resolveLocalPath']>();
+  const entryOperations = {
+    statEntry: async (ref: typeof parent) => ({
       ref,
       name: 'Root',
-      kind: 'directory',
-      capabilities: { write: { support: 'supported' }, createDirectory: { support: 'supported' } },
+      kind: 'directory' as const,
+      capabilities: {
+        write: { support: 'supported' as const },
+        createDirectory: { support: 'supported' as const },
+      },
     }),
     createDirectory,
     prepareUpload,
-  });
+    renameEntry: vi.fn(),
+    deleteEntry: vi.fn(),
+    copyWithin: vi.fn(),
+    moveWithin: vi.fn(),
+    spaceSemantics: vi.fn(async () => undefined),
+    spaceCapabilities: vi.fn(async () => ({})),
+    listDirectory: vi.fn(async () => ({ entries: [] })),
+    resolveLocalPath,
+    inspectTransfer: vi.fn(async () => ({ selfContained: false, moveStrategy: 'native' as const })),
+    readEntry: vi.fn(),
+  } as unknown as StorageEntryOperations;
+  const directory: StorageTaskOperations['directory'] = (ref) =>
+    createStorageDirectory(entryOperations, ref);
+  const uploads = new UploadService({ directory });
   const service = new StorageTaskService({
     operations: {
-      createDirectory,
+      directory,
+      resolveLocalPath,
+      inspectTransfer: vi.fn(async () => ({
+        selfContained: false,
+        moveStrategy: 'native' as const,
+      })),
       renameEntry: vi.fn(),
       deleteEntry: vi.fn(),
-      copyWithin: vi.fn(),
-      moveWithin: vi.fn(),
-      spaceSemantics: vi.fn(async () => undefined),
-      spaceCapabilities: vi.fn(async () => ({})),
-      listDirectory: vi.fn(async () => ({ entries: [] })),
-      resolveLocalPath: vi.fn(),
     },
     downloads: {
       cancelOwner: vi.fn(),

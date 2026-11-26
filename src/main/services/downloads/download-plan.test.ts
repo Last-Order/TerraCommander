@@ -11,11 +11,22 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Readable } from 'node:stream';
 import { expect, it, vi } from 'vitest';
+import type { OperationContext } from '@main/storage/core/contracts';
 import { StorageError } from '@main/storage/core/errors';
-import type { Entry } from '@shared/storage';
+import type { Entry, EntryPage, EntryRef, ListRequest } from '@shared/storage';
 import { DownloadService } from './download-service';
-import type { DownloadSource } from './download-transfer';
-import type { DownloadPlanItem, PreparedDownloadBatch } from './download-types';
+import type {
+  DownloadDirectory,
+  DownloadOperations,
+  DownloadPlanItem,
+  PreparedDownloadBatch,
+} from './download-types';
+
+type ListHandler = (
+  ref: EntryRef,
+  request: ListRequest | undefined,
+  context?: OperationContext,
+) => Promise<EntryPage>;
 
 function entry(locator: string, name: string, kind: Entry['kind'] = 'file'): Entry {
   return {
@@ -26,27 +37,61 @@ function entry(locator: string, name: string, kind: Entry['kind'] = 'file'): Ent
   };
 }
 
+type ReadHandler = (
+  ref: EntryRef,
+  options?: Parameters<ReturnType<DownloadOperations['file']>['read']>[0],
+  context?: Parameters<ReturnType<DownloadOperations['file']>['read']>[1],
+) => ReturnType<ReturnType<DownloadOperations['file']>['read']>;
+
 function fixture(
   directory: string,
   roots: Entry[],
   children: Record<string, Entry[]> = {},
-  overrides: Partial<DownloadSource> = {},
+  overrides: {
+    stat?: DownloadOperations['statEntry'];
+    read?: ReadHandler;
+    list?: ListHandler;
+  } = {},
 ) {
   const entries = new Map(
     [...roots, ...Object.values(children).flat()].map((value) => [value.ref.locator, value]),
   );
-  const read = vi.fn<DownloadSource['read']>(async (ref) => ({
+  const read = vi.fn<ReadHandler>(async (ref) => ({
     stream: Readable.from([Buffer.from(ref.locator)]),
     dispose: async () => {},
   }));
-  const list = vi.fn<NonNullable<DownloadSource['list']>>(async (ref) => ({
+  const list = vi.fn<ListHandler>(async (ref) => ({
     entries: children[ref.locator] ?? [],
   }));
+  const statImpl = overrides.stat ?? (async (ref) => entries.get(ref.locator)!);
+  const readImpl = overrides.read ?? read;
+  const listImpl = overrides.list ?? list;
+  const openFile: DownloadOperations['file'] = (ref) => ({
+    ref,
+    stat: (context) => statImpl(ref, context),
+    read: (options, context) => readImpl(ref, options, context),
+  });
+  const openDirectory = (ref: EntryRef): DownloadDirectory => ({
+    ref,
+    child: (childRef) => {
+      if (childRef.connectionId !== ref.connectionId || childRef.spaceId !== ref.spaceId) {
+        throw new StorageError('InvalidArgument');
+      }
+      return openDirectory(childRef);
+    },
+    file: (fileRef) => {
+      if (fileRef.connectionId !== ref.connectionId || fileRef.spaceId !== ref.spaceId) {
+        throw new StorageError('InvalidArgument');
+      }
+      return openFile(fileRef);
+    },
+    list: (request, context) =>
+      listImpl(ref, typeof request === 'string' ? { cursor: request } : request, context),
+  });
   const service = new DownloadService({
-    stat: async (ref) => entries.get(ref.locator)!,
-    read,
-    list,
-    ...overrides,
+    statEntry: statImpl,
+    directory: openDirectory,
+    file: openFile,
   });
   const request = {
     directory,
@@ -132,7 +177,8 @@ it('reads every sibling page before numbering and caches names for repeated disc
     entry('two', 'report.txt'),
     entry('three', 'report (1).txt'),
   ];
-  const list = vi.fn<NonNullable<DownloadSource['list']>>(async (_ref, { cursor }) => {
+  const list = vi.fn<ListHandler>(async (_ref, request) => {
+    const cursor = request?.cursor;
     if (!cursor) return { entries: [children[0]!], nextCursor: 'empty' };
     if (cursor === 'empty') return { entries: [], nextCursor: 'last' };
     return { entries: children.slice(1) };
@@ -205,7 +251,7 @@ it('rejects escaping names on every attempt while allowing other files to transf
 it('allows parallel files and cancels one without interrupting its sibling', async () => {
   await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-plan-'));
   const streams = [new PassThrough(), new PassThrough()];
-  const read = vi.fn<DownloadSource['read']>(async (ref) => {
+  const read = vi.fn<ReadHandler>(async (ref) => {
     const stream = streams[Number(ref.locator)]!;
     return {
       stream,
@@ -264,7 +310,7 @@ it('holds subtree reservations until group settlement and reuses failed destinat
 it('retries incomplete enumeration without publishing partial child lists', async () => {
   await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-plan-'));
   const child = entry('child', 'file.txt');
-  const list = vi.fn<NonNullable<DownloadSource['list']>>(async () => ({
+  const list = vi.fn<ListHandler>(async () => ({
     entries: [child],
     nextCursor: 'repeat',
   }));
@@ -287,9 +333,9 @@ it('retries incomplete enumeration without publishing partial child lists', asyn
 
 it('aborts directory discovery when its task is cancelled and cleans an unfinished session', async () => {
   await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-plan-'));
-  const list = vi.fn<NonNullable<DownloadSource['list']>>(async (_ref, _request, { signal }) => {
+  const list = vi.fn<ListHandler>(async (_ref, _request, context) => {
     await new Promise((_resolve, reject) =>
-      signal?.addEventListener('abort', () => reject(new StorageError('Cancelled')), {
+      context?.signal?.addEventListener('abort', () => reject(new StorageError('Cancelled')), {
         once: true,
       }),
     );
@@ -316,7 +362,7 @@ it('rejects replaced directories before opening file streams', async () => {
   await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-plan-'));
   const root = entry('folder', 'A', 'directory');
   const child = entry('child', 'file.txt');
-  const stat: DownloadSource['stat'] = async (ref) => {
+  const stat: DownloadOperations['statEntry'] = async (ref) => {
     if (ref.locator === root.ref.locator) return root;
     await rename(join(temporary.path, 'A'), join(temporary.path, 'moved'));
     await mkdir(join(temporary.path, 'A'));
@@ -433,11 +479,11 @@ it('cancels target resolution during metadata access and retains reservations un
   const resolving = new Promise<void>((resolve) => {
     started = resolve;
   });
-  const stat: DownloadSource['stat'] = async (_ref, { signal }) => {
+  const stat: DownloadOperations['statEntry'] = async (_ref, context) => {
     if (++reads === 1) return root;
     started();
     await new Promise<void>((_resolve, reject) =>
-      signal?.addEventListener('abort', () => reject(new StorageError('Cancelled')), {
+      context?.signal?.addEventListener('abort', () => reject(new StorageError('Cancelled')), {
         once: true,
       }),
     );

@@ -39,16 +39,8 @@ export function createStorageServices({
     connections,
     spaces,
   });
-  const downloads = new DownloadService({
-    stat: (ref, context) => operations.statEntry(ref, context),
-    read: (ref, options, context) => operations.readEntry(ref, options, context),
-    list: (ref, request, context) => operations.listDirectory(ref, request, context),
-  });
-  const uploads = new UploadService({
-    stat: (ref, context) => operations.statEntry(ref, context),
-    createDirectory: (target, context) => operations.createDirectory(target, context),
-    prepareUpload: (parent, name, source) => operations.prepareUpload(parent, name, source),
-  });
+  const downloads = new DownloadService(operations);
+  const uploads = new UploadService(operations);
   const browser = new StorageBrowser({
     connections,
     storage,

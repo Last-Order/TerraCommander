@@ -3,11 +3,11 @@ import { lstat, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { StorageError, throwIfAborted } from '@main/storage/core/errors';
 import type { Entry, EntryRef, StorageErrorCode } from '@shared/storage';
+import type { StorageDirectory } from '../storage/storage-directory';
 import { prepareLocalUpload } from './local-upload-source';
 import type {
   ResolvedUploadWork,
   SameNameFolderPolicy,
-  UploadDestination,
   UploadPlanItem,
   UploadPlanPage,
 } from './upload-types';
@@ -17,12 +17,13 @@ export interface UploadPlanRoot {
   localPath: string;
   name: string;
   size: number;
-  parent: EntryRef;
+  directory: StorageDirectory;
   identity?: string;
 }
 
 interface PlanNode extends UploadPlanItem {
-  destinationRef?: EntryRef;
+  directory: StorageDirectory;
+  destinationDirectory?: StorageDirectory;
   ancestors: readonly string[];
   cancelled: boolean;
   children?: PlanNode[];
@@ -54,7 +55,6 @@ export class UploadPlan {
   readonly roots: UploadPlanItem[];
 
   constructor(
-    private readonly destination: UploadDestination,
     roots: readonly UploadPlanRoot[],
     readonly policy: SameNameFolderPolicy = 'create-new',
     private readonly onDirectoryCreated?: (parent: EntryRef, entry: Entry) => void,
@@ -67,7 +67,7 @@ export class UploadPlan {
           name: root.name,
           path: root.name,
           size: root.size,
-          parent: root.parent,
+          directory: root.directory,
           ancestors: root.identity ? [root.identity] : [],
         }),
       ),
@@ -102,13 +102,13 @@ export class UploadPlan {
       const { source } = await prepareLocalUpload(node.localPath, node.name);
       throwIfAborted(controller.signal);
       this.node(itemId);
-      const parent = node.parent;
+      const directory = node.directory;
       const name = node.name;
       return {
-        parent,
+        parent: directory.ref,
         name,
         size: source.descriptor.size,
-        prepare: () => this.destination.prepareUpload(parent, name, source),
+        prepare: () => directory.prepareUpload(name, source),
       };
     } finally {
       this.operations.delete(itemId);
@@ -160,7 +160,7 @@ export class UploadPlan {
     if (node.children) return node.children;
     const controller = this.begin(node);
     try {
-      const destinationRef = await this.ensureRemoteDirectory(node, controller.signal);
+      const destinationDirectory = await this.ensureRemoteDirectory(node, controller.signal);
       const names = await readdir(node.localPath).catch((error: unknown) => localStatError(error));
       names.sort((left, right) => left.localeCompare(right));
       const children: PlanNode[] = [];
@@ -183,7 +183,7 @@ export class UploadPlan {
               name,
               path: displayPath,
               size: 0,
-              parent: destinationRef,
+              directory: destinationDirectory,
               ancestors: node.ancestors,
               code,
             }),
@@ -200,7 +200,7 @@ export class UploadPlan {
                 name,
                 path: displayPath,
                 size: 0,
-                parent: destinationRef,
+                directory: destinationDirectory,
                 ancestors: node.ancestors,
                 code: 'Unsupported',
               }),
@@ -214,7 +214,7 @@ export class UploadPlan {
               name,
               path: displayPath,
               size: 0,
-              parent: destinationRef,
+              directory: destinationDirectory,
               ancestors: [...node.ancestors, identity],
             }),
           );
@@ -226,7 +226,7 @@ export class UploadPlan {
               name,
               path: displayPath,
               size: Number(stat.size),
-              parent: destinationRef,
+              directory: destinationDirectory,
               ancestors: node.ancestors,
             }),
           );
@@ -238,7 +238,7 @@ export class UploadPlan {
               name,
               path: displayPath,
               size: 0,
-              parent: destinationRef,
+              directory: destinationDirectory,
               ancestors: node.ancestors,
               code: 'Unsupported',
             }),
@@ -252,16 +252,15 @@ export class UploadPlan {
     }
   }
 
-  private async ensureRemoteDirectory(node: PlanNode, signal: AbortSignal): Promise<EntryRef> {
-    if (node.destinationRef) return node.destinationRef;
-    if (!this.destination.createDirectory) throw new StorageError('Unsupported');
-    const created = await this.destination.createDirectory(
-      { parent: node.parent, name: node.name },
-      { signal },
-    );
-    node.destinationRef = created.ref;
-    this.onDirectoryCreated?.(node.parent, created);
-    return created.ref;
+  private async ensureRemoteDirectory(
+    node: PlanNode,
+    signal: AbortSignal,
+  ): Promise<StorageDirectory> {
+    if (node.destinationDirectory) return node.destinationDirectory;
+    const created = await node.directory.createDirectory(node.name, { signal });
+    node.destinationDirectory = created.directory;
+    this.onDirectoryCreated?.(node.directory.ref, created.entry);
+    return created.directory;
   }
 
   private add(options: {
@@ -270,7 +269,7 @@ export class UploadPlan {
     name: string;
     path: string;
     size: number;
-    parent: EntryRef;
+    directory: StorageDirectory;
     ancestors: readonly string[];
     code?: StorageErrorCode;
   }): PlanNode {
@@ -281,7 +280,8 @@ export class UploadPlan {
       localPath: options.localPath,
       name: options.name,
       size: options.size,
-      parent: options.parent,
+      parent: options.directory.ref,
+      directory: options.directory,
       ancestors: options.ancestors,
       cancelled: false,
       ...(options.code ? { code: options.code } : {}),

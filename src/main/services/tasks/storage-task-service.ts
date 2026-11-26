@@ -151,15 +151,7 @@ export interface StorageTaskServiceOptions {
 
 export type StorageTaskOperations = Pick<
   StorageEntryOperations,
-  | 'spaceSemantics'
-  | 'spaceCapabilities'
-  | 'listDirectory'
-  | 'resolveLocalPath'
-  | 'createDirectory'
-  | 'renameEntry'
-  | 'deleteEntry'
-  | 'copyWithin'
-  | 'moveWithin'
+  'directory' | 'resolveLocalPath' | 'inspectTransfer' | 'renameEntry' | 'deleteEntry'
 >;
 
 export interface StorageTaskDependencies {
@@ -269,7 +261,7 @@ export class StorageTaskService {
   }
 
   private async resolveSpaceSemantics(ref: Entry['ref']): Promise<ResolvedSpaceSemantics> {
-    const semantics = await this.operations.spaceSemantics?.(ref);
+    const semantics = await this.operations.directory(ref).semantics();
     return {
       allowsDuplicateNames: semantics?.allowsDuplicateNames === true,
       caseInsensitive: semantics?.caseSensitive === false,
@@ -611,7 +603,10 @@ export class StorageTaskService {
       {
         prepare: (context) =>
           prepareCopyGroup(
-            this.operations,
+            {
+              sourceDirectory: this.operations.directory(request.sourceParent),
+              targetDirectory: this.operations.directory(request.targetParent),
+            },
             request,
             items,
             (change) => this.emitDirectoryChanged(change),
@@ -715,7 +710,7 @@ export class StorageTaskService {
       category: 'operation',
       execute: async ({ parent, name }) => ({
         status: 'completed',
-        result: await this.operations.createDirectory({ parent, name }),
+        result: (await this.operations.directory(parent).createDirectory(name)).entry,
       }),
       onSuccess: ({ parent }, result) => {
         this.emitDirectoryChanged({ kind: 'added', parent, entry: result });
@@ -785,10 +780,7 @@ export class StorageTaskService {
         this.downloads.assertSourceAvailable(entry.ref);
         return {
           status: 'completed',
-          result: await this.operations.copyWithin(entry.ref, {
-            parent: targetParent,
-            name: targetName,
-          }),
+          result: await this.operations.directory(targetParent).copyEntry(entry.ref, targetName),
         };
       },
       onSuccess: ({ targetParent }, result) => {
@@ -810,10 +802,7 @@ export class StorageTaskService {
         this.downloads.assertSourceAvailable(entry.ref);
         return {
           status: 'completed',
-          result: await this.operations.moveWithin(entry.ref, {
-            parent: targetParent,
-            name: targetName,
-          }),
+          result: await this.operations.directory(targetParent).moveEntry(entry.ref, targetName),
         };
       },
       onSuccess: ({ sourceParent, entry, targetParent }, result) => {
@@ -831,11 +820,9 @@ export class StorageTaskService {
 
   private removeMovedEntries(sourceParent: Entry['ref'], entries: readonly Entry[]): Promise<void> {
     return removeMovedSources(
-      {
-        deleteEntry: (ref) => {
-          this.downloads.assertSourceAvailable(ref);
-          return this.operations.deleteEntry(ref);
-        },
+      (ref) => {
+        this.downloads.assertSourceAvailable(ref);
+        return this.operations.deleteEntry(ref);
       },
       sourceParent,
       entries,

@@ -1,9 +1,8 @@
-import type {
-  OperationContext,
-  ReopenableByteSource,
-  WriteExecution,
-} from '@main/storage/core/contracts';
-import type { CreateTarget, Entry, EntryRef, StorageErrorCode } from '@shared/storage';
+import type { WriteExecution } from '@main/storage/core/contracts';
+import type { Entry, EntryRef, StorageErrorCode } from '@shared/storage';
+import type { StorageEntryOperations } from '../storage/storage-entry-operations';
+
+export type UploadOperations = Pick<StorageEntryOperations, 'directory'>;
 
 /**
  * Policy when a destination directory already contains an item with the same name.
@@ -11,12 +10,6 @@ import type { CreateTarget, Entry, EntryRef, StorageErrorCode } from '@shared/st
  * and retaining its provider-assigned `EntryRef` for all descendants and retries.
  */
 export type SameNameFolderPolicy = 'create-new';
-
-export interface UploadDestination {
-  stat(ref: EntryRef, context?: OperationContext): Promise<Entry>;
-  createDirectory?(target: CreateTarget, context?: OperationContext): Promise<Entry>;
-  prepareUpload(parent: EntryRef, name: string, source: ReopenableByteSource): WriteExecution;
-}
 
 export interface UploadWorkRef {
   planId: string;

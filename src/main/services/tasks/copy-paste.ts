@@ -1,4 +1,3 @@
-import { isAbsolute, relative } from 'node:path';
 import { StorageError } from '@main/storage';
 import type { TaskGroupPreparationContext } from '@main/tasks/types';
 import { entryKey, type Entry, type EntryRef } from '@shared/storage';
@@ -9,12 +8,13 @@ import type {
   PasteRejectionReason,
   StorageDirectoryChange,
 } from '@shared/tasks';
+import type { StorageDirectory } from '../storage/storage-directory';
 import type { StorageEntryOperations } from '../storage/storage-entry-operations';
 import { toBrowserErrorCode, toTaskFailure } from './task-errors';
 
 export type CopyPasteOperations = Pick<
   StorageEntryOperations,
-  'listDirectory' | 'resolveLocalPath' | 'createDirectory' | 'deleteEntry' | 'spaceCapabilities'
+  'directory' | 'resolveLocalPath' | 'inspectTransfer'
 >;
 
 export interface CopyDiscoveryItem {
@@ -82,14 +82,8 @@ export function allocateCopyName(
   }
 }
 
-export function isSubpath(parentPath: string, childPath: string): boolean {
-  const rel = relative(parentPath, childPath);
-  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
-}
-
 async function listAllNames(
-  operations: CopyPasteOperations,
-  parent: EntryRef,
+  directory: Pick<StorageDirectory, 'list'>,
   caseInsensitive = false,
   signal?: AbortSignal,
 ): Promise<Set<string>> {
@@ -97,7 +91,7 @@ async function listAllNames(
   let cursor: string | undefined;
   do {
     if (signal?.aborted) return names;
-    const page = await operations.listDirectory(parent, cursor);
+    const page = await directory.list(cursor);
     if (signal?.aborted) return names;
     for (const entry of page.entries) {
       names.add(caseInsensitive ? entry.name.toLowerCase() : entry.name);
@@ -159,9 +153,11 @@ export async function planPaste(
     return { kind: 'rejected', reason: 'self-containment' };
   }
 
+  const targetDirectory = operations.directory(request.targetParent);
+
   // Local -> Cloud: resolve OS paths via local provider integration for upload.
   if (sourceConnectionId === localConnectionId && targetConnectionId !== localConnectionId) {
-    const targetCapabilities = await operations.spaceCapabilities(request.targetParent);
+    const targetCapabilities = await targetDirectory.capabilities();
     if (targetCapabilities.write?.support === 'unsupported') {
       return { kind: 'rejected', reason: 'permission-denied' };
     }
@@ -186,7 +182,7 @@ export async function planPaste(
 
   // Cloud -> Local: resolve target local directory via local provider integration for download.
   if (sourceConnectionId !== localConnectionId && targetConnectionId === localConnectionId) {
-    const targetCapabilities = await operations.spaceCapabilities(request.targetParent);
+    const targetCapabilities = await targetDirectory.capabilities();
     if (targetCapabilities.write?.support === 'unsupported') {
       return { kind: 'rejected', reason: 'permission-denied' };
     }
@@ -212,44 +208,19 @@ export async function planPaste(
   }
 
   // Same-connection copy or move (Local -> Local or same-account Cloud -> Cloud).
-  let crossDevice = false;
-  if (sourceConnectionId === localConnectionId) {
-    const target = await operations.resolveLocalPath(request.targetParent);
-    if (target.kind !== 'directory') throw new StorageError('InvalidArgument');
-    for (const entry of uniqueEntries) {
-      if (mode === 'copy' && entry.kind !== 'directory') continue;
-      const source = await operations.resolveLocalPath(entry.ref);
-      if (
-        entry.kind === 'directory' &&
-        (target.path === source.path || isSubpath(source.path, target.path))
-      ) {
-        return { kind: 'rejected', reason: 'self-containment' };
-      }
-      if (
-        mode === 'cut' &&
-        target.dev !== undefined &&
-        source.dev !== undefined &&
-        target.dev !== source.dev
-      ) {
-        crossDevice = true;
-      }
-    }
-  } else {
-    if (mode === 'cut' && request.sourceParent.spaceId !== request.targetParent.spaceId) {
-      return { kind: 'rejected', reason: 'unsupported' };
-    }
-    for (const entry of uniqueEntries) {
-      if (
-        entry.kind === 'directory' &&
-        entry.ref.locator === request.targetParent.locator &&
-        entry.ref.spaceId === request.targetParent.spaceId
-      ) {
-        return { kind: 'rejected', reason: 'self-containment' };
-      }
-    }
+  const inspection = await operations.inspectTransfer(
+    request.targetParent,
+    uniqueEntries.map((entry) => ({ ref: entry.ref, kind: entry.kind })),
+    mode === 'cut' ? 'move' : 'copy',
+  );
+  if (inspection.selfContained) {
+    return { kind: 'rejected', reason: 'self-containment' };
+  }
+  if (mode === 'cut' && inspection.moveStrategy === 'unsupported') {
+    return { kind: 'rejected', reason: 'unsupported' };
   }
 
-  if (mode === 'cut' && !crossDevice) {
+  if (mode === 'cut' && inspection.moveStrategy === 'native') {
     if (uniqueEntries.some((entry) => entry.capabilities.moveWithin?.support === 'unsupported')) {
       return { kind: 'rejected', reason: 'unsupported' };
     }
@@ -265,7 +236,7 @@ export async function planPaste(
   }
 
   if (hasDirectory) {
-    const targetCapabilities = await operations.spaceCapabilities(request.targetParent);
+    const targetCapabilities = await targetDirectory.capabilities();
     if (targetCapabilities.createDirectory?.support === 'unsupported') {
       return { kind: 'rejected', reason: 'unsupported' };
     }
@@ -302,14 +273,14 @@ export async function planPaste(
 
 /** Deletes source entries after a cross-device or cross-connection move completes cleanly. */
 export async function removeMovedSources(
-  operations: Pick<CopyPasteOperations, 'deleteEntry'>,
+  deleteEntry: (ref: EntryRef) => Promise<void>,
   sourceParent: EntryRef,
   entries: readonly Entry[],
   emitDirectoryChanged: (change: StorageDirectoryChange) => void,
 ): Promise<void> {
   for (const entry of entries) {
     try {
-      await operations.deleteEntry(entry.ref);
+      await deleteEntry(entry.ref);
       emitDirectoryChanged({ kind: 'removed', parent: sourceParent, ref: entry.ref });
     } catch {
       console.error('Failed to remove source entry after move.', {
@@ -337,25 +308,42 @@ type CopyGroupPreparationContext = Pick<
   'signal' | 'enqueue' | 'reportIssue'
 >;
 
+interface PendingCopyItem {
+  item: CopyDiscoveryItem;
+  targetDirectory: StorageDirectory;
+  sourceDirectory?: StorageDirectory | undefined;
+}
+
+export interface CopyGroupDirectories {
+  readonly sourceDirectory: StorageDirectory;
+  readonly targetDirectory: StorageDirectory;
+}
+
 export async function prepareCopyGroup(
-  operations: CopyPasteOperations,
+  { sourceDirectory, targetDirectory }: CopyGroupDirectories,
   request: PasteEntriesRequest,
   initialItems: readonly CopyDiscoveryItem[],
   emitDirectoryChanged: (change: StorageDirectoryChange) => void,
   context: CopyGroupPreparationContext,
   options?: PrepareCopyGroupOptions,
 ): Promise<void> {
-  const pending: CopyDiscoveryItem[] = initialItems.map((item) => ({ ...item }));
-  const visitedDirectories = new Set<string>([entryKey(request.targetParent)]);
+  const targetKey = entryKey(targetDirectory.ref);
+  const pending: PendingCopyItem[] = initialItems.map((item) => ({
+    item: { ...item },
+    targetDirectory:
+      entryKey(item.targetParent) === targetKey
+        ? targetDirectory
+        : targetDirectory.child(item.targetParent),
+    sourceDirectory:
+      item.sourceEntry.kind === 'directory'
+        ? sourceDirectory.child(item.sourceEntry.ref)
+        : undefined,
+  }));
+  const visitedDirectories = new Set<string>([targetKey]);
   const caseInsensitive = options?.caseInsensitive === true;
 
   if (options?.sameDirectory) {
-    const usedNames = await listAllNames(
-      operations,
-      request.targetParent,
-      caseInsensitive,
-      context.signal,
-    );
+    const usedNames = await listAllNames(targetDirectory, caseInsensitive, context.signal);
     if (context.signal.aborted) return;
     const reservedNames = options.getReservedNames?.();
     if (reservedNames) {
@@ -363,7 +351,8 @@ export async function prepareCopyGroup(
         usedNames.add(name);
       }
     }
-    for (const item of pending) {
+    for (const entry of pending) {
+      const { item } = entry;
       const targetName = allocateCopyName(
         item.sourceEntry.name,
         item.sourceEntry.kind,
@@ -379,7 +368,8 @@ export async function prepareCopyGroup(
 
   while (pending.length > 0) {
     if (context.signal.aborted) return;
-    const item = pending.shift()!;
+    const pendingItem = pending.shift()!;
+    const { item } = pendingItem;
 
     if (item.sourceEntry.kind !== 'directory') {
       if (item.sourceEntry.kind !== 'file') {
@@ -417,27 +407,32 @@ export async function prepareCopyGroup(
     visitedDirectories.add(dirKey);
 
     try {
-      const createdDir = await operations.createDirectory({
-        parent: item.targetParent,
-        name: item.targetName,
-      });
+      const { entry: createdDir, directory: createdDirectory } =
+        await pendingItem.targetDirectory.createDirectory(item.targetName);
       if (context.signal.aborted) return;
       if (item.emitAddedOnCreate) {
         emitDirectoryChanged({ kind: 'added', parent: item.targetParent, entry: createdDir });
       }
 
+      const currentSourceDirectory =
+        pendingItem.sourceDirectory ?? sourceDirectory.child(item.sourceEntry.ref);
       let cursor: string | undefined;
       do {
         if (context.signal.aborted) return;
-        const page = await operations.listDirectory(item.sourceEntry.ref, cursor);
+        const page = await currentSourceDirectory.list(cursor);
         for (const child of page.entries) {
           pending.push({
-            sourceEntry: child,
-            sourceParent: item.sourceEntry.ref,
-            targetParent: createdDir.ref,
-            targetName: child.name,
-            relativePath: `${item.relativePath}/${child.name}`,
-            emitAddedOnCreate: false,
+            item: {
+              sourceEntry: child,
+              sourceParent: item.sourceEntry.ref,
+              targetParent: createdDir.ref,
+              targetName: child.name,
+              relativePath: `${item.relativePath}/${child.name}`,
+              emitAddedOnCreate: false,
+            },
+            targetDirectory: createdDirectory,
+            sourceDirectory:
+              child.kind === 'directory' ? currentSourceDirectory.child(child.ref) : undefined,
           });
         }
         cursor = page.nextCursor;

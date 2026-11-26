@@ -5,17 +5,21 @@ import type {
   ReopenableByteSource,
   WriteExecution,
 } from '@main/storage/core/contracts';
-import type {
-  Capabilities,
-  CreateTarget,
-  Entry,
-  EntryPage,
-  EntryRef,
-  ListRequest,
-  ReadOptions,
-  SpaceSemantics,
+import {
+  entryKey,
+  type Capabilities,
+  type CreateTarget,
+  type Entry,
+  type EntryPage,
+  type EntryRef,
+  type ListRequest,
+  type ReadOptions,
+  type SpaceSemantics,
 } from '@shared/storage';
 import type { StorageConnectionManager } from './storage-connections';
+import { createStorageDirectory, type StorageDirectory } from './storage-directory';
+import { createStorageFile, type StorageFile } from './storage-file';
+import type { TransferInspection, TransferMode, TransferSourceRef } from './storage-provider';
 import type { StorageSpaceCatalog } from './storage-spaces';
 
 export interface StorageEntryOperationsOptions {
@@ -34,6 +38,14 @@ export class StorageEntryOperations {
     this.storage = options.storage;
     this.connections = options.connections;
     this.spaces = options.spaces;
+  }
+
+  directory(ref: EntryRef): StorageDirectory {
+    return createStorageDirectory(this, ref);
+  }
+
+  file(ref: EntryRef): StorageFile {
+    return createStorageFile(this, ref);
   }
 
   spaceSemantics(ref: EntryRef): Promise<SpaceSemantics | undefined> {
@@ -68,12 +80,47 @@ export class StorageEntryOperations {
     return this.spaces.withBrowsableSpace(ref, () => this.storage.read(ref, options, context));
   }
 
-  resolveLocalPath(ref: EntryRef): Promise<{ path: string; kind: Entry['kind']; dev?: number }> {
+  resolveLocalPath(ref: EntryRef): Promise<{ path: string; kind: Entry['kind'] }> {
     const integration = this.connections.builtInIntegration(ref.connectionId);
     if (!integration?.resolvePath) {
       return Promise.reject(new StorageError('InvalidArgument'));
     }
     return this.spaces.withBrowsableSpace(ref, () => integration.resolvePath!(ref));
+  }
+
+  async inspectTransfer(
+    target: EntryRef,
+    sources: readonly TransferSourceRef[],
+    mode: TransferMode,
+    context?: OperationContext,
+  ): Promise<TransferInspection> {
+    if (sources.some((source) => source.ref.connectionId !== target.connectionId)) {
+      throw new StorageError('InvalidArgument');
+    }
+    const integration = await this.connections.resolveIntegration(target.connectionId);
+    if (!integration.inspectTransfer) {
+      const targetKey = entryKey(target);
+      const selfContained = sources.some(
+        (source) => source.kind === 'directory' && entryKey(source.ref) === targetKey,
+      );
+      const crossSpace = sources.some((source) => source.ref.spaceId !== target.spaceId);
+      return {
+        selfContained,
+        moveStrategy: mode === 'move' && crossSpace ? 'unsupported' : 'native',
+      };
+    }
+    const distinctSpaces = new Map<string, EntryRef>([[target.spaceId, target]]);
+    for (const source of sources) {
+      if (!distinctSpaces.has(source.ref.spaceId)) {
+        distinctSpaces.set(source.ref.spaceId, source.ref);
+      }
+    }
+    let wrapped = () => integration.inspectTransfer!(target, sources, mode, context);
+    for (const spaceRef of distinctSpaces.values()) {
+      const next = wrapped;
+      wrapped = () => this.spaces.withBrowsableSpace(spaceRef, next);
+    }
+    return wrapped();
   }
 
   prepareUpload(parent: EntryRef, name: string, source: ReopenableByteSource): WriteExecution {

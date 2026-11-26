@@ -11,7 +11,7 @@ import {
   rm,
   unlink,
 } from 'node:fs/promises';
-import { basename, dirname, isAbsolute, join, normalize, parse, relative } from 'node:path';
+import { basename, dirname, join, normalize, parse } from 'node:path';
 import type { OperationContext } from '@main/storage/core/contracts';
 import { StorageError, throwIfAborted } from '@main/storage/core/errors';
 import type { AdapterFactory, StorageAdapter } from '@main/storage/ports/adapter';
@@ -168,6 +168,44 @@ export async function locateLocalEntry(
   }
 }
 
+export async function inspectLocalTransfer(
+  target: EntryRef,
+  sources: readonly { ref: EntryRef; kind: Entry['kind'] }[],
+  mode: 'copy' | 'move',
+  volumes: typeof listLocalVolumes = listLocalVolumes,
+  platform: LocalPlatform = defaultLocalPlatform,
+  signal?: AbortSignal,
+): Promise<{ selfContained: boolean; moveStrategy: 'native' | 'copy-delete' }> {
+  throwIfAborted(signal);
+  const cachedVolumes = new Map<string, string>();
+  const locatedTarget = await locateLocalEntry(target, volumes, cachedVolumes, signal, platform);
+  if (locatedTarget.kind !== 'directory') {
+    throw new StorageError('InvalidArgument');
+  }
+
+  let moveStrategy: 'native' | 'copy-delete' = 'native';
+  for (const source of sources) {
+    if (mode === 'copy' && source.kind !== 'directory') continue;
+    const locatedSource = await locateLocalEntry(
+      source.ref,
+      volumes,
+      cachedVolumes,
+      signal,
+      platform,
+    );
+    if (
+      locatedSource.kind === 'directory' &&
+      platform.isSameOrSubpath(locatedSource.path, locatedTarget.path)
+    ) {
+      return { selfContained: true, moveStrategy: 'native' };
+    }
+    if (mode === 'move' && locatedTarget.info.dev !== locatedSource.info.dev) {
+      moveStrategy = 'copy-delete';
+    }
+  }
+  return { selfContained: false, moveStrategy };
+}
+
 class LocalAdapter implements StorageAdapter {
   private readonly volumePaths = new Map<string, string>();
 
@@ -312,10 +350,7 @@ class LocalAdapter implements StorageAdapter {
     }
     const { path: parentPath, info: parentInfo } = await this.locate(parent, signal);
     if (!parentInfo.isDirectory()) throw new StorageError('InvalidArgument');
-    if (
-      sourceInfo.isDirectory() &&
-      (parentPath === sourcePath || isLocalSubpath(sourcePath, parentPath))
-    ) {
+    if (sourceInfo.isDirectory() && this.platform.isSameOrSubpath(sourcePath, parentPath)) {
       throw new StorageError('InvalidArgument');
     }
     const sameParent = dirname(sourcePath) === parentPath;
@@ -454,11 +489,6 @@ async function resolveDirectoryWriteCapability(
     if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS') return unsupported;
     return unknown;
   }
-}
-
-function isLocalSubpath(parentPath: string, childPath: string): boolean {
-  const rel = relative(parentPath, childPath);
-  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
 }
 
 function entryKind(info: Dirent | Stats): Entry['kind'] {

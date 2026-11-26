@@ -12,9 +12,9 @@ import { PassThrough, Readable } from 'node:stream';
 import { expect, it, vi } from 'vitest';
 import type { ReadHandle } from '@main/storage/core/contracts';
 import { StorageError } from '@main/storage/core/errors';
-import type { Entry } from '@shared/storage';
+import type { Entry, EntryRef } from '@shared/storage';
 import { DownloadService } from './download-service';
-import type { DownloadRequest } from './download-types';
+import type { DownloadDirectory, DownloadOperations, DownloadRequest } from './download-types';
 
 const entry: Entry = {
   ref: { connectionId: 'account', spaceId: 'my-drive', locator: 'file' },
@@ -22,6 +22,29 @@ const entry: Entry = {
   kind: 'file',
   capabilities: { read: { support: 'supported' } },
 };
+
+function testOperations(
+  statEntry: DownloadOperations['statEntry'],
+  readEntry: (
+    ref: EntryRef,
+    options?: Parameters<ReturnType<DownloadOperations['file']>['read']>[0],
+    context?: Parameters<ReturnType<DownloadOperations['file']>['read']>[1],
+  ) => ReturnType<ReturnType<DownloadOperations['file']>['read']>,
+): DownloadOperations {
+  const file: DownloadOperations['file'] = (ref) => ({
+    ref,
+    stat: (context) => statEntry(ref, context),
+    read: (options, context) => readEntry(ref, options, context),
+  });
+  const directory = (ref: EntryRef): DownloadDirectory => ({
+    ref,
+    child: (childRef) => directory(childRef),
+    file,
+    list: async () => ({ entries: [] }),
+  });
+  return { statEntry, directory, file };
+}
+
 function fixture(
   directory: string,
   read: () => Promise<ReadHandle> = async () => ({
@@ -31,7 +54,7 @@ function fixture(
   }),
   sourceEntry: Entry = entry,
 ) {
-  const service = new DownloadService({ stat: async () => sourceEntry, read });
+  const service = new DownloadService(testOperations(async () => sourceEntry, read));
   const request: DownloadRequest = {
     ref: entry.ref,
     directory,
@@ -234,7 +257,7 @@ it('skips pre-enqueue remote stat when a known entry snapshot is supplied and ve
   await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-download-defer-'));
   const read = vi.fn();
   const stat = vi.fn(async () => entry);
-  const service = new DownloadService({ stat, read });
+  const service = new DownloadService(testOperations(stat, read));
 
   const work = await service.prepare(1, {
     ref: entry.ref,

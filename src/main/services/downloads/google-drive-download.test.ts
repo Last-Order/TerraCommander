@@ -6,7 +6,9 @@ import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
 import { AdapterRegistry, StorageAccess } from '@main/storage';
 import { googleDriveAdapterFactory } from '@main/storage/providers/google-drive/google-drive-adapter';
+import type { EntryRef } from '@shared/storage';
 import { DownloadService } from './download-service';
+import type { DownloadDirectory, DownloadOperations } from './download-types';
 
 it('resumes a paused Drive download over HTTP with a fresh signal and the saved byte offset', async () => {
   await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-drive-resume-'));
@@ -67,9 +69,26 @@ it('resumes a paused Drive download over HTTP with a fresh signal and the saved 
   });
   registry.register(googleDriveAdapterFactory(request));
   const storage = new StorageAccess(registry);
+  const openFile: DownloadOperations['file'] = (ref) => ({
+    ref,
+    stat: (context) => storage.stat(ref, context),
+    read: (options, context) => storage.read(ref, options, context),
+  });
+  const directory = (ref: EntryRef): DownloadDirectory => ({
+    ref,
+    child: (childRef) => directory(childRef),
+    file: openFile,
+    list: (listRequest, context) =>
+      storage.list(
+        ref,
+        typeof listRequest === 'string' ? { cursor: listRequest } : listRequest,
+        context,
+      ),
+  });
   const service = new DownloadService({
-    stat: (ref, context) => storage.stat(ref, context),
-    read: (ref, options, context) => storage.read(ref, options, context),
+    statEntry: (ref, context) => storage.stat(ref, context),
+    directory,
+    file: openFile,
   });
   try {
     await registry.connect({

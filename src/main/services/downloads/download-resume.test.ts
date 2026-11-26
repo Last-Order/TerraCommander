@@ -5,11 +5,10 @@ import { join } from 'node:path';
 import { PassThrough, Readable } from 'node:stream';
 import { expect, it, vi } from 'vitest';
 import { StorageError } from '@main/storage/core/errors';
-import type { Entry } from '@shared/storage';
+import type { Entry, EntryRef } from '@shared/storage';
 import { DownloadOutput } from './download-output';
 import { DownloadService } from './download-service';
-import type { DownloadSource } from './download-transfer';
-import type { DownloadRequest } from './download-types';
+import type { DownloadDirectory, DownloadOperations, DownloadRequest } from './download-types';
 
 async function fixture(directory: string, replace = false) {
   const content = Buffer.from('0123456789abcdef');
@@ -23,20 +22,41 @@ async function fixture(directory: string, replace = false) {
   };
   const streams: PassThrough[] = [];
   const dispose = vi.fn(async () => {});
-  const read = vi.fn<DownloadSource['read']>(async (_ref, options) => {
+  const read = vi.fn<
+    (
+      ref: EntryRef,
+      options?: Parameters<ReturnType<DownloadOperations['file']>['read']>[0],
+      context?: Parameters<ReturnType<DownloadOperations['file']>['read']>[1],
+    ) => ReturnType<ReturnType<DownloadOperations['file']>['read']>
+  >(async (_ref, options) => {
     const stream = new PassThrough();
     streams.push(stream);
     return {
       stream,
-      length: content.length - (options.range?.offset ?? 0),
+      length: content.length - (options?.range?.offset ?? 0),
       dispose: async () => {
         stream.destroy();
         await dispose();
       },
     };
   });
-  const stat = vi.fn<DownloadSource['stat']>(async () => structuredClone(entry));
-  const service = new DownloadService({ stat, read });
+  const stat = vi.fn<DownloadOperations['statEntry']>(async () => structuredClone(entry));
+  const openFile: DownloadOperations['file'] = (ref) => ({
+    ref,
+    stat: (context) => stat(ref, context),
+    read: (options, context) => read(ref, options, context),
+  });
+  const openDirectory = (ref: EntryRef): DownloadDirectory => ({
+    ref,
+    child: (childRef) => openDirectory(childRef),
+    file: openFile,
+    list: async () => ({ entries: [] }),
+  });
+  const service = new DownloadService({
+    statEntry: stat,
+    directory: openDirectory,
+    file: openFile,
+  });
   const request: DownloadRequest = { ref: entry.ref, directory, expectedName: entry.name, replace };
   if (replace) await writeFile(join(directory, entry.name), 'original');
   const prepared = await prepareExecution(service, 1, request);

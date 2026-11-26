@@ -1,4 +1,5 @@
 import { dirname, parse, sep } from 'node:path';
+import type { SpaceSemantics } from '@shared/storage';
 
 export function uploadPathKey(path: string): string {
   return sep === '\\' ? path.toLowerCase() : path;
@@ -15,16 +16,22 @@ export function uploadPathsOverlap(left: string, right: string): boolean {
 /** Allocate against every original sibling name before assigning numbered names. */
 export function allocateUploadNames(
   entries: readonly { name: string; kind: 'file' | 'directory' }[],
+  semantics?: SpaceSemantics,
 ): string[] {
+  if (semantics?.allowsDuplicateNames) {
+    return entries.map((entry) => entry.name);
+  }
+  const caseInsensitive = semantics?.caseSensitive === false;
+  const nameKey = (name: string) => (caseInsensitive ? name.toLowerCase() : name);
   const counts = new Map<string, number>();
   for (const entry of entries) {
-    const key = uploadPathKey(entry.name);
+    const key = nameKey(entry.name);
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   const reserved = new Set(counts.keys());
   const nextNumbers = new Map<string, number>();
   return entries.map((entry) => {
-    const key = uploadPathKey(entry.name);
+    const key = nameKey(entry.name);
     if (counts.get(key) === 1) return entry.name;
     const dot = entry.kind === 'file' ? entry.name.lastIndexOf('.') : -1;
     const hasExt = dot > 0;
@@ -34,9 +41,9 @@ export function allocateUploadNames(
     let name: string;
     do {
       name = `${stem} (${number++})${extension}`;
-    } while (reserved.has(uploadPathKey(name)));
+    } while (reserved.has(nameKey(name)));
     nextNumbers.set(key, number);
-    reserved.add(uploadPathKey(name));
+    reserved.add(nameKey(name));
     return name;
   });
 }

@@ -16,7 +16,7 @@ flowchart TD
     Recovery --> Checkpoints[Checkpoint store port]
 ```
 
-The host supplies adapter factories, credentials, logging, and checkpoint persistence through [service ports](../src/main/storage/ports/services.ts). The registry owns connection creation and disposal. [StorageEntryOperations](../src/main/services/storage/storage-entry-operations.ts) exposes space-bounded backend operations for browsing, transfers, and tasks; the [storage browser service](../src/main/services/storage/storage-browser.ts) composes connections, spaces, and listing for the desktop UI, with its renderer-facing API defined in the [shared browser contract](../src/shared/storage-browser.ts).
+The host supplies adapter factories, credentials, logging, and checkpoint persistence through [service ports](../src/main/storage/ports/services.ts). The registry owns connection creation and disposal. [StorageEntryOperations](../src/main/services/storage/storage-entry-operations.ts), [StorageDirectory](../src/main/services/storage/storage-directory.ts), and [StorageFile](../src/main/services/storage/storage-file.ts) expose space-bounded backend operations and directory/file-scoped handles for browsing, transfers, and tasks; the [storage browser service](../src/main/services/storage/storage-browser.ts) composes connections, spaces, and listing for the desktop UI, with its renderer-facing API defined in the [shared browser contract](../src/shared/storage-browser.ts).
 
 ## Native Resource Semantics
 

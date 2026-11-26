@@ -1,8 +1,13 @@
 import {
+  inspectLocalTransfer,
   localAdapterFactory,
-  localSpaceSemantics,
+  localSpaceSemanticsFor,
   locateLocalEntry,
 } from '@main/storage/providers/local/local-adapter';
+import {
+  defaultLocalPlatform,
+  type LocalPlatform,
+} from '@main/storage/providers/local/local-platform';
 import { listLocalVolumes } from '@main/storage/providers/local/local-volumes';
 import { localConnectionId } from '@shared/storage-browser';
 import type { StorageProviderIntegration } from '../storage-provider';
@@ -13,6 +18,7 @@ function isValidLocalStoredSpace({ locator }: { id: string; locator?: string }):
 
 export function createLocalStorageProvider(
   volumes: typeof listLocalVolumes = listLocalVolumes,
+  platform: LocalPlatform = defaultLocalPlatform,
 ): StorageProviderIntegration {
   return {
     provider: 'local',
@@ -33,12 +39,15 @@ export function createLocalStorageProvider(
         spaces,
       }),
     },
-    spaceSemantics: localSpaceSemantics,
-    createAdapterFactory: () => localAdapterFactory(volumes),
+    spaceSemantics: localSpaceSemanticsFor(platform),
+    createAdapterFactory: () => localAdapterFactory(volumes, platform),
     validateStoredSpace: isValidLocalStoredSpace,
     async resolvePath(ref) {
-      const { path, info, kind } = await locateLocalEntry(ref, volumes);
-      return { path, kind, dev: info.dev };
+      const { path, kind } = await locateLocalEntry(ref, volumes, undefined, undefined, platform);
+      return { path, kind };
+    },
+    inspectTransfer(target, sources, mode, context) {
+      return inspectLocalTransfer(target, sources, mode, volumes, platform, context?.signal);
     },
   };
 }

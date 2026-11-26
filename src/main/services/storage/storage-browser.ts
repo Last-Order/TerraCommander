@@ -63,7 +63,7 @@ export class StorageBrowser {
   }
 
   listDirectory(parent: EntryRef, cursor?: string) {
-    return this.operations.listDirectory(parent, cursor);
+    return this.operations.directory(parent).list(cursor);
   }
 
   async measureDirectorySize(

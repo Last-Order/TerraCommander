@@ -1,10 +1,12 @@
-import { posix } from 'node:path';
+import { posix, win32 } from 'node:path';
 
 export interface LocalPlatform {
   readonly isWindows: boolean;
   readonly caseSensitive: boolean;
   isValidEntryName(name: string): boolean;
   isValidLocatorSegment(segment: string): boolean;
+  isSubpath(parentPath: string, childPath: string): boolean;
+  isSameOrSubpath(parentPath: string, childPath: string): boolean;
 }
 
 const windowsInvalidNameChars = /[<>:"\\|?*]/;
@@ -22,6 +24,12 @@ function hasControlCharacter(value: string): boolean {
 export function createLocalPlatform(platform: NodeJS.Platform = process.platform): LocalPlatform {
   const isWindows = platform === 'win32';
   const caseSensitive = platform !== 'win32' && platform !== 'darwin';
+  const pathOps = isWindows ? win32 : posix;
+  const relativePath = (parentPath: string, childPath: string): string => {
+    const parent = caseSensitive ? parentPath : parentPath.toLowerCase();
+    const child = caseSensitive ? childPath : childPath.toLowerCase();
+    return pathOps.relative(parent, child);
+  };
   return {
     isWindows,
     caseSensitive,
@@ -55,6 +63,22 @@ export function createLocalPlatform(platform: NodeJS.Platform = process.platform
       }
       if (!isWindows) return true;
       return !windowsInvalidLocatorChars.test(segment);
+    },
+    isSubpath(parentPath: string, childPath: string): boolean {
+      const rel = relativePath(parentPath, childPath);
+      return (
+        rel !== '' &&
+        rel !== '..' &&
+        !rel.startsWith(`..${pathOps.sep}`) &&
+        !pathOps.isAbsolute(rel)
+      );
+    },
+    isSameOrSubpath(parentPath: string, childPath: string): boolean {
+      const rel = relativePath(parentPath, childPath);
+      return (
+        rel === '' ||
+        (rel !== '..' && !rel.startsWith(`..${pathOps.sep}`) && !pathOps.isAbsolute(rel))
+      );
     },
   };
 }

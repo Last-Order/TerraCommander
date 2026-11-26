@@ -1,24 +1,15 @@
 import { AccountError } from '@main/accounts/core/errors';
-import type { OperationContext, ReadHandle } from '@main/storage/core/contracts';
 import { normalizeStorageError, StorageError, throwIfAborted } from '@main/storage/core/errors';
-import type {
-  ContentChecksum,
-  Entry,
-  EntryPage,
-  EntryRef,
-  ListRequest,
-  ReadOptions,
-} from '@shared/storage';
+import type { ContentChecksum, Entry } from '@shared/storage';
 import { DownloadOutput } from './download-output';
 import { downloadDirectory, DownloadError, downloadFailure } from './download-paths';
 import { DownloadProgressReporter } from './download-progress-reporter';
-import type { DownloadProgress, DownloadRequest, DownloadRunResult } from './download-types';
-
-export interface DownloadSource {
-  stat(ref: EntryRef, context: OperationContext): Promise<Entry>;
-  read(ref: EntryRef, options: ReadOptions, context: OperationContext): Promise<ReadHandle>;
-  list?(ref: EntryRef, request: ListRequest, context: OperationContext): Promise<EntryPage>;
-}
+import type {
+  DownloadFile,
+  DownloadProgress,
+  DownloadRequest,
+  DownloadRunResult,
+} from './download-types';
 
 type TransferStage =
   | 'prepared'
@@ -44,8 +35,8 @@ export class DownloadTransfer {
   private readonly resumable: boolean;
 
   constructor(
-    private readonly source: DownloadSource,
-    private readonly request: DownloadRequest,
+    private readonly file: DownloadFile,
+    request: Pick<DownloadRequest, 'replace'>,
     private readonly directory: string,
     path: string,
     entry: Entry,
@@ -173,13 +164,9 @@ export class DownloadTransfer {
     signal: AbortSignal,
   ): Promise<DownloadProgressReporter> {
     const offset = this.output.bytes;
-    const handle = await this.source.read(
-      this.request.ref,
-      offset > 0 ? { range: { offset } } : {},
-      {
-        signal,
-      },
-    );
+    const handle = await this.file.read(offset > 0 ? { range: { offset } } : {}, {
+      signal,
+    });
     const abort = () => handle.stream.destroy(new StorageError('Cancelled'));
     signal.addEventListener('abort', abort, { once: true });
     let reporter: DownloadProgressReporter | undefined;
@@ -303,7 +290,7 @@ export class DownloadTransfer {
   }
 
   private async verifySource(signal: AbortSignal): Promise<void> {
-    const entry = await this.source.stat(this.request.ref, { signal });
+    const entry = await this.file.stat({ signal });
     if (
       !this.checksum ||
       entry.kind !== 'file' ||

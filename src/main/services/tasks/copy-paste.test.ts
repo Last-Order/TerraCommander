@@ -4,12 +4,13 @@ import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
 import { AdapterRegistry, StorageAccess, StorageError, type WriteExecution } from '@main/storage';
 import { localAdapterFactory, localSpace } from '@main/storage/providers/local/local-adapter';
-import type { Entry, EntryPage, EntryRef } from '@shared/storage';
+import { entryKey, type Entry, type EntryPage, type EntryRef } from '@shared/storage';
 import { localConnectionId } from '@shared/storage-browser';
 import type { DownloadService } from '../downloads/download-service';
+import { createStorageDirectory } from '../storage/storage-directory';
 import type { StorageEntryOperations } from '../storage/storage-entry-operations';
 import { UploadService } from '../uploads/upload-service';
-import { allocateCopyName, isSubpath } from './copy-paste';
+import { allocateCopyName } from './copy-paste';
 import {
   StorageTaskService,
   type StorageTaskDependencies,
@@ -21,15 +22,59 @@ const cloudConnectionB = '7c3a1120-2a4c-4c5c-9c8b-1d2e3f4a5b6c';
 
 function createMockBrowser() {
   const statEntry = vi.fn<StorageEntryOperations['statEntry']>();
-  const resolveLocalPath = vi.fn<StorageTaskOperations['resolveLocalPath']>();
-  const listDirectory = vi.fn<StorageTaskOperations['listDirectory']>();
-  const spaceSemantics = vi.fn<StorageTaskOperations['spaceSemantics']>(async () => undefined);
-  const spaceCapabilities = vi.fn<StorageTaskOperations['spaceCapabilities']>(async () => ({}));
-  const createDirectory = vi.fn<StorageTaskOperations['createDirectory']>();
-  const renameEntry = vi.fn<StorageTaskOperations['renameEntry']>();
-  const copyWithin = vi.fn<StorageTaskOperations['copyWithin']>();
-  const moveWithin = vi.fn<StorageTaskOperations['moveWithin']>();
-  const deleteEntry = vi.fn<StorageTaskOperations['deleteEntry']>(async () => undefined);
+  const resolveLocalPath = vi.fn<StorageEntryOperations['resolveLocalPath']>();
+  const inspectTransfer = vi.fn<StorageEntryOperations['inspectTransfer']>(
+    async (target, sources, mode) => {
+      const targetKey = entryKey(target);
+      const crossSpace = sources.some((source) => source.ref.spaceId !== target.spaceId);
+      return {
+        selfContained: sources.some(
+          (source) => source.kind === 'directory' && entryKey(source.ref) === targetKey,
+        ),
+        moveStrategy:
+          mode === 'move' && target.connectionId !== localConnectionId && crossSpace
+            ? 'unsupported'
+            : 'native',
+      };
+    },
+  );
+  const listDirectory = vi.fn<StorageEntryOperations['listDirectory']>();
+  const spaceSemantics = vi.fn<StorageEntryOperations['spaceSemantics']>(async () => undefined);
+  const spaceCapabilities = vi.fn<StorageEntryOperations['spaceCapabilities']>(async () => ({}));
+  const createDirectory = vi.fn<StorageEntryOperations['createDirectory']>();
+  const renameEntry = vi.fn<StorageEntryOperations['renameEntry']>();
+  const copyWithin = vi.fn<StorageEntryOperations['copyWithin']>();
+  const moveWithin = vi.fn<StorageEntryOperations['moveWithin']>();
+  const deleteEntry = vi.fn<StorageEntryOperations['deleteEntry']>(async () => undefined);
+  const prepareUpload = vi.fn<StorageEntryOperations['prepareUpload']>(
+    (_parent, name) =>
+      ({
+        run: async () => ({
+          ref: { connectionId: cloudConnectionA, spaceId: 'drive', locator: `uploaded-${name}` },
+          name,
+          kind: 'file',
+          capabilities: {},
+        }),
+      }) satisfies WriteExecution,
+  );
+  const readEntry = vi.fn<StorageEntryOperations['readEntry']>();
+  const entryOperations = {
+    statEntry,
+    resolveLocalPath,
+    inspectTransfer,
+    listDirectory,
+    spaceSemantics,
+    spaceCapabilities,
+    createDirectory,
+    renameEntry,
+    copyWithin,
+    moveWithin,
+    deleteEntry,
+    prepareUpload,
+    readEntry,
+  } as unknown as StorageEntryOperations;
+  const directory: StorageTaskOperations['directory'] = (ref) =>
+    createStorageDirectory(entryOperations, ref);
   const downloads = {
     prepare: vi.fn(async () => ({
       ref: { planId: 'single-plan', itemId: 0 },
@@ -53,30 +98,14 @@ function createMockBrowser() {
     cancelOwner: vi.fn(),
     assertSourceAvailable: vi.fn(),
   };
-  const uploads = new UploadService({
-    stat: statEntry,
-    createDirectory: async (target) => createDirectory(target),
-    prepareUpload: (_parent, name) =>
-      ({
-        run: async () => ({
-          ref: { connectionId: cloudConnectionA, spaceId: 'drive', locator: `uploaded-${name}` },
-          name,
-          kind: 'file',
-          capabilities: {},
-        }),
-      }) satisfies WriteExecution,
-  });
+  const uploads = new UploadService({ directory });
 
   const browser: StorageTaskDependencies = {
     operations: {
+      directory,
       resolveLocalPath,
-      listDirectory,
-      spaceSemantics,
-      spaceCapabilities,
-      createDirectory,
+      inspectTransfer,
       renameEntry,
-      copyWithin,
-      moveWithin,
       deleteEntry,
     },
     downloads: downloads as unknown as DownloadService,
@@ -87,6 +116,7 @@ function createMockBrowser() {
     browser,
     statEntry,
     resolveLocalPath,
+    inspectTransfer,
     listDirectory,
     spaceSemantics,
     spaceCapabilities,
@@ -109,13 +139,6 @@ it('allocates non-conflicting copy names for files and directories', () => {
   expect(allocateCopyName('report.pdf', 'file', usedCaseInsensitive, true)).toBe(
     'report - Copy (2).pdf',
   );
-});
-
-it('detects subpath containment without false positives on sibling prefixes', () => {
-  const parent = join('D:', 'Work', 'docs');
-  expect(isSubpath(parent, join(parent, 'sub'))).toBe(true);
-  expect(isSubpath(parent, parent)).toBe(false);
-  expect(isSubpath(parent, join('D:', 'Work', 'docs-2'))).toBe(false);
 });
 
 it('rejects cross-source cloud-to-cloud paste with cross-source reason', async () => {
@@ -585,7 +608,7 @@ it('maps same-connection cut-paste to native move tasks and emits removed and ad
 });
 
 it('orchestrates cross-device local cut-paste via copy-then-delete and preserves source on failure', async () => {
-  const { browser, resolveLocalPath, copyWithin, deleteEntry } = createMockBrowser();
+  const { browser, inspectTransfer, copyWithin, deleteEntry } = createMockBrowser();
   const service = new StorageTaskService(browser);
   const sourceParent: EntryRef = {
     connectionId: localConnectionId,
@@ -605,9 +628,7 @@ it('orchestrates cross-device local cut-paste via copy-then-delete and preserves
   };
 
   // First run: copy succeeds -> source is deleted
-  resolveLocalPath
-    .mockResolvedValueOnce({ path: 'D:\\Target', kind: 'directory', dev: 2 })
-    .mockResolvedValueOnce({ path: 'C:\\a.txt', kind: 'file', dev: 1 });
+  inspectTransfer.mockResolvedValueOnce({ selfContained: false, moveStrategy: 'copy-delete' });
   copyWithin.mockResolvedValueOnce({
     ...file,
     ref: { connectionId: localConnectionId, spaceId: 'vol-d', locator: 'a.txt' },
@@ -628,6 +649,11 @@ it('orchestrates cross-device local cut-paste via copy-then-delete and preserves
       outcome: 'completed',
     });
   });
+  expect(inspectTransfer).toHaveBeenCalledWith(
+    targetParent,
+    [{ ref: file.ref, kind: 'file' }],
+    'move',
+  );
   expect(service.getSnapshot().groups[0]?.request.kind).toBe('move');
   expect(deleteEntry).toHaveBeenCalledWith(file.ref);
 
@@ -638,9 +664,7 @@ it('orchestrates cross-device local cut-paste via copy-then-delete and preserves
     ref: { connectionId: localConnectionId, spaceId: 'vol-c', locator: 'b.txt' },
     name: 'b.txt',
   };
-  resolveLocalPath
-    .mockResolvedValueOnce({ path: 'D:\\Target', kind: 'directory', dev: 2 })
-    .mockResolvedValueOnce({ path: 'C:\\b.txt', kind: 'file', dev: 1 });
+  inspectTransfer.mockResolvedValueOnce({ selfContained: false, moveStrategy: 'copy-delete' });
   copyWithin.mockRejectedValueOnce(new StorageError('InsufficientSpace'));
 
   await service.pasteEntries(1, {
@@ -659,6 +683,47 @@ it('orchestrates cross-device local cut-paste via copy-then-delete and preserves
     });
   });
   expect(deleteEntry).not.toHaveBeenCalled();
+
+  await service.dispose();
+});
+
+it('rejects self-contained same-connection paste reported by inspectTransfer', async () => {
+  const { browser, inspectTransfer, copyWithin } = createMockBrowser();
+  const service = new StorageTaskService(browser);
+  const sourceParent: EntryRef = {
+    connectionId: localConnectionId,
+    spaceId: 'vol-c',
+    locator: '.',
+  };
+  const targetParent: EntryRef = {
+    connectionId: localConnectionId,
+    spaceId: 'vol-c',
+    locator: 'docs/sub',
+  };
+  const folder: Entry = {
+    ref: { connectionId: localConnectionId, spaceId: 'vol-c', locator: 'docs' },
+    name: 'docs',
+    kind: 'directory',
+    capabilities: { copyWithin: { support: 'supported' } },
+  };
+  inspectTransfer.mockResolvedValueOnce({ selfContained: true, moveStrategy: 'native' });
+
+  await expect(
+    service.pasteEntries(1, {
+      mode: 'copy',
+      sourceParent,
+      sourceDirectoryPath: 'C:',
+      entries: [folder],
+      targetParent,
+      targetDirectoryPath: 'C:\\docs\\sub',
+    }),
+  ).resolves.toEqual({ status: 'rejected', reason: 'self-containment' });
+  expect(inspectTransfer).toHaveBeenCalledWith(
+    targetParent,
+    [{ ref: folder.ref, kind: 'directory' }],
+    'copy',
+  );
+  expect(copyWithin).not.toHaveBeenCalled();
 
   await service.dispose();
 });

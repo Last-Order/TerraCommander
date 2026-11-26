@@ -3,10 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
 import type { WriteExecution } from '@main/storage/core/contracts';
-import type { Entry, EntryRef } from '@shared/storage';
+import { StorageError } from '@main/storage/core/errors';
+import type { Entry, EntryRef, SpaceSemantics } from '@shared/storage';
+import type { StorageDirectory } from '../storage/storage-directory';
 import { allocateUploadNames, commonLocalParent } from './upload-names';
 import { UploadService } from './upload-service';
-import type { UploadDestination } from './upload-types';
+import type { UploadOperations } from './upload-types';
 
 const connectionId = '5e45885a-89f0-462e-9821-7195cba174e5';
 const rootParent: EntryRef = { connectionId, spaceId: 'my-drive', locator: 'root' };
@@ -23,32 +25,46 @@ function directoryEntry(parent: EntryRef, locator: string, name: string): Entry 
   };
 }
 
-function createDestination() {
+function createUploadOperations(semantics?: SpaceSemantics) {
   let nextId = 1;
   const createdDirs: { parent: EntryRef; name: string; entry: Entry }[] = [];
   const preparedUploads: { parent: EntryRef; name: string; size: number }[] = [];
   const stat = vi.fn(async (ref: EntryRef) => directoryEntry(ref, ref.locator, 'Root'));
-  const destination: UploadDestination = {
-    stat,
-    createDirectory: vi.fn(async ({ parent, name }) => {
-      const entry = directoryEntry(parent, `dir-${nextId++}`, name);
-      createdDirs.push({ parent, name, entry });
-      return entry;
-    }),
-    prepareUpload: vi.fn((parent, name, source): WriteExecution => {
-      preparedUploads.push({ parent, name, size: source.descriptor.size });
-      return {
-        run: async () => ({
-          ref: { ...parent, locator: `file-${nextId++}` },
-          name,
-          kind: 'file',
-          size: source.descriptor.size,
-          capabilities: {},
-        }),
-      };
-    }),
+  const unsupported = () => Promise.reject(new StorageError('Unsupported'));
+
+  const directory: UploadOperations['directory'] = (ref) => {
+    const handle: StorageDirectory = {
+      ref,
+      child: (childRef) => directory(childRef),
+      file: (fileRef) => ({ ref: fileRef, stat: unsupported, read: unsupported }),
+      stat: () => stat(ref),
+      semantics: async () => semantics,
+      capabilities: unsupported,
+      list: unsupported,
+      createDirectory: vi.fn(async (name: string) => {
+        const entry = directoryEntry(ref, `dir-${nextId++}`, name);
+        createdDirs.push({ parent: ref, name, entry });
+        return { entry, directory: directory(entry.ref) };
+      }),
+      prepareUpload: vi.fn((name, source): WriteExecution => {
+        preparedUploads.push({ parent: ref, name, size: source.descriptor.size });
+        return {
+          run: async () => ({
+            ref: { ...ref, locator: `file-${nextId++}` },
+            name,
+            kind: 'file',
+            size: source.descriptor.size,
+            capabilities: {},
+          }),
+        };
+      }),
+      copyEntry: unsupported,
+      moveEntry: unsupported,
+    };
+    return handle;
   };
-  return { destination, stat, createdDirs, preparedUploads };
+
+  return { operations: { directory }, stat, createdDirs, preparedUploads };
 }
 
 it('allocates unique sibling names and computes common local parent', () => {
@@ -62,6 +78,42 @@ it('allocates unique sibling names and computes common local parent', () => {
   ).toEqual(['notes (1).txt', 'notes (2).txt', 'docs (1)', 'docs (2)']);
 
   expect(commonLocalParent(['C:\\work\\a\\one.txt', 'C:\\work\\b\\two.txt'])).toBe('C:\\work');
+});
+
+it('allocates sibling names according to destination SpaceSemantics', () => {
+  const mixedCase = [
+    { name: 'A.txt', kind: 'file' as const },
+    { name: 'a.txt', kind: 'file' as const },
+  ];
+
+  // Default (unknown semantics) and explicit case-sensitive targets keep A.txt and a.txt distinct.
+  expect(allocateUploadNames(mixedCase)).toEqual(['A.txt', 'a.txt']);
+  expect(allocateUploadNames(mixedCase, { caseSensitive: true })).toEqual(['A.txt', 'a.txt']);
+
+  // Case-insensitive targets disambiguate A.txt and a.txt without relying on host OS path rules.
+  expect(allocateUploadNames(mixedCase, { caseSensitive: false })).toEqual([
+    'A (1).txt',
+    'a (2).txt',
+  ]);
+  expect(
+    allocateUploadNames([...mixedCase, { name: 'A (1).txt', kind: 'file' }], {
+      caseSensitive: false,
+    }),
+  ).toEqual(['A (2).txt', 'a (3).txt', 'A (1).txt']);
+
+  // Duplicate-allowing targets (such as Google Drive) preserve all original names.
+  expect(
+    allocateUploadNames(
+      [...mixedCase, { name: 'notes.txt', kind: 'file' }, { name: 'notes.txt', kind: 'file' }],
+      { allowsDuplicateNames: true, caseSensitive: true },
+    ),
+  ).toEqual(['A.txt', 'a.txt', 'notes.txt', 'notes.txt']);
+  expect(
+    allocateUploadNames(
+      [...mixedCase, { name: 'notes.txt', kind: 'file' }, { name: 'notes.txt', kind: 'file' }],
+      { allowsDuplicateNames: true, caseSensitive: false },
+    ),
+  ).toEqual(['A.txt', 'a.txt', 'notes.txt', 'notes.txt']);
 });
 
 it('discovers mixed files and folders across pages and resolves nested upload destinations', async () => {
@@ -78,8 +130,8 @@ it('discovers mixed files and folders across pages and resolves nested upload de
     await writeFile(join(folder, `item-${String(index).padStart(2, '0')}.txt`), `${index}`);
   }
 
-  const { destination, createdDirs, preparedUploads } = createDestination();
-  const service = new UploadService(destination);
+  const { operations, createdDirs, preparedUploads } = createUploadOperations();
+  const service = new UploadService(operations);
   const directoryEvents: { parent: EntryRef; entry: Entry }[] = [];
 
   try {
@@ -142,6 +194,54 @@ it('discovers mixed files and folders across pages and resolves nested upload de
   }
 });
 
+it('uses destination directory semantics when naming batch upload roots', async () => {
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-upload-semantics-'));
+  const dirA = join(temporary.path, 'one');
+  const dirB = join(temporary.path, 'two');
+  await mkdir(dirA, { recursive: true });
+  await mkdir(dirB, { recursive: true });
+  const upper = join(dirA, 'A.txt');
+  const lower = join(dirB, 'a.txt');
+  await writeFile(upper, 'upper');
+  await writeFile(lower, 'lower');
+
+  const caseSensitiveService = new UploadService(
+    createUploadOperations({ allowsDuplicateNames: false, caseSensitive: true }).operations,
+  );
+  const caseInsensitiveService = new UploadService(
+    createUploadOperations({ allowsDuplicateNames: false, caseSensitive: false }).operations,
+  );
+  const duplicateAllowedService = new UploadService(
+    createUploadOperations({ allowsDuplicateNames: true, caseSensitive: true }).operations,
+  );
+
+  try {
+    const sensitiveBatch = await caseSensitiveService.prepareBatch(1, {
+      parent: rootParent,
+      paths: [upper, lower],
+    });
+    expect(sensitiveBatch.items.map((item) => item.name)).toEqual(['A.txt', 'a.txt']);
+
+    const insensitiveBatch = await caseInsensitiveService.prepareBatch(1, {
+      parent: rootParent,
+      paths: [upper, lower],
+    });
+    expect(insensitiveBatch.items.map((item) => item.name)).toEqual(['A (1).txt', 'a (2).txt']);
+
+    const duplicateBatch = await duplicateAllowedService.prepareBatch(1, {
+      parent: rootParent,
+      paths: [upper, lower],
+    });
+    expect(duplicateBatch.items.map((item) => item.name)).toEqual(['A.txt', 'a.txt']);
+  } finally {
+    await Promise.all([
+      caseSensitiveService.dispose(),
+      caseInsensitiveService.dispose(),
+      duplicateAllowedService.dispose(),
+    ]);
+  }
+});
+
 it('defers remote destination validation when deferValidation is enabled', async () => {
   await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-upload-defer-'));
   const singleFile = join(temporary.path, 'single.txt');
@@ -149,8 +249,8 @@ it('defers remote destination validation when deferValidation is enabled', async
   await writeFile(singleFile, 'abc');
   await mkdir(folder, { recursive: true });
 
-  const { destination, stat } = createDestination();
-  const service = new UploadService(destination);
+  const { operations, stat } = createUploadOperations();
+  const service = new UploadService(operations);
 
   try {
     const singleSelection = await service.prepareSelection(1, {

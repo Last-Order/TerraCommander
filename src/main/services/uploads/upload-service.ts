@@ -4,6 +4,7 @@ import { lstat } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { StorageError, throwIfAborted } from '@main/storage/core/errors';
 import type { EntryRef } from '@shared/storage';
+import type { StorageDirectory } from '../storage/storage-directory';
 import { allocateUploadNames, commonLocalParent, uploadPathKey } from './upload-names';
 import { UploadPlan, type UploadPlanRoot } from './upload-plan';
 import { UploadTransfer, type UploadRunOptions } from './upload-transfer';
@@ -11,7 +12,7 @@ import type {
   PreparedUploadBatch,
   ResolvedUploadWork,
   UploadBatchRequest,
-  UploadDestination,
+  UploadOperations,
   UploadPlanPage,
   UploadRequest,
   UploadRunResult,
@@ -23,7 +24,7 @@ interface UploadPlanRecord {
   owner: number;
   plan: UploadPlan;
   standalone: boolean;
-  validateOnResolve?: { parent: EntryRef; requireCreateDirectory: boolean } | undefined;
+  validateOnResolve?: { directory: StorageDirectory; requireCreateDirectory: boolean } | undefined;
 }
 
 function localStatError(error: unknown): never {
@@ -61,7 +62,7 @@ export class UploadService {
   private readonly ownerEpochs = new Map<number, number>();
   private readonly lifetime = new AbortController();
 
-  constructor(private readonly destination: UploadDestination) {}
+  constructor(private readonly operations: UploadOperations) {}
 
   prepareSelection(
     owner: number,
@@ -127,8 +128,8 @@ export class UploadService {
   async resolveWork(owner: number, ref: UploadWorkRef): Promise<ResolvedUploadWork> {
     const record = this.ownedPlan(owner, ref.planId);
     if (record.validateOnResolve) {
-      await this.validateDestination(
-        record.validateOnResolve.parent,
+      await this.validateDirectory(
+        record.validateOnResolve.directory,
         record.validateOnResolve.requireCreateDirectory,
       );
       record.validateOnResolve = undefined;
@@ -251,19 +252,23 @@ export class UploadService {
     requireCreateDirectory = false,
     signal?: AbortSignal,
   ): Promise<void> {
+    await this.validateDirectory(this.operations.directory(parent), requireCreateDirectory, signal);
+  }
+
+  private async validateDirectory(
+    directory: StorageDirectory,
+    requireCreateDirectory = false,
+    signal?: AbortSignal,
+  ): Promise<void> {
     const effectiveSignal = signal
       ? AbortSignal.any([this.lifetime.signal, signal])
       : this.lifetime.signal;
-    const directory = await this.destination.stat(parent, { signal: effectiveSignal });
-    if (directory.kind !== 'directory') throw new StorageError('InvalidArgument');
-    if (directory.capabilities.write?.support === 'unsupported') {
+    const entry = await directory.stat({ signal: effectiveSignal });
+    if (entry.kind !== 'directory') throw new StorageError('InvalidArgument');
+    if (entry.capabilities.write?.support === 'unsupported') {
       throw new StorageError('PermissionDenied');
     }
-    if (
-      requireCreateDirectory &&
-      (!this.destination.createDirectory ||
-        directory.capabilities.createDirectory?.support === 'unsupported')
-    ) {
+    if (requireCreateDirectory && entry.capabilities.createDirectory?.support === 'unsupported') {
       throw new StorageError('PermissionDenied');
     }
   }
@@ -276,7 +281,8 @@ export class UploadService {
   ): Promise<UploadWork> {
     throwIfAborted(this.lifetime.signal);
     const epoch = this.ownerEpochs.get(owner);
-    if (!validated && !deferValidation) await this.validateDestination(request.parent, false);
+    const directory = this.operations.directory(request.parent);
+    if (!validated && !deferValidation) await this.validateDirectory(directory, false);
     const localPath = resolve(request.path);
     const stat = await lstat(localPath, { bigint: true }).catch((error: unknown) =>
       localStatError(error),
@@ -289,18 +295,16 @@ export class UploadService {
     const name = basename(localPath);
     const size = Number(stat.size);
     const id = randomUUID();
-    const plan = new UploadPlan(this.destination, [
-      { kind: 'file', localPath, name, size, parent: request.parent },
-    ]);
+    const plan = new UploadPlan([{ kind: 'file', localPath, name, size, directory }]);
     this.plans.set(id, {
       owner,
       plan,
       standalone: true,
       ...(!validated && deferValidation
-        ? { validateOnResolve: { parent: request.parent, requireCreateDirectory: false } }
+        ? { validateOnResolve: { directory, requireCreateDirectory: false } }
         : {}),
     });
-    return { ref: { planId: id, itemId: 0 }, parent: request.parent, name, size };
+    return { ref: { planId: id, itemId: 0 }, parent: directory.ref, name, size };
   }
 
   private async prepareBatchTargets(
@@ -347,29 +351,26 @@ export class UploadService {
         throw new StorageError('Unsupported');
       }
     }
+    const directory = this.operations.directory(request.parent);
     const needsValidation = !request.validated || hasDirectory;
     if (needsValidation && !request.deferValidation) {
-      await this.validateDestination(request.parent, hasDirectory);
+      await this.validateDirectory(directory, hasDirectory);
     }
+    const semantics = await directory.semantics();
     throwIfAborted(this.lifetime.signal);
     if (this.ownerEpochs.get(owner) !== epoch) throw new StorageError('Cancelled');
 
-    const names = allocateUploadNames(inspected);
+    const names = allocateUploadNames(inspected, semantics);
     const roots: UploadPlanRoot[] = inspected.map((item, index) => ({
       kind: item.kind,
       localPath: item.localPath,
       name: names[index]!,
       size: item.size,
-      parent: request.parent,
+      directory,
       ...(item.identity ? { identity: item.identity } : {}),
     }));
     const id = randomUUID();
-    const plan = new UploadPlan(
-      this.destination,
-      roots,
-      request.policy ?? 'create-new',
-      request.onDirectoryCreated,
-    );
+    const plan = new UploadPlan(roots, request.policy ?? 'create-new', request.onDirectoryCreated);
     this.plans.set(id, { owner, plan, standalone: false });
     return {
       id,

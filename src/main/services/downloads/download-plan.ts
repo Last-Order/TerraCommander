@@ -1,16 +1,23 @@
 import { dirname, join } from 'node:path';
 import { StorageError, throwIfAborted } from '@main/storage/core/errors';
-import type { Entry, EntryRef } from '@shared/storage';
+import type { Entry } from '@shared/storage';
 import { DownloadDirectories } from './download-directories';
 import { allocateDownloadNames } from './download-names';
 import { DownloadError, validateDownloadName } from './download-paths';
-import { DownloadTransfer, type DownloadSource } from './download-transfer';
-import type { DownloadPlanItem, DownloadPlanPage } from './download-types';
+import { DownloadTransfer } from './download-transfer';
+import type {
+  DownloadDirectory,
+  DownloadFile,
+  DownloadPlanItem,
+  DownloadPlanPage,
+} from './download-types';
 
 export interface DownloadPlanRoot {
   entry: Entry;
   name: string;
   replace: boolean;
+  storageFile?: DownloadFile;
+  storageDirectory?: DownloadDirectory;
 }
 
 interface PlanNode extends Omit<DownloadPlanItem, 'targetPath'> {
@@ -19,6 +26,8 @@ interface PlanNode extends Omit<DownloadPlanItem, 'targetPath'> {
   replace: boolean;
   ancestors: readonly string[];
   cancelled: boolean;
+  storageFile?: DownloadFile;
+  storageDirectory?: DownloadDirectory;
   children?: PlanNode[];
 }
 
@@ -38,14 +47,18 @@ export class DownloadPlan {
   readonly roots: DownloadPlanItem[];
 
   constructor(
-    private readonly source: DownloadSource,
     readonly directory: string,
     roots: readonly DownloadPlanRoot[],
     private confirmed: boolean,
     private readonly discover: (entry: Entry) => void,
   ) {
     this.roots = roots.map((root) =>
-      this.snapshot(this.add(root.entry, root.name, '', root.replace, [])),
+      this.snapshot(
+        this.add(root.entry, root.name, '', root.replace, [], undefined, {
+          storageFile: root.storageFile,
+          storageDirectory: root.storageDirectory,
+        }),
+      ),
     );
   }
 
@@ -77,13 +90,18 @@ export class DownloadPlan {
   ): Promise<{ path: string; entry: Entry; transfer: DownloadTransfer }> {
     const node = this.node(itemId);
     this.assertConfirmed();
-    if (node.entry.kind !== 'file' || node.entry.capabilities.read?.support === 'unsupported')
+    const storageFile = node.storageFile;
+    if (
+      !storageFile ||
+      node.entry.kind !== 'file' ||
+      node.entry.capabilities.read?.support === 'unsupported'
+    )
       throw new StorageError('Unsupported');
     const controller = this.begin(node);
     try {
       await this.initialize();
       await this.directories.assert(dirname(node.target));
-      const current = await this.source.stat(node.entry.ref, { signal: controller.signal });
+      const current = await storageFile.stat({ signal: controller.signal });
       throwIfAborted(controller.signal);
       this.node(itemId);
       if (current.kind === 'file' && current.capabilities.read?.support === 'unsupported')
@@ -100,13 +118,8 @@ export class DownloadPlan {
         path: node.target,
         entry: authoritative,
         transfer: new DownloadTransfer(
-          this.source,
-          {
-            ref: authoritative.ref,
-            expectedName: authoritative.name,
-            directory: dirname(node.target),
-            replace: node.replace,
-          },
+          storageFile,
+          { replace: node.replace },
           dirname(node.target),
           node.target,
           authoritative,
@@ -178,7 +191,8 @@ export class DownloadPlan {
 
   private async discoverDirectory(node: PlanNode): Promise<PlanNode[]> {
     if (node.children) return node.children;
-    if (!this.source.list || node.entry.capabilities.list?.support === 'unsupported')
+    const storageDirectory = node.storageDirectory;
+    if (!storageDirectory || node.entry.capabilities.list?.support === 'unsupported')
       throw new StorageError('Unsupported');
     if (node.ancestors.includes(refKey(node.entry))) throw new StorageError('OutcomeUnknown');
     const controller = this.begin(node);
@@ -190,11 +204,7 @@ export class DownloadPlan {
       let cursor: string | undefined;
       do {
         throwIfAborted(controller.signal);
-        const page = await this.source.list(
-          node.entry.ref,
-          { cursor },
-          { signal: controller.signal },
-        );
+        const page = await storageDirectory.list({ cursor }, { signal: controller.signal });
         throwIfAborted(controller.signal);
         for (const child of page.entries) {
           if (
@@ -220,7 +230,7 @@ export class DownloadPlan {
           node.path,
           node.replace,
           [...node.ancestors, refKey(node.entry)],
-          node.entry.ref,
+          storageDirectory,
         ),
       );
       return node.children;
@@ -235,9 +245,21 @@ export class DownloadPlan {
     parent: string,
     replace: boolean,
     ancestors: readonly string[],
-    parentRef?: EntryRef,
+    parentDirectory?: DownloadDirectory,
+    handles?: {
+      storageFile?: DownloadFile | undefined;
+      storageDirectory?: DownloadDirectory | undefined;
+    },
   ): PlanNode {
     const path = join(parent, name);
+    const storageDirectory =
+      entry.kind === 'directory'
+        ? (handles?.storageDirectory ?? parentDirectory?.child(entry.ref))
+        : undefined;
+    const storageFile =
+      entry.kind === 'file'
+        ? (handles?.storageFile ?? parentDirectory?.file(entry.ref))
+        : undefined;
     const node: PlanNode = {
       id: this.nodes.length,
       entry: structuredClone(entry),
@@ -247,7 +269,9 @@ export class DownloadPlan {
       replace,
       ancestors,
       cancelled: false,
-      ...(parentRef ? { parent: parentRef } : {}),
+      ...(storageFile ? { storageFile } : {}),
+      ...(storageDirectory ? { storageDirectory } : {}),
+      ...(parentDirectory ? { parent: parentDirectory.ref } : {}),
     };
     try {
       validateDownloadName(entry.name);

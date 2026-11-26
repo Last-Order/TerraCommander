@@ -7,8 +7,9 @@ import { allocateDownloadNames, downloadPathKey, downloadPathsOverlap } from './
 import { checkDownloadTarget } from './download-output';
 import { downloadDirectory, DownloadError, validateDownloadName } from './download-paths';
 import { DownloadPlan } from './download-plan';
-import { type DownloadTransfer, type DownloadSource } from './download-transfer';
+import type { DownloadTransfer } from './download-transfer';
 import type {
+  DownloadOperations,
   DownloadProgress,
   DownloadRequest,
   DownloadRunResult,
@@ -49,7 +50,7 @@ export class DownloadService {
   private readonly ownerEpochs = new Map<number, number>();
   private readonly lifetime = new AbortController();
 
-  constructor(private readonly source: DownloadSource) {}
+  constructor(private readonly operations: DownloadOperations) {}
 
   prepare(owner: number, request: DownloadRequest): Promise<DownloadWork> {
     const pending = this.prepareTarget(owner, request);
@@ -62,8 +63,8 @@ export class DownloadService {
     throwIfAborted(this.lifetime.signal);
     const epoch = this.ownerEpochs.get(owner);
     const directory = await downloadDirectory(request.directory);
-    const entry =
-      request.entry ?? (await this.source.stat(request.ref, { signal: this.lifetime.signal }));
+    const file = this.operations.file(request.ref);
+    const entry = request.entry ?? (await file.stat({ signal: this.lifetime.signal }));
     if (entry.kind !== 'file' || entry.capabilities.read?.support === 'unsupported')
       throw new StorageError('Unsupported');
     if (entry.name !== request.expectedName) throw new StorageError('PreconditionFailed');
@@ -84,9 +85,15 @@ export class DownloadService {
       sources: new Set([this.sourceKey(entry.ref)]),
       standalone: true,
       plan: new DownloadPlan(
-        this.source,
         directory,
-        [{ entry: structuredClone(entry), name: entry.name, replace: request.replace }],
+        [
+          {
+            entry: structuredClone(entry),
+            name: entry.name,
+            replace: request.replace,
+            storageFile: file,
+          },
+        ],
         true,
         () => {},
       ),
@@ -117,13 +124,13 @@ export class DownloadService {
       if (seen.has(key)) continue;
       seen.add(key);
       const entry =
-        selected.entry ?? (await this.source.stat(selected.ref, { signal: this.lifetime.signal }));
+        selected.entry ??
+        (await this.operations.statEntry(selected.ref, { signal: this.lifetime.signal }));
       if (entry.name !== selected.expectedName) throw new StorageError('PreconditionFailed');
       if (
         (entry.kind !== 'file' && entry.kind !== 'directory') ||
         (entry.kind === 'file' && entry.capabilities.read?.support === 'unsupported') ||
-        (entry.kind === 'directory' &&
-          (!this.source.list || entry.capabilities.list?.support === 'unsupported'))
+        (entry.kind === 'directory' && entry.capabilities.list?.support === 'unsupported')
       )
         throw new StorageError('Unsupported');
       validateDownloadName(entry.name);
@@ -137,7 +144,14 @@ export class DownloadService {
       validateDownloadName(name);
       const existing = await downloadTargetInfo(join(directory, name));
       if (existing) conflicts.push(name);
-      roots.push({ entry: structuredClone(entry), name, replace: existing !== undefined });
+      roots.push({
+        entry: structuredClone(entry),
+        name,
+        replace: existing !== undefined,
+        ...(entry.kind === 'directory'
+          ? { storageDirectory: this.operations.directory(entry.ref) }
+          : { storageFile: this.operations.file(entry.ref) }),
+      });
     }
     throwIfAborted(this.lifetime.signal);
     if (this.ownerEpochs.get(owner) !== epoch) throw new StorageError('Cancelled');
@@ -152,7 +166,7 @@ export class DownloadService {
       sources,
       standalone: false,
       reserved: true,
-      plan: new DownloadPlan(this.source, directory, roots, conflicts.length === 0, (entry) =>
+      plan: new DownloadPlan(directory, roots, conflicts.length === 0, (entry) =>
         sources.add(this.sourceKey(entry.ref)),
       ),
     });

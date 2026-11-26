@@ -11,7 +11,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { AdapterRegistry, StorageAccess } from '../..';
-import { localAdapterFactory, localFailure, localSpace } from './local-adapter';
+import {
+  inspectLocalTransfer,
+  localAdapterFactory,
+  localFailure,
+  localSpace,
+} from './local-adapter';
 import { createLocalPlatform } from './local-platform';
 
 async function setup(path: string) {
@@ -343,4 +348,69 @@ it('moves local files and folders across directories and rejects conflicts and s
   } finally {
     await registry.dispose();
   }
+});
+
+it('evaluates subpath and self-containment rules per local platform', async () => {
+  const win = createLocalPlatform('win32');
+  const mac = createLocalPlatform('darwin');
+  const linux = createLocalPlatform('linux');
+
+  expect(win.isSubpath('D:\\Work\\docs', 'D:\\Work\\docs\\sub')).toBe(true);
+  expect(win.isSubpath('D:\\Work\\docs', 'd:\\work\\DOCS\\sub')).toBe(true);
+  expect(win.isSubpath('D:\\Work\\docs', 'D:\\Work\\docs')).toBe(false);
+  expect(win.isSameOrSubpath('D:\\Work\\docs', 'd:\\work\\DOCS')).toBe(true);
+  expect(win.isSubpath('D:\\Work\\docs', 'D:\\Work\\docs-2')).toBe(false);
+  expect(win.isSubpath('C:\\Work\\docs', 'D:\\Work\\docs\\sub')).toBe(false);
+
+  expect(mac.isSubpath('/Users/docs', '/users/DOCS/sub')).toBe(true);
+  expect(mac.isSameOrSubpath('/Users/docs', '/users/DOCS')).toBe(true);
+  expect(mac.isSubpath('/Users/docs', '/Users/docs-2')).toBe(false);
+
+  expect(linux.isSubpath('/home/docs', '/home/docs/sub')).toBe(true);
+  expect(linux.isSubpath('/home/docs', '/home/DOCS/sub')).toBe(false);
+  expect(linux.isSubpath('/home/docs', '/home/docs/..hidden')).toBe(true);
+
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-inspect-transfer-'));
+  await mkdir(join(temporary.path, 'src'));
+  await mkdir(join(temporary.path, 'src', 'nested'));
+  await mkdir(join(temporary.path, 'dst'));
+  await writeFile(join(temporary.path, 'src', 'file.txt'), 'data');
+  const root = localSpace('local', temporary.path).root;
+  const volumes = async () => [temporary.path];
+
+  expect(
+    await inspectLocalTransfer(
+      { ...root, locator: 'src/nested' },
+      [{ ref: { ...root, locator: 'src' }, kind: 'directory' }],
+      'copy',
+      volumes,
+    ),
+  ).toEqual({ selfContained: true, moveStrategy: 'native' });
+
+  expect(
+    await inspectLocalTransfer(
+      { ...root, locator: 'src' },
+      [{ ref: { ...root, locator: 'src' }, kind: 'directory' }],
+      'move',
+      volumes,
+    ),
+  ).toEqual({ selfContained: true, moveStrategy: 'native' });
+
+  expect(
+    await inspectLocalTransfer(
+      { ...root, locator: 'dst' },
+      [{ ref: { ...root, locator: 'src/file.txt' }, kind: 'file' }],
+      'move',
+      volumes,
+    ),
+  ).toEqual({ selfContained: false, moveStrategy: 'native' });
+
+  await expect(
+    inspectLocalTransfer(
+      { ...root, locator: 'src/file.txt' },
+      [{ ref: { ...root, locator: 'src' }, kind: 'directory' }],
+      'copy',
+      volumes,
+    ),
+  ).rejects.toMatchObject({ code: 'InvalidArgument' });
 });
