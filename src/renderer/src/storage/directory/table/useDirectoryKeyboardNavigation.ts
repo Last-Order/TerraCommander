@@ -1,6 +1,10 @@
 import { useCallback, useEffect, type FocusEvent, type KeyboardEvent, type RefObject } from 'react';
 import { useDirectoryViewStore } from '../state/directory-view-context';
-import { isDirectoryNavigationKey, resolveDirectoryNavigationIndex } from './directory-navigation';
+import {
+  isDirectoryNavigationKey,
+  resolveDirectoryNavigationIndex,
+  resolveDirectoryTabIndex,
+} from './directory-navigation';
 
 interface UseDirectoryKeyboardNavigationOptions {
   tableRef: RefObject<HTMLTableElement | null>;
@@ -103,12 +107,14 @@ export function useDirectoryKeyboardNavigation({
     if (!row) return;
     const currentIndex = Number(row.dataset.index);
 
-    if (event.key === 'Tab' && virtualized && !event.altKey && !event.ctrlKey && !event.metaKey) {
-      const nextIndex = currentIndex + (event.shiftKey ? -1 : 1);
+    if (event.key === 'Tab' && !event.altKey && !event.ctrlKey && !event.metaKey) {
+      const nextIndex = resolveDirectoryTabIndex(state.rows.length, currentIndex, event.shiftKey);
       const next = state.rows[nextIndex];
       if (!next) return;
       event.preventDefault();
-      syncScrollPadding();
+      if (virtualized) {
+        syncScrollPadding();
+      }
       state.setActiveLocator(next.entry.ref.locator);
       state.requestViewport({ locator: next.entry.ref.locator, align: 'auto', focus: true });
       return;

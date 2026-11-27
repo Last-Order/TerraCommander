@@ -3,6 +3,7 @@ import {
   resolveDirectoryNavigationIndex,
   resolveDirectoryPageStep,
   resolveDirectoryScrollPadding,
+  resolveDirectoryTabIndex,
 } from './directory-navigation';
 
 describe('resolveDirectoryNavigationIndex', () => {
@@ -25,6 +26,26 @@ describe('resolveDirectoryNavigationIndex', () => {
     expect(resolveDirectoryNavigationIndex(10, 5, 'End', 4)).toBe(9);
     expect(resolveDirectoryNavigationIndex(5, 1, 'PageDown', 0)).toBe(2);
     expect(resolveDirectoryNavigationIndex(5, 3, 'PageUp', -5)).toBe(2);
+  });
+});
+
+describe('resolveDirectoryTabIndex', () => {
+  it('returns -1 for empty lists and wraps around at both ends', () => {
+    expect(resolveDirectoryTabIndex(0, -1, false)).toBe(-1);
+    expect(resolveDirectoryTabIndex(0, 0, true)).toBe(-1);
+    expect(resolveDirectoryTabIndex(1, 0, false)).toBe(0);
+    expect(resolveDirectoryTabIndex(1, 0, true)).toBe(0);
+    expect(resolveDirectoryTabIndex(5, 0, false)).toBe(1);
+    expect(resolveDirectoryTabIndex(5, 4, false)).toBe(0);
+    expect(resolveDirectoryTabIndex(5, 0, true)).toBe(4);
+    expect(resolveDirectoryTabIndex(5, 3, true)).toBe(2);
+  });
+
+  it('enters from the expected edge when current index is out of range', () => {
+    expect(resolveDirectoryTabIndex(5, -1, false)).toBe(0);
+    expect(resolveDirectoryTabIndex(5, -1, true)).toBe(4);
+    expect(resolveDirectoryTabIndex(5, 5, false)).toBe(0);
+    expect(resolveDirectoryTabIndex(5, Number.NaN, true)).toBe(4);
   });
 });
 

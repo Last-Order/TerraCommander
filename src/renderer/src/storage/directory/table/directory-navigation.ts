@@ -82,3 +82,16 @@ export function resolveDirectoryNavigationIndex(
       return clampedCurrent < 0 ? lastIndex : Math.max(0, clampedCurrent - step);
   }
 }
+
+export function resolveDirectoryTabIndex(
+  rowCount: number,
+  currentIndex: number,
+  reverse: boolean,
+): number {
+  if (rowCount <= 0) return -1;
+  const lastIndex = rowCount - 1;
+  if (!Number.isInteger(currentIndex) || currentIndex < 0 || currentIndex > lastIndex) {
+    return reverse ? lastIndex : 0;
+  }
+  return reverse ? (currentIndex - 1 + rowCount) % rowCount : (currentIndex + 1) % rowCount;
+}
