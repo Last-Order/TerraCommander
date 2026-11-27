@@ -41,6 +41,9 @@ export const operations = [
   'list',
   'read',
   'write',
+  'streamingWrite',
+  'pausableWrite',
+  'replaceWrite',
   'createDirectory',
   'remove',
   'copyWithin',
@@ -134,12 +137,20 @@ export interface ConditionalWriteTarget {
 /** Every write explicitly chooses creation or replacement; adapters cannot silently overwrite. */
 export type WriteTarget = CreateWriteTarget | ReplaceWriteTarget | ConditionalWriteTarget;
 
+export interface RemoveOptions {
+  expectedRevision?: string | undefined;
+  expectedChecksum?: ContentChecksum | undefined;
+  expectedSize?: number | undefined;
+  onlyIfEmpty?: boolean | undefined;
+}
+
 export interface SourceDescriptor {
   identity: string;
   revision: string;
   size: number;
   /** A weak descriptor requires an independent verification callback before recovery. */
   verification: 'strong' | 'weak';
+  checksum?: ContentChecksum | undefined;
 }
 
 export type UploadState =

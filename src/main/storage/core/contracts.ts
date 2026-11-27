@@ -3,6 +3,7 @@ import type { OperationContext, OperationProgress } from '@main/common/operation
 import type {
   ByteRange,
   Entry,
+  EntryRef,
   JsonValue,
   SourceDescriptor,
   UploadProgress,
@@ -39,18 +40,45 @@ export interface ReopenableByteSource extends SourceBase {
 
 export type ByteSource = StreamingByteSource | ReopenableByteSource;
 
+export type WriteStage = 'transferring' | 'finalizing';
+
+export interface EnsureDirectoryResult {
+  readonly entry: Entry;
+  readonly created: boolean;
+}
+
+/** Pins target directory identity across a batch and restricts cleanup to empty task-created dirs. */
+export interface DirectoryScope {
+  readonly root: EntryRef;
+  ensureDirectory(
+    parent: EntryRef,
+    name: string,
+    options: { replace: boolean },
+    context?: OperationContext,
+  ): Promise<EnsureDirectoryResult>;
+  assertValid(dir: EntryRef, context?: OperationContext): Promise<void>;
+  cleanupCreated(context?: OperationContext): Promise<void>;
+}
+
+export interface WriteOptions {
+  directoryScope?: DirectoryScope | undefined;
+}
+
 export interface SessionWriteContext extends OperationContext {
   pauseSignal?: AbortSignal;
   /** Counts bytes handed to the transport, including re-sent bytes. */
   onBytesSent?: (count: number) => void;
+  onStageChange?: (stage: WriteStage) => void;
 }
 
 export interface WriteExecution {
   run(context: SessionWriteContext): Promise<Entry>;
+  discard?(context?: OperationContext): Promise<void>;
 }
 
 export interface AdapterWriteSession {
   run(source: ReopenableByteSource, context: SessionWriteContext): Promise<Entry>;
+  discard?(context?: OperationContext): Promise<void>;
 }
 
 export interface DriverCheckpoint {

@@ -31,9 +31,21 @@ export function readRequirements(options: ReadOptions): CapabilityRequirement[] 
   return requirements;
 }
 
-export function writeRequirements(target: WriteTarget): CapabilityRequirement[] {
+export function writeRequirements(
+  target: WriteTarget,
+  options: { oneShot?: boolean; pausable?: boolean } = {},
+): CapabilityRequirement[] {
   const requirements: CapabilityRequirement[] = [{ operation: 'write' }];
 
+  if (options.oneShot) {
+    requirements.push({ operation: 'streamingWrite' });
+  }
+  if (options.pausable) {
+    requirements.push({ operation: 'pausableWrite' });
+  }
+  if (target.policy === 'replace-unconditionally') {
+    requirements.push({ operation: 'replaceWrite' });
+  }
   if (target.policy === 'replace-if-version') {
     requirements.push({ operation: 'conditionalWrite', strict: true });
   }

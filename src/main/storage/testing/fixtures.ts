@@ -15,6 +15,7 @@ import type {
 } from '@shared/storage/models';
 import { targetRef } from '../core/adapter-operations';
 import type {
+  AdapterWriteSession,
   ByteSource,
   OperationContext,
   ReadHandle,
@@ -32,6 +33,9 @@ export const fixtureCapabilities: Capabilities = {
   rangeRead: { support: 'supported' },
   conditionalRead: { support: 'supported' },
   write: { support: 'supported' },
+  streamingWrite: { support: 'supported' },
+  pausableWrite: { support: 'supported' },
+  replaceWrite: { support: 'supported' },
   conditionalWrite: { support: 'supported' },
   createDirectory: { support: 'supported' },
   remove: { support: 'supported' },
@@ -174,6 +178,17 @@ export class FixtureAdapter implements StorageAdapter {
     const end = options.range?.length !== undefined ? offset + options.range.length : bytes.length;
     return readHandle(bytes.subarray(offset, end), () => {
       this.streamDisposals += 1;
+    });
+  }
+
+  prepareWrite(
+    target: WriteTarget,
+    _source: SourceDescriptor,
+    _ctx: OperationContext,
+  ): Promise<AdapterWriteSession> {
+    this.calls.push('prepareWrite');
+    return Promise.resolve({
+      run: (source, ctx) => this.write(target, source, ctx),
     });
   }
 

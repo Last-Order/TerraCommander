@@ -1,9 +1,12 @@
 import { StorageAccess, StorageError } from '@main/storage';
 import type {
+  ByteSource,
+  DirectoryScope,
   OperationContext,
   ReadHandle,
   ReopenableByteSource,
   WriteExecution,
+  WriteOptions,
 } from '@main/storage/core/contracts';
 import {
   entryKey,
@@ -14,7 +17,9 @@ import {
   type EntryRef,
   type ListRequest,
   type ReadOptions,
+  type RemoveOptions,
   type SpaceSemantics,
+  type WriteTarget,
 } from '@shared/storage';
 import type { StorageConnectionManager } from './storage-connections';
 import { createStorageDirectory, type StorageDirectory } from './storage-directory';
@@ -123,14 +128,44 @@ export class StorageEntryOperations {
     return wrapped();
   }
 
-  prepareUpload(parent: EntryRef, name: string, source: ReopenableByteSource): WriteExecution {
-    const execution = this.storage.createWriteSession(
-      { kind: 'create', parent, name, policy: 'create-only' },
-      source,
+  openDirectoryScope(root: EntryRef, context?: OperationContext): Promise<DirectoryScope> {
+    return this.spaces.withBrowsableSpace(root, () =>
+      this.storage.openDirectoryScope(root, context),
     );
+  }
+
+  writeEntry(
+    target: WriteTarget,
+    source: ByteSource,
+    context?: OperationContext,
+    options?: WriteOptions,
+  ): Promise<Entry> {
+    const ref = target.kind === 'create' ? target.parent : target.ref;
+    return this.spaces.withBrowsableSpace(ref, () =>
+      this.storage.write(target, source, context, options),
+    );
+  }
+
+  prepareWrite(
+    target: WriteTarget,
+    source: ReopenableByteSource,
+    options?: WriteOptions,
+  ): WriteExecution {
+    const ref = target.kind === 'create' ? target.parent : target.ref;
+    const execution = this.storage.createWriteSession(target, source, options);
     return {
-      run: (context) => this.spaces.withBrowsableSpace(parent, () => execution.run(context)),
+      run: (context) => this.spaces.withBrowsableSpace(ref, () => execution.run(context)),
+      ...(execution.discard
+        ? {
+            discard: (context) =>
+              this.spaces.withBrowsableSpace(ref, () => execution.discard!(context)),
+          }
+        : {}),
     };
+  }
+
+  prepareUpload(parent: EntryRef, name: string, source: ReopenableByteSource): WriteExecution {
+    return this.prepareWrite({ kind: 'create', parent, name, policy: 'create-only' }, source);
   }
 
   createDirectory(target: CreateTarget, context?: OperationContext): Promise<Entry> {
@@ -159,7 +194,7 @@ export class StorageEntryOperations {
     return this.spaces.withBrowsableSpace(ref, () => this.storage.rename(ref, name, context));
   }
 
-  deleteEntry(ref: EntryRef, context?: OperationContext): Promise<void> {
-    return this.spaces.withBrowsableSpace(ref, () => this.storage.remove(ref, context));
+  deleteEntry(ref: EntryRef, context?: OperationContext, options?: RemoveOptions): Promise<void> {
+    return this.spaces.withBrowsableSpace(ref, () => this.storage.remove(ref, context, options));
   }
 }

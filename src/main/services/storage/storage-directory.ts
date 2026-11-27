@@ -1,7 +1,10 @@
 import type {
+  ByteSource,
+  DirectoryScope,
   OperationContext,
   ReopenableByteSource,
   WriteExecution,
+  WriteOptions,
 } from '@main/storage/core/contracts';
 import { StorageError } from '@main/storage/core/errors';
 import type {
@@ -11,6 +14,7 @@ import type {
   EntryRef,
   ListRequest,
   SpaceSemantics,
+  WriteTarget,
 } from '@shared/storage';
 import type { StorageEntryOperations } from './storage-entry-operations';
 import { createStorageFile, type StorageFile } from './storage-file';
@@ -29,7 +33,19 @@ export interface StorageDirectory {
   semantics(): Promise<SpaceSemantics | undefined>;
   capabilities(context?: OperationContext): Promise<Capabilities>;
   list(request?: string | ListRequest, context?: OperationContext): Promise<EntryPage>;
+  openScope(context?: OperationContext): Promise<DirectoryScope>;
   createDirectory(name: string, context?: OperationContext): Promise<CreatedStorageDirectory>;
+  write(
+    target: WriteTarget,
+    source: ByteSource,
+    context?: OperationContext,
+    options?: WriteOptions,
+  ): Promise<Entry>;
+  prepareWrite(
+    target: WriteTarget,
+    source: ReopenableByteSource,
+    options?: WriteOptions,
+  ): WriteExecution;
   prepareUpload(name: string, source: ReopenableByteSource): WriteExecution;
   copyEntry(source: EntryRef, name: string, context?: OperationContext): Promise<Entry>;
   moveEntry(source: EntryRef, name: string, context?: OperationContext): Promise<Entry>;
@@ -90,6 +106,12 @@ export function createStorageDirectory(
       return operations.listDirectory(directoryRef);
     },
 
+    openScope(context) {
+      return context !== undefined
+        ? operations.openDirectoryScope(directoryRef, context)
+        : operations.openDirectoryScope(directoryRef);
+    },
+
     async createDirectory(name, context) {
       const target = { parent: directoryRef, name };
       const entry =
@@ -100,6 +122,14 @@ export function createStorageDirectory(
         entry,
         directory: createStorageDirectory(operations, entry.ref),
       };
+    },
+
+    write(target, source, context, options) {
+      return operations.writeEntry(target, source, context, options);
+    },
+
+    prepareWrite(target, source, options) {
+      return operations.prepareWrite(target, source, options);
     },
 
     prepareUpload(name, source) {

@@ -6,7 +6,7 @@ import type {
   SessionWriteContext,
 } from '@main/storage/core/contracts';
 import { normalizeStorageError, StorageError, throwIfAborted } from '@main/storage/core/errors';
-import type { Entry } from '@shared/storage';
+import type { ContentChecksum, Entry } from '@shared/storage';
 import type { GoogleDriveAuthorization } from './authorization';
 import { driveFailure } from './google-drive-errors';
 
@@ -19,6 +19,7 @@ interface DriveUpload {
   parentId: string;
   fields: string;
   size: number;
+  checksum?: ContentChecksum | undefined;
   complete(payload: unknown): Entry;
   reconcile(context: OperationContext): Promise<Entry>;
 }
@@ -155,7 +156,7 @@ export function createGoogleDriveWriteSession(
     onProgress: SessionWriteContext['onProgress'],
   ): Promise<Entry | undefined> {
     const status = inspect(await probe(url, transfer), pending?.end ?? confirmed);
-    if (status.entry) return status.entry;
+    if (status.entry) return verifyCommittedEntry(status.entry);
     mayHaveCommitted = false;
     if (pending) {
       const bytes = await readChunk(source, confirmed, pending.end - confirmed, transfer);
@@ -163,10 +164,38 @@ export function createGoogleDriveWriteSession(
       acknowledge(status.offset, bytes);
     }
     if (confirmed > 0) {
-      await verifyPrefix(source, confirmed, prefix.copy().digest('hex'), transfer);
+      if (source.descriptor.verification === 'strong' && source.verify) {
+        const valid = await source.verify(source.descriptor, transfer);
+        if (!valid) throw new StorageError('SourceChanged');
+      } else {
+        await verifyPrefix(source, confirmed, prefix.copy().digest('hex'), transfer);
+      }
     }
     reportProgress(onProgress, confirmed, confirmed);
     return undefined;
+  }
+
+  function verifyCommittedEntry(entry: Entry, finalBytes?: Uint8Array): Entry {
+    if (finalBytes && confirmed < size) {
+      prefix.update(finalBytes.subarray(0, size - confirmed));
+      confirmed = size;
+      pending = undefined;
+    }
+    if (confirmed === size) {
+      const targetSha256 = entry.checksums?.find((item) => item.algorithm === 'sha256')?.value;
+      if (targetSha256 && targetSha256.toLowerCase() !== prefix.copy().digest('hex')) {
+        throw new StorageError('SourceChanged');
+      }
+    }
+    if (upload.checksum) {
+      const targetChecksum = entry.checksums?.find(
+        (item) => item.algorithm === upload.checksum!.algorithm,
+      )?.value;
+      if (targetChecksum && targetChecksum.toLowerCase() !== upload.checksum.value.toLowerCase()) {
+        throw new StorageError('SourceChanged');
+      }
+    }
+    return entry;
   }
 
   async function uploadNextChunk(
@@ -218,6 +247,7 @@ export function createGoogleDriveWriteSession(
     },
   ): Promise<Entry> {
     const failure = normalizeStorageError(error);
+    if (failure.code === 'SourceChanged') throw error;
     if (context.transferSignal?.aborted && failure.code === 'Cancelled') {
       const pausedOnly = Boolean(context.pauseSignal?.aborted && !context.signal?.aborted);
       if (pausedOnly && mayHaveCommitted && session) {
@@ -267,7 +297,7 @@ export function createGoogleDriveWriteSession(
           finalContext,
           context.onBytesSent,
         );
-        if (status.entry) return complete(status.entry);
+        if (status.entry) return complete(verifyCommittedEntry(status.entry, bytes));
         if (status.offset === confirmed && stalled) throw new StorageError('NetworkError');
         stalled = status.offset === confirmed;
         acknowledge(status.offset, bytes);
@@ -281,7 +311,7 @@ export function createGoogleDriveWriteSession(
         commitContext,
         onProgress: context.onProgress,
       });
-      return complete(recovered);
+      return complete(verifyCommittedEntry(recovered));
     }
   }
 

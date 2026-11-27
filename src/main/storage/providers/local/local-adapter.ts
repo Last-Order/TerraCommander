@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { Dirent, Stats } from 'node:fs';
+import type { BigIntStats, Dirent } from 'node:fs';
 import {
   access,
   constants,
@@ -9,10 +9,18 @@ import {
   readdir,
   rename,
   rm,
+  rmdir,
   unlink,
 } from 'node:fs/promises';
 import { basename, dirname, join, normalize, parse } from 'node:path';
-import type { OperationContext } from '@main/storage/core/contracts';
+import type {
+  AdapterWriteSession,
+  ByteSource,
+  DirectoryScope,
+  OperationContext,
+  ReadHandle,
+  WriteOptions,
+} from '@main/storage/core/contracts';
 import { StorageError, throwIfAborted } from '@main/storage/core/errors';
 import type { AdapterFactory, StorageAdapter } from '@main/storage/ports/adapter';
 import type {
@@ -24,9 +32,14 @@ import type {
   EntryPage,
   EntryRef,
   ListRequest,
+  ReadOptions,
+  RemoveOptions,
+  SourceDescriptor,
   Space,
   SpaceSemantics,
+  WriteTarget,
 } from '@shared/storage';
+import { createLocalDirectoryScope, isLocalDirectoryScope } from './local-directory-scope';
 import {
   defaultLocalPlatform,
   joinLocalLocator,
@@ -34,7 +47,14 @@ import {
   splitLocalLocator,
   type LocalPlatform,
 } from './local-platform';
+import {
+  hashLocalFile,
+  localDirectoryRevision,
+  localFileRevision,
+  readLocalFile,
+} from './local-read';
 import { listLocalVolumes } from './local-volumes';
+import { createLocalWriteSession, writeLocalFile, type LocalWriteSpec } from './local-write';
 
 const supported = { support: 'supported' } as const;
 const unsupported = { support: 'unsupported' } as const;
@@ -47,15 +67,18 @@ export function localSpaceSemanticsFor(
 export const localSpaceSemantics: SpaceSemantics = localSpaceSemanticsFor();
 const localBaseCapabilities: Capabilities = {
   list: supported,
-  read: unsupported,
-  write: unsupported,
+  read: supported,
+  write: unknown,
+  streamingWrite: supported,
+  pausableWrite: supported,
+  replaceWrite: supported,
   createDirectory: unknown,
   remove: supported,
   copyWithin: unknown,
   moveWithin: unknown,
   rename: supported,
-  rangeRead: unsupported,
-  conditionalRead: unsupported,
+  rangeRead: supported,
+  conditionalRead: supported,
   conditionalWrite: unsupported,
   resumeWrite: unsupported,
 };
@@ -127,7 +150,7 @@ export async function locateLocalEntry(
   cachedVolumes?: Map<string, string>,
   signal?: AbortSignal,
   platform: LocalPlatform = defaultLocalPlatform,
-): Promise<{ path: string; info: Stats; kind: Entry['kind'] }> {
+): Promise<{ path: string; info: BigIntStats; kind: Entry['kind'] }> {
   throwIfAborted(signal);
   const names = splitLocalLocator(ref.locator);
   if (names.some((name) => !platform.isValidLocatorSegment(name))) {
@@ -153,13 +176,13 @@ export async function locateLocalEntry(
   if (!path) throw new StorageError('NotFound');
 
   try {
-    let info = await lstat(path);
+    let info = await lstat(path, { bigint: true });
     for (const name of names) {
       // Directory traversal never follows a symlink or junction.
       if (!info.isDirectory()) throw new StorageError('NotFound');
       throwIfAborted(signal);
       path = join(path, name);
-      info = await lstat(path);
+      info = await lstat(path, { bigint: true });
     }
     throwIfAborted(signal);
     return { path, info, kind: entryKind(info) };
@@ -261,7 +284,7 @@ class LocalAdapter implements StorageAdapter {
             const ref = { ...parent, locator: joinLocalLocator(parent.locator, item.name) };
             const displayPath = join(path, item.name);
             // A listed item can disappear or become inaccessible before metadata is read.
-            const info = await lstat(displayPath).catch(() => undefined);
+            const info = await lstat(displayPath, { bigint: true }).catch(() => undefined);
             return this.toEntry(ref, item.name, displayPath, info ?? item);
           }),
         );
@@ -272,6 +295,109 @@ class LocalAdapter implements StorageAdapter {
     } catch (error) {
       localFailure(error, signal);
     }
+  }
+
+  async read(
+    ref: EntryRef,
+    options: ReadOptions,
+    { signal }: OperationContext,
+  ): Promise<ReadHandle> {
+    if (ref.locator === '.') throw new StorageError('Unsupported');
+    const { path, info } = await this.locate(ref, signal);
+    return readLocalFile(path, info, options, signal);
+  }
+
+  async write(
+    target: WriteTarget,
+    source: ByteSource,
+    context: OperationContext,
+    options?: WriteOptions,
+  ): Promise<Entry> {
+    const spec = await this.resolveWriteSpec(target, context.signal, options);
+    return writeLocalFile(spec, source, context);
+  }
+
+  async prepareWrite(
+    target: WriteTarget,
+    source: SourceDescriptor,
+    context: OperationContext,
+    options?: WriteOptions,
+  ): Promise<AdapterWriteSession> {
+    const spec = await this.resolveWriteSpec(target, context.signal, options);
+    return createLocalWriteSession(spec, source.size, source.checksum);
+  }
+
+  openDirectoryScope(root: EntryRef, context: OperationContext): Promise<DirectoryScope> {
+    return createLocalDirectoryScope(
+      root,
+      {
+        locate: (ref, signal) => this.locate(ref, signal),
+        toEntry: (ref, name, displayPath, info, signal) =>
+          this.toEntry(ref, name, displayPath, info, signal),
+        platform: this.platform,
+        mapError: (error, signal) => localFailure(error, signal),
+      },
+      context,
+    );
+  }
+
+  private async resolveWriteSpec(
+    target: WriteTarget,
+    signal?: AbortSignal,
+    options?: WriteOptions,
+  ): Promise<LocalWriteSpec> {
+    throwIfAborted(signal);
+    const directoryScope = isLocalDirectoryScope(options?.directoryScope)
+      ? options.directoryScope
+      : undefined;
+    if (target.kind === 'create') {
+      if (!this.platform.isValidEntryName(target.name)) {
+        throw new StorageError('InvalidArgument');
+      }
+      const { path: parentPath, info } = await this.locate(target.parent, signal);
+      if (!info.isDirectory()) throw new StorageError('InvalidArgument');
+      const targetPath = join(parentPath, target.name);
+      const targetRef: EntryRef = {
+        ...target.parent,
+        locator: joinLocalLocator(target.parent.locator, target.name),
+      };
+      return {
+        parentPath,
+        targetPath,
+        targetRef,
+        replace: false,
+        directoryScope,
+        statTarget: (ref, opSignal) => this.stat(ref, opSignal ? { signal: opSignal } : {}),
+        mapError: (error, opSignal) => localFailure(error, opSignal),
+      };
+    }
+
+    if (target.policy === 'replace-if-version') {
+      throw new StorageError('Unsupported');
+    }
+    if (target.ref.locator === '.') {
+      throw new StorageError('InvalidArgument');
+    }
+    const segments = splitLocalLocator(target.ref.locator);
+    const name = segments.at(-1);
+    if (!name || !this.platform.isValidEntryName(name)) {
+      throw new StorageError('InvalidArgument');
+    }
+    const parentRef: EntryRef = {
+      ...target.ref,
+      locator: parentLocalLocator(target.ref.locator),
+    };
+    const { path: parentPath, info } = await this.locate(parentRef, signal);
+    if (!info.isDirectory()) throw new StorageError('InvalidArgument');
+    return {
+      parentPath,
+      targetPath: join(parentPath, name),
+      targetRef: target.ref,
+      replace: true,
+      directoryScope,
+      statTarget: (ref, opSignal) => this.stat(ref, opSignal ? { signal: opSignal } : {}),
+      mapError: (error, opSignal) => localFailure(error, opSignal),
+    };
   }
 
   async rename(ref: EntryRef, name: string, { signal }: OperationContext): Promise<Entry> {
@@ -378,7 +504,7 @@ class LocalAdapter implements StorageAdapter {
     signal,
   }: {
     sourcePath: string;
-    sourceInfo: Stats;
+    sourceInfo: BigIntStats;
     parentPath: string;
     name: string;
     sameParent: boolean;
@@ -387,7 +513,7 @@ class LocalAdapter implements StorageAdapter {
   }): Promise<Entry> {
     const targetPath = join(parentPath, name);
     try {
-      const existing = await lstat(targetPath).catch((error: unknown) => {
+      const existing = await lstat(targetPath, { bigint: true }).catch((error: unknown) => {
         if (errorCode(error) === 'ENOENT') return undefined;
         throw error;
       });
@@ -397,7 +523,7 @@ class LocalAdapter implements StorageAdapter {
         basename(sourcePath).toLowerCase() === name.toLowerCase() &&
         existing.dev === sourceInfo.dev &&
         existing.ino === sourceInfo.ino;
-      if (caseOnly && existing && existing.nlink > 1) {
+      if (caseOnly && existing && existing.nlink > 1n) {
         const siblings = await readdir(parentPath);
         caseOnly = !siblings.includes(name);
       }
@@ -410,16 +536,53 @@ class LocalAdapter implements StorageAdapter {
     }
   }
 
-  async remove(ref: EntryRef, { signal }: OperationContext): Promise<void> {
+  async remove(
+    ref: EntryRef,
+    { signal }: OperationContext,
+    options?: RemoveOptions,
+  ): Promise<void> {
     if (ref.locator === '.') throw new StorageError('InvalidArgument');
     const { path, info } = await this.locate(ref, signal);
     if (!info.isFile() && !info.isSymbolicLink() && !info.isDirectory()) {
       throw new StorageError('Unsupported');
     }
+    if (options?.expectedRevision !== undefined) {
+      let currentRevision: string | undefined;
+      if (info.isFile()) currentRevision = localFileRevision(info);
+      else if (info.isDirectory()) currentRevision = localDirectoryRevision(info);
+      if (currentRevision !== options.expectedRevision) {
+        throw new StorageError('SourceChanged');
+      }
+    }
+    if (options?.expectedSize !== undefined) {
+      if (!info.isFile() || info.size !== BigInt(options.expectedSize)) {
+        throw new StorageError('SourceChanged');
+      }
+    }
+    if (options?.expectedChecksum !== undefined) {
+      if (!info.isFile()) throw new StorageError('SourceChanged');
+      const actual = await hashLocalFile(path, options.expectedChecksum.algorithm, info, signal);
+      if (actual.toLowerCase() !== options.expectedChecksum.value.toLowerCase()) {
+        throw new StorageError('SourceChanged');
+      }
+    }
     try {
       throwIfAborted(signal);
-      if (info.isDirectory()) await rm(path, { recursive: true });
-      else await unlink(path);
+      if (info.isDirectory()) {
+        if (options?.onlyIfEmpty) {
+          await rmdir(path).catch((error: unknown) => {
+            const code = errorCode(error);
+            if (code === 'ENOTEMPTY' || code === 'EEXIST') {
+              throw new StorageError('PreconditionFailed', { cause: error, providerCode: code });
+            }
+            throw error;
+          });
+        } else {
+          await rm(path, { recursive: true });
+        }
+      } else {
+        await unlink(path);
+      }
     } catch (error) {
       localFailure(error, signal);
     }
@@ -435,7 +598,7 @@ class LocalAdapter implements StorageAdapter {
     ref: EntryRef,
     name: string,
     displayPath: string,
-    info: Dirent | Stats,
+    info: Dirent | BigIntStats,
     signal?: AbortSignal,
   ): Promise<Entry> {
     const kind = entryKind(info);
@@ -444,6 +607,10 @@ class LocalAdapter implements StorageAdapter {
         ? await resolveDirectoryWriteCapability(displayPath, this.platform)
         : unsupported;
     throwIfAborted(signal);
+    const fileRead = kind === 'file' ? supported : unsupported;
+    let replaceWrite: Capability = unsupported;
+    if (kind === 'directory') replaceWrite = directoryWrite;
+    else if (kind === 'file') replaceWrite = supported;
     const entry: Entry = {
       ref,
       name,
@@ -452,7 +619,13 @@ class LocalAdapter implements StorageAdapter {
       capabilities: {
         ...localBaseCapabilities,
         list: kind === 'directory' ? supported : unsupported,
+        read: fileRead,
+        rangeRead: fileRead,
+        conditionalRead: fileRead,
         write: directoryWrite,
+        streamingWrite: directoryWrite,
+        pausableWrite: directoryWrite,
+        replaceWrite,
         createDirectory: directoryWrite,
         copyWithin: ref.locator !== '.' && kind === 'file' ? supported : unsupported,
         moveWithin:
@@ -469,8 +642,14 @@ class LocalAdapter implements StorageAdapter {
     if ('mtime' in info) {
       const year = info.mtime.getUTCFullYear();
       if (year >= 0 && year <= 9999) entry.modifiedAt = info.mtime.toISOString();
-      if (kind === 'file' && Number.isSafeInteger(info.size) && info.size >= 0)
-        entry.size = info.size;
+      if (kind === 'file') {
+        if (info.size >= 0n && info.size <= BigInt(Number.MAX_SAFE_INTEGER)) {
+          entry.size = Number(info.size);
+        }
+        entry.revision = localFileRevision(info);
+      } else if (kind === 'directory') {
+        entry.revision = localDirectoryRevision(info);
+      }
     }
     return entry;
   }
@@ -491,7 +670,7 @@ async function resolveDirectoryWriteCapability(
   }
 }
 
-function entryKind(info: Dirent | Stats): Entry['kind'] {
+function entryKind(info: Dirent | BigIntStats): Entry['kind'] {
   if (info.isDirectory()) return 'directory';
   if (info.isSymbolicLink()) return 'link';
   if (info.isFile()) return 'file';

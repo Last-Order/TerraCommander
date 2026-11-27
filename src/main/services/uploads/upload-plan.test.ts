@@ -41,11 +41,14 @@ function createUploadOperations(semantics?: SpaceSemantics) {
       semantics: async () => semantics,
       capabilities: unsupported,
       list: unsupported,
+      openScope: unsupported,
       createDirectory: vi.fn(async (name: string) => {
         const entry = directoryEntry(ref, `dir-${nextId++}`, name);
         createdDirs.push({ parent: ref, name, entry });
         return { entry, directory: directory(entry.ref) };
       }),
+      write: unsupported,
+      prepareWrite: () => ({ run: unsupported }),
       prepareUpload: vi.fn((name, source): WriteExecution => {
         preparedUploads.push({ parent: ref, name, size: source.descriptor.size });
         return {

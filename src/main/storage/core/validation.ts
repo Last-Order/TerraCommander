@@ -23,6 +23,7 @@ const capabilitySchema = z.strictObject({
   support: z.enum(['supported', 'unsupported', 'unknown']),
 });
 export const capabilitiesSchema = z.partialRecord(z.enum(operations), capabilitySchema);
+export const checksumSchema = z.strictObject({ algorithm: identifier, value: identifier });
 export const entrySchema = z.strictObject({
   ref: entryRefSchema,
   name: z.string(),
@@ -32,7 +33,7 @@ export const entrySchema = z.strictObject({
   modifiedAt: z.iso.datetime({ offset: true }).optional(),
   revision: identifier.optional(),
   mediaType: identifier.optional(),
-  checksums: z.array(z.strictObject({ algorithm: identifier, value: identifier })).optional(),
+  checksums: z.array(checksumSchema).optional(),
   capabilities: capabilitiesSchema,
 });
 export const spaceSemanticsSchema = z.strictObject({
@@ -87,12 +88,20 @@ export const scopeSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('entry'), ref: entryRefSchema }),
 ]);
 
+export const removeOptionsSchema = z.strictObject({
+  expectedRevision: identifier.optional(),
+  expectedChecksum: checksumSchema.optional(),
+  expectedSize: byteCountSchema.optional(),
+  onlyIfEmpty: z.boolean().optional(),
+});
+
 // Backend persistence: the common layer validates envelopes, not provider payload semantics.
 export const sourceDescriptorSchema = z.strictObject({
   identity: identifier,
   revision: identifier,
   size: byteCountSchema,
   verification: z.enum(['strong', 'weak']),
+  checksum: checksumSchema.optional(),
 });
 export const progressSchema = z
   .strictObject({ processedBytes: byteCountSchema, confirmedBytes: byteCountSchema })

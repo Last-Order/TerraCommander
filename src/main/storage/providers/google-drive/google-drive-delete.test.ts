@@ -110,3 +110,105 @@ it.each([
     await registry.dispose();
   }
 });
+
+it('enforces onlyIfEmpty and expected checksum/size preconditions before trashing on Drive', async () => {
+  const sha = 'a'.repeat(64);
+  let folderChildren: unknown[] = [{ id: 'child-1', name: 'new.txt', mimeType: 'text/plain' }];
+  const request = vi.fn<typeof fetch>(async (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (url.pathname === '/drive/v3/files/file-1') {
+      if (init?.method === 'PATCH') {
+        return Response.json({
+          id: 'file-1',
+          name: 'a.txt',
+          mimeType: 'text/plain',
+          size: '5',
+          sha256Checksum: sha,
+          trashed: true,
+          capabilities: { canTrash: true },
+        });
+      }
+      return Response.json({
+        id: 'file-1',
+        name: 'a.txt',
+        mimeType: 'text/plain',
+        size: '5',
+        sha256Checksum: sha,
+        trashed: false,
+        capabilities: { canTrash: true },
+      });
+    }
+    if (url.pathname === '/drive/v3/files/dir-1') {
+      if (init?.method === 'PATCH') {
+        return Response.json({
+          id: 'dir-1',
+          name: 'folder',
+          mimeType: 'application/vnd.google-apps.folder',
+          trashed: true,
+          capabilities: { canTrash: true },
+        });
+      }
+      return Response.json({
+        id: 'dir-1',
+        name: 'folder',
+        mimeType: 'application/vnd.google-apps.folder',
+        trashed: false,
+        capabilities: { canTrash: true },
+      });
+    }
+    if (url.pathname === '/drive/v3/files') {
+      return Response.json({ files: folderChildren });
+    }
+    throw new Error('Unexpected URL: ' + url.toString());
+  });
+  const registry = new AdapterRegistry({
+    credentials: {
+      async resolve() {
+        return {
+          provider: 'google-drive',
+          connectionId: 'account',
+          subject: 'subject',
+          oauthClientId: 'client',
+          getAccessToken: async () => 'token',
+        };
+      },
+    },
+    logger: { event() {} },
+  });
+  registry.register(googleDriveAdapterFactory(request));
+  const storage = new StorageAccess(registry);
+  try {
+    await registry.connect({
+      id: 'account',
+      provider: 'google-drive',
+      configuration: { subject: 'subject', oauthClientId: 'client' },
+      credentialRef: 'ref',
+    });
+    const fileRef = { connectionId: 'account', spaceId: 'my-drive', locator: 'file-1' };
+    const dirRef = { connectionId: 'account', spaceId: 'my-drive', locator: 'dir-1' };
+
+    await expect(storage.remove(fileRef, {}, { expectedSize: 6 })).rejects.toMatchObject({
+      code: 'SourceChanged',
+    });
+    await expect(
+      storage.remove(
+        fileRef,
+        {},
+        { expectedChecksum: { algorithm: 'sha256', value: 'b'.repeat(64) } },
+      ),
+    ).rejects.toMatchObject({ code: 'SourceChanged' });
+    await storage.remove(
+      fileRef,
+      {},
+      { expectedSize: 5, expectedChecksum: { algorithm: 'sha256', value: sha } },
+    );
+
+    await expect(storage.remove(dirRef, {}, { onlyIfEmpty: true })).rejects.toMatchObject({
+      code: 'PreconditionFailed',
+    });
+    folderChildren = [];
+    await storage.remove(dirRef, {}, { onlyIfEmpty: true });
+  } finally {
+    await registry.dispose();
+  }
+});

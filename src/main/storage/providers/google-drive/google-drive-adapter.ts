@@ -13,6 +13,7 @@ import type {
   EntryRef,
   ListRequest,
   ReadOptions,
+  RemoveOptions,
   Space,
   SourceDescriptor,
   WriteTarget,
@@ -39,6 +40,9 @@ const driveBaseCapabilities: Capabilities = {
   rename: supported,
   remove: supported,
   write: unknown,
+  streamingWrite: unsupported,
+  pausableWrite: supported,
+  replaceWrite: unsupported,
   createDirectory: unknown,
   copyWithin: unknown,
   moveWithin: unknown,
@@ -286,6 +290,7 @@ class GoogleDriveAdapter implements StorageAdapter {
         parentId: folder.id,
         fields,
         size: source.size,
+        checksum: source.checksum,
         complete,
         reconcile: async (operation) => complete(await this.getFile(ref, operation, fields)),
       },
@@ -394,7 +399,7 @@ class GoogleDriveAdapter implements StorageAdapter {
     return fileEntry({ ...target.parent, locator: moved.id }, moved, false);
   }
 
-  async remove(ref: EntryRef, context: OperationContext): Promise<void> {
+  async remove(ref: EntryRef, context: OperationContext, options?: RemoveOptions): Promise<void> {
     const id = parse(identifier, ref.locator);
     const driveId = this.sharedDriveId(ref.spaceId);
     if (id === 'root' || id === driveId) throw new StorageError('InvalidArgument');
@@ -403,6 +408,29 @@ class GoogleDriveAdapter implements StorageAdapter {
       throw new StorageError('Unsupported');
     if (entry.capabilities.remove?.support === 'unsupported')
       throw new StorageError('PermissionDenied');
+    if (options?.expectedRevision !== undefined && entry.revision !== options.expectedRevision) {
+      throw new StorageError('SourceChanged');
+    }
+    if (options?.expectedSize !== undefined && entry.size !== options.expectedSize) {
+      throw new StorageError('SourceChanged');
+    }
+    if (options?.expectedChecksum !== undefined) {
+      const matching = entry.checksums?.find(
+        (item) => item.algorithm === options.expectedChecksum!.algorithm,
+      );
+      if (
+        !matching ||
+        matching.value.toLowerCase() !== options.expectedChecksum.value.toLowerCase()
+      ) {
+        throw new StorageError('SourceChanged');
+      }
+    }
+    if (options?.onlyIfEmpty && entry.kind === 'directory') {
+      const page = await this.list(ref, { pageSize: 1 }, context);
+      if (page.entries.length > 0) {
+        throw new StorageError('PreconditionFailed');
+      }
+    }
     const file = await this.requestJson(
       'files/' + id,
       new URLSearchParams({ fields: fileFields, supportsAllDrives: 'true' }),
@@ -507,6 +535,9 @@ function fileEntry(ref: EntryRef, file: z.infer<typeof fileSchema>, isRoot: bool
         file.capabilities?.canDownload,
       ),
       write: grantedCapability(kind !== 'directory', file.capabilities?.canAddChildren),
+      streamingWrite: unsupported,
+      pausableWrite: grantedCapability(kind !== 'directory', file.capabilities?.canAddChildren),
+      replaceWrite: unsupported,
       createDirectory: grantedCapability(kind !== 'directory', file.capabilities?.canAddChildren),
       copyWithin: kind === 'file' && !isRoot ? supported : unsupported,
       moveWithin: grantedCapability(isRoot, file.capabilities?.canMoveItemWithinDrive),

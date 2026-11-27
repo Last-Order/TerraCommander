@@ -182,6 +182,51 @@ describe('storage access dispatch and native references', () => {
     await registry.dispose();
   });
 
+  it('forwards remove options, openDirectoryScope, and write session discard', async () => {
+    const { adapter, registry, access } = await setup();
+    const removeSpy = vi.fn().mockResolvedValue(undefined);
+    adapter.remove = removeSpy;
+    await access.remove(fixtureRef('connection', 'a'), {}, { onlyIfEmpty: true, expectedSize: 10 });
+    expect(removeSpy).toHaveBeenCalledWith(fixtureRef('connection', 'a'), expect.anything(), {
+      onlyIfEmpty: true,
+      expectedSize: 10,
+    });
+
+    const discard = vi.fn().mockResolvedValue(undefined);
+    adapter.prepareWrite = vi.fn().mockResolvedValue({
+      run: vi.fn().mockRejectedValue(new StorageError('Cancelled')),
+      discard,
+    });
+    const execution = access.createWriteSession(createTarget(), byteSource().source);
+    await expect(execution.run({})).rejects.toMatchObject({ code: 'Cancelled' });
+    await execution.discard?.();
+    expect(discard).toHaveBeenCalledOnce();
+
+    const scope = await access.openDirectoryScope(fixtureRef());
+    const ensured = await scope.ensureDirectory(fixtureRef(), 'sub', { replace: false });
+    expect(ensured.created).toBe(true);
+    await scope.cleanupCreated();
+    expect(removeSpy).toHaveBeenCalledWith(ensured.entry.ref, expect.anything(), {
+      onlyIfEmpty: true,
+    });
+    await registry.dispose();
+  });
+
+  it('rejects one-shot writes when streamingWrite is unsupported', async () => {
+    const { adapter, registry, access } = await setup();
+    adapter.caps.streamingWrite = { support: 'unsupported' };
+    await expect(
+      access.write(createTarget(), {
+        kind: 'one-shot',
+        open: async () => {
+          throw new Error('should not open');
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'Unsupported' });
+    expect(adapter.calls).toEqual([]);
+    await registry.dispose();
+  });
+
   it('redacts raw adapter failures and cancellation never reaches an adapter', async () => {
     const { adapter, registry, access } = await setup();
     const stat = vi.fn().mockRejectedValue(new Error('https://secret.invalid/token'));

@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
 import { mkdtempDisposable, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
 import { afterEach, expect, it, vi } from 'vitest';
 import { AdapterRegistry, StorageAccess } from '@main/storage';
 import { googleDriveAdapterFactory } from '@main/storage/providers/google-drive/google-drive-adapter';
@@ -264,4 +266,67 @@ it('reports Cancelled instead of OutcomeUnknown when cancelled during the final 
       return new URL(raw).pathname === '/drive/v3/files/new-id';
     }),
   ).toHaveLength(0);
+});
+
+it('verifies returned Drive sha256Checksum and uses source.verify on strong-source resume', async () => {
+  const content = Buffer.from('0123456789abcdef');
+  const sha256 = createHash('sha256').update(content).digest('hex');
+  const verify = vi.fn(async () => true);
+  const openCalls: Array<{ offset: number; length?: number } | undefined> = [];
+  const source = {
+    kind: 'reopenable' as const,
+    size: content.length,
+    descriptor: {
+      identity: 'remote-src',
+      revision: sha256,
+      size: content.length,
+      verification: 'strong' as const,
+      checksum: { algorithm: 'sha256', value: sha256 },
+    },
+    verify,
+    async open(range?: { offset: number; length?: number }) {
+      openCalls.push(range);
+      const start = range?.offset ?? 0;
+      const end = range?.length !== undefined ? start + range.length : content.length;
+      const slice = content.subarray(start, end);
+      const stream = Readable.from([slice], { objectMode: false });
+      return { stream, length: slice.length, dispose: async () => {} };
+    },
+  };
+  let returnedSha = sha256;
+  let attempts = 0;
+  const pause = new AbortController();
+  const { storage } = await setup(async (call) => {
+    attempts += 1;
+    const range = call.headers.get('Content-Range');
+    if (attempts === 1) {
+      pause.abort();
+      throw new DOMException('Paused', 'AbortError');
+    }
+    if (range === `bytes */${content.length}`) {
+      return new Response(null, { status: 308, headers: { Range: 'bytes=0-3' } });
+    }
+    return Response.json({ ...file(content.length), sha256Checksum: returnedSha });
+  });
+  const target = {
+    kind: 'create' as const,
+    policy: 'create-only' as const,
+    parent,
+    name: 'example.bin',
+  };
+  const exec = storage.createWriteSession(target, source);
+  await expect(exec.run({ pauseSignal: pause.signal })).rejects.toMatchObject({
+    code: 'Cancelled',
+  });
+  await expect(exec.run({})).resolves.toMatchObject({ size: content.length });
+  expect(verify).toHaveBeenCalledOnce();
+  // Strong verification should not re-read prefix [0..4) over the network on resume.
+  expect(openCalls.filter((r) => r?.offset === 0 && r.length === 4)).toHaveLength(0);
+
+  // Mismatched Drive sha256Checksum must reject as SourceChanged.
+  returnedSha = '0'.repeat(64);
+  const bad = await setup(async () =>
+    Response.json({ ...file(content.length), sha256Checksum: returnedSha }),
+  );
+  await expect(bad.storage.write(target, source)).rejects.toMatchObject({ code: 'SourceChanged' });
 });

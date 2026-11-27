@@ -1,16 +1,24 @@
+import { createHash } from 'node:crypto';
 import {
   chmod,
   mkdir,
   mkdtempDisposable,
   readdir,
   readFile,
+  rename,
   symlink,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, it } from 'vitest';
-import { AdapterRegistry, StorageAccess } from '../..';
+import { Readable } from 'node:stream';
+import { expect, it, vi } from 'vitest';
+import {
+  AdapterRegistry,
+  StorageAccess,
+  type ReopenableByteSource,
+  type StreamingByteSource,
+} from '../..';
 import {
   inspectLocalTransfer,
   localAdapterFactory,
@@ -156,8 +164,13 @@ it('reports scope-accurate capabilities and honors pre-aborted signals', async (
       list: { support: 'supported' },
       rename: { support: 'supported' },
       remove: { support: 'supported' },
-      read: { support: 'unsupported' },
-      write: { support: 'unsupported' },
+      read: { support: 'supported' },
+      rangeRead: { support: 'supported' },
+      conditionalRead: { support: 'supported' },
+      write: { support: 'unknown' },
+      streamingWrite: { support: 'supported' },
+      pausableWrite: { support: 'supported' },
+      replaceWrite: { support: 'supported' },
     });
 
     const expectedDirWrite =
@@ -413,4 +426,221 @@ it('evaluates subpath and self-containment rules per local platform', async () =
       volumes,
     ),
   ).rejects.toMatchObject({ code: 'InvalidArgument' });
+});
+
+it('reads local files with ranges, expectedRevision, and detects concurrent changes', async () => {
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-local-read-'));
+  const filePath = join(temporary.path, 'data.txt');
+  await writeFile(filePath, '0123456789');
+  const { registry, storage, root } = await setup(temporary.path);
+  try {
+    const fileRef = { ...root, locator: 'data.txt' };
+    const stat = await storage.stat(fileRef);
+    expect(stat.revision).toBeTruthy();
+    expect(stat.capabilities.read?.support).toBe('supported');
+    expect(stat.capabilities.rangeRead?.support).toBe('supported');
+    expect(stat.capabilities.conditionalRead?.support).toBe('supported');
+
+    const full = await storage.read(fileRef, { expectedRevision: stat.revision });
+    const fullChunks: Uint8Array[] = [];
+    for await (const chunk of full.stream) fullChunks.push(chunk as Uint8Array);
+    expect(Buffer.concat(fullChunks).toString()).toBe('0123456789');
+    await full.dispose();
+
+    const ranged = await storage.read(fileRef, { range: { offset: 3, length: 4 } });
+    const rangedChunks: Uint8Array[] = [];
+    for await (const chunk of ranged.stream) rangedChunks.push(chunk as Uint8Array);
+    expect(Buffer.concat(rangedChunks).toString()).toBe('3456');
+    await ranged.dispose();
+
+    await expect(
+      storage.read(fileRef, { expectedRevision: 'stale-revision' }),
+    ).rejects.toMatchObject({ code: 'PreconditionFailed' });
+  } finally {
+    await registry.dispose();
+  }
+});
+
+it('writes local files via create, replace, one-shot, and resumable pause/resume with checksum verification', async () => {
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-local-write-'));
+  await writeFile(join(temporary.path, 'existing.txt'), 'original');
+  const { registry, storage, root } = await setup(temporary.path);
+  try {
+    // One-shot streaming write
+    const oneShot: StreamingByteSource = {
+      kind: 'one-shot',
+      open: async () => ({
+        stream: Readable.from([Buffer.from('streamed')], { objectMode: false }),
+        dispose: async () => {},
+      }),
+    };
+    const created = await storage.write(
+      { kind: 'create', parent: root, name: 'one-shot.txt', policy: 'create-only' },
+      oneShot,
+    );
+    expect(created.name).toBe('one-shot.txt');
+    expect(await readFile(join(temporary.path, 'one-shot.txt'), 'utf8')).toBe('streamed');
+
+    // Exclusive create fails if already exists
+    await expect(
+      storage.write(
+        { kind: 'create', parent: root, name: 'existing.txt', policy: 'create-only' },
+        {
+          kind: 'one-shot',
+          open: async () => ({
+            stream: Readable.from([Buffer.from('dup')], { objectMode: false }),
+            dispose: async () => {},
+          }),
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'AlreadyExists' });
+
+    // Resumable replace with pause, resume, and full checksum verification before publish
+    const content = Buffer.from('0123456789abcdef');
+    const sha256 = createHash('sha256').update(content).digest('hex');
+    const pause = new AbortController();
+    let openCount = 0;
+    const source: ReopenableByteSource = {
+      kind: 'reopenable',
+      size: content.length,
+      descriptor: {
+        identity: 'remote-1',
+        revision: sha256,
+        size: content.length,
+        verification: 'strong',
+        checksum: { algorithm: 'sha256', value: sha256 },
+      },
+      verify: async () => true,
+      async open(range) {
+        openCount += 1;
+        if (openCount === 1) {
+          const stream = new Readable({
+            read() {},
+          });
+          stream.push(content.subarray(0, 6));
+          setTimeout(() => pause.abort(), 10);
+          return { stream, length: content.length, dispose: async () => {} };
+        }
+        expect(range).toEqual({ offset: 6 });
+        const tail = content.subarray(6);
+        return {
+          stream: Readable.from([tail], { objectMode: false }),
+          length: tail.length,
+          dispose: async () => {},
+        };
+      },
+    };
+    const replaceRef = { ...root, locator: 'existing.txt' };
+    const session = storage.createWriteSession(
+      { kind: 'replace', ref: replaceRef, policy: 'replace-unconditionally' },
+      source,
+    );
+    await expect(session.run({ pauseSignal: pause.signal })).rejects.toMatchObject({
+      code: 'Cancelled',
+    });
+    // Original file remains untouched while replacement is paused.
+    expect(await readFile(join(temporary.path, 'existing.txt'), 'utf8')).toBe('original');
+
+    const replaced = await session.run({});
+    expect(replaced.size).toBe(content.length);
+    expect(await readFile(join(temporary.path, 'existing.txt'))).toEqual(content);
+
+    // Paused create-only discard cleans up partial file safely.
+    const pause2 = new AbortController();
+    const discardSource: ReopenableByteSource = {
+      kind: 'reopenable',
+      size: 16,
+      descriptor: { identity: 'd', revision: 'r', size: 16, verification: 'weak' },
+      verify: async () => true,
+      async open() {
+        const stream = new Readable({ read() {} });
+        stream.push(Buffer.from('1234'));
+        setTimeout(() => pause2.abort(), 10);
+        return { stream, length: 16, dispose: async () => {} };
+      },
+    };
+    const discardExec = storage.createWriteSession(
+      { kind: 'create', parent: root, name: 'partial.bin', policy: 'create-only' },
+      discardSource,
+    );
+    await expect(discardExec.run({ pauseSignal: pause2.signal })).rejects.toMatchObject({
+      code: 'Cancelled',
+    });
+    expect(await readdir(temporary.path)).toContain('partial.bin');
+    await discardExec.discard?.();
+    expect(await readdir(temporary.path)).not.toContain('partial.bin');
+  } finally {
+    await registry.dispose();
+  }
+});
+
+it('protects local directory identities across batch scopes and removes only empty created dirs', async () => {
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-local-scope-'));
+  const { registry, storage, root } = await setup(temporary.path);
+  try {
+    const scope = await storage.openDirectoryScope(root);
+    const { entry: dirA, created } = await scope.ensureDirectory(root, 'A', { replace: false });
+    expect(created).toBe(true);
+
+    // Replace A with a different directory at the same path.
+    await rename(join(temporary.path, 'A'), join(temporary.path, 'A-moved'));
+    await mkdir(join(temporary.path, 'A'));
+    await writeFile(join(temporary.path, 'A', 'external.txt'), 'external');
+
+    const openSpy = vi.fn();
+    await expect(
+      storage.write(
+        { kind: 'create', parent: dirA.ref, name: 'file.txt', policy: 'create-only' },
+        { kind: 'one-shot', open: openSpy },
+        {},
+        { directoryScope: scope },
+      ),
+    ).rejects.toMatchObject({ code: 'PreconditionFailed' });
+    // Directory identity failure happens BEFORE opening source stream.
+    expect(openSpy).not.toHaveBeenCalled();
+
+    // Cleanup must not delete the externally created A directory.
+    await scope.cleanupCreated();
+    expect(await readFile(join(temporary.path, 'A', 'external.txt'), 'utf8')).toBe('external');
+
+    // Fresh scope cleans up empty created dir, but skips non-empty dir without recursive delete.
+    const scope2 = await storage.openDirectoryScope(root);
+    const { entry: dirB } = await scope2.ensureDirectory(root, 'B', { replace: false });
+    await scope2.ensureDirectory(dirB.ref, 'empty-child', { replace: false });
+    await writeFile(join(temporary.path, 'B', 'keep.txt'), 'keep');
+    await scope2.cleanupCreated();
+    expect(await readdir(join(temporary.path, 'B'))).toEqual(['keep.txt']);
+  } finally {
+    await registry.dispose();
+  }
+});
+
+it('supports safe local removal with onlyIfEmpty and expectedRevision checks', async () => {
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-local-safe-rm-'));
+  await mkdir(join(temporary.path, 'dir'));
+  await writeFile(join(temporary.path, 'dir', 'child.txt'), 'v1');
+  const { registry, storage, root } = await setup(temporary.path);
+  try {
+    const dirRef = { ...root, locator: 'dir' };
+    const fileRef = { ...root, locator: 'dir/child.txt' };
+    const stat = await storage.stat(fileRef);
+
+    // Non-empty directory must not be deleted when onlyIfEmpty is true.
+    await expect(storage.remove(dirRef, {}, { onlyIfEmpty: true })).rejects.toMatchObject({
+      code: 'PreconditionFailed',
+    });
+    expect(await readFile(join(temporary.path, 'dir', 'child.txt'), 'utf8')).toBe('v1');
+
+    // Stale revision rejects file deletion as SourceChanged.
+    await expect(storage.remove(fileRef, {}, { expectedRevision: 'stale' })).rejects.toMatchObject({
+      code: 'SourceChanged',
+    });
+
+    // Matching revision deletes file, then empty dir can be deleted with onlyIfEmpty.
+    await storage.remove(fileRef, {}, { expectedRevision: stat.revision, expectedSize: 2 });
+    await storage.remove(dirRef, {}, { onlyIfEmpty: true });
+    expect(await readdir(temporary.path)).toEqual([]);
+  } finally {
+    await registry.dispose();
+  }
 });

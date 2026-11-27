@@ -8,6 +8,7 @@ import type {
   EntryRef,
   ListRequest,
   ReadOptions,
+  RemoveOptions,
   Space,
   SourceDescriptor,
   WriteTarget,
@@ -15,9 +16,11 @@ import type {
 import type {
   AdapterWriteSession,
   ByteSource,
+  DirectoryScope,
   OperationContext,
   ReadHandle,
   UploadDriver,
+  WriteOptions,
 } from '../core/contracts';
 import type { CredentialResolver, StorageLogger } from './services';
 
@@ -41,17 +44,24 @@ export interface ReadableAdapter {
 
 export interface WritableAdapter {
   readonly uploads?: UploadDriver;
-  write?(target: WriteTarget, source: ByteSource, ctx: OperationContext): Promise<Entry>;
+  write?(
+    target: WriteTarget,
+    source: ByteSource,
+    ctx: OperationContext,
+    options?: WriteOptions,
+  ): Promise<Entry>;
   prepareWrite?(
     target: WriteTarget,
     source: SourceDescriptor,
     ctx: OperationContext,
+    options?: WriteOptions,
   ): Promise<AdapterWriteSession>;
   createDirectory?(target: CreateTarget, ctx: OperationContext): Promise<Entry>;
+  openDirectoryScope?(root: EntryRef, ctx: OperationContext): Promise<DirectoryScope>;
 }
 
 export interface MutableAdapter {
-  remove?(ref: EntryRef, ctx: OperationContext): Promise<void>;
+  remove?(ref: EntryRef, ctx: OperationContext, options?: RemoveOptions): Promise<void>;
   copyWithin?(ref: EntryRef, target: CreateTarget, ctx: OperationContext): Promise<Entry>;
   moveWithin?(ref: EntryRef, target: CreateTarget, ctx: OperationContext): Promise<Entry>;
   rename?(ref: EntryRef, name: string, ctx: OperationContext): Promise<Entry>;
