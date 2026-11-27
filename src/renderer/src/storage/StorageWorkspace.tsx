@@ -111,7 +111,14 @@ export function StorageWorkspace({ onOpenSettings }: { onOpenSettings: () => voi
             status={<DirectorySelectionStatus />}
           >
             {location ? (
-              <DirectoryPane key={location.generation} space={location.space} />
+              <DirectoryPane
+                key={location.generation}
+                space={location.space}
+                provider={
+                  connections.find((connection) => connection.id === location.space.connectionId)
+                    ?.provider ?? 'local'
+                }
+              />
             ) : (
               <EmptyDirectoryPane />
             )}

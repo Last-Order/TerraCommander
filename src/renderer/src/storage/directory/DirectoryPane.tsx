@@ -8,6 +8,7 @@ import {
   type Space,
   type StorageLabel,
 } from '@shared/storage';
+import type { StorageProvider } from '@shared/storage-browser';
 import { formatStorageLabel } from '../storage-labels';
 import { useStorageWorkspace } from '../storage-workspace-context';
 import {
@@ -26,9 +27,10 @@ interface Location {
 
 interface DirectoryProps {
   space: Space;
+  provider: StorageProvider;
 }
 
-export function DirectoryPane({ space }: DirectoryProps) {
+export function DirectoryPane({ space, provider }: DirectoryProps) {
   const { t } = useTranslation('storage');
   const { directoryCache: cache } = useStorageWorkspace();
   const [trail, setTrail] = useState<Location[]>([{ ref: space.root, name: space.name }]);
@@ -54,11 +56,12 @@ export function DirectoryPane({ space }: DirectoryProps) {
     () =>
       createCurrentDirectoryValue({
         ref: current.ref,
+        provider,
         path: trail.map(({ name }) => formatStorageLabel(name, t)).join(' / '),
         capabilities: current.capabilities,
         ancestors: trail.map(({ ref }) => ref),
       }),
-    [current.ref, current.capabilities, trail, t],
+    [current.ref, current.capabilities, provider, trail, t],
   );
 
   const navigateUp =

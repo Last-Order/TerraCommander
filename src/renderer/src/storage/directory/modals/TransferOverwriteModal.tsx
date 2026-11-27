@@ -1,8 +1,8 @@
 import { Button, getDefaultZIndex, Group, Modal, Stack, Text } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
-import classes from './DownloadOverwriteModal.module.css';
+import classes from './TransferOverwriteModal.module.css';
 
-export function DownloadOverwriteModal({
+export function TransferOverwriteModal({
   busy,
   conflicts,
   confirmLabel,

@@ -4,9 +4,11 @@ import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { accountFixture } from '@main/accounts/providers/google-drive/testing/fixtures';
 import { StorageAccess } from '@main/storage';
-import { localConnectionId } from '@shared/storage-browser';
 import { createGoogleDriveStorageProvider } from './providers/google-drive-storage-provider';
-import { createLocalStorageProvider } from './providers/local-storage-provider';
+import {
+  createLocalStorageProvider,
+  internalLocalConnectionId,
+} from './providers/local-storage-provider';
 import { StorageConnectionManager } from './storage-connections';
 import { StorageEntryOperations } from './storage-entry-operations';
 import { StoragePreferences } from './storage-preferences';
@@ -54,7 +56,7 @@ it('provides directory-scoped operations, child handles, and local transfer insp
     async () => runtime,
   );
   try {
-    const [choice] = await spaces.listSpaces(localConnectionId);
+    const [choice] = await spaces.listSpaces(internalLocalConnectionId);
     if (!choice) throw new Error('Expected a local space');
     const rootDir = operations.directory(choice.space.root);
 
@@ -72,10 +74,18 @@ it('provides directory-scoped operations, child handles, and local transfer insp
     expect((await noteFile.stat()).name).toBe('note.txt');
     expect((await operations.file(noteFile.ref).stat()).size).toBe(5);
     expect(() =>
-      rootDir.child({ connectionId: localConnectionId, spaceId: 'other-space', locator: '.' }),
+      rootDir.child({
+        connectionId: internalLocalConnectionId,
+        spaceId: 'other-space',
+        locator: '.',
+      }),
     ).toThrow(expect.objectContaining({ code: 'InvalidArgument' }));
     expect(() =>
-      rootDir.file({ connectionId: localConnectionId, spaceId: 'other-space', locator: 'a.txt' }),
+      rootDir.file({
+        connectionId: internalLocalConnectionId,
+        spaceId: 'other-space',
+        locator: 'a.txt',
+      }),
     ).toThrow(expect.objectContaining({ code: 'InvalidArgument' }));
 
     expect(
@@ -126,7 +136,7 @@ it('rejects operations on unbrowsable spaces and cross-connection transfer inspe
   );
   try {
     const unknownDir = operations.directory({
-      connectionId: localConnectionId,
+      connectionId: internalLocalConnectionId,
       spaceId: 'unknown-space',
       locator: '.',
     });

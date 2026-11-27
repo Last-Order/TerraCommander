@@ -59,7 +59,7 @@ export function DirectoryListing({
 }: ListingProps) {
   const { t, i18n } = useTranslation('storage');
   const { directoryCache: cache, selectionSummary } = useStorageWorkspace();
-  const { ref: parent } = useCurrentDirectory();
+  const { ref: parent, provider } = useCurrentDirectory();
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const sort = useDirectorySortStore((state) => state.sort);
   const moreButton = useRef<HTMLButtonElement>(null);
@@ -130,7 +130,10 @@ export function DirectoryListing({
     [selectionSummary],
   );
 
-  const capabilities = useMemo(() => resolveEntryCapabilities(selectedEntries), [selectedEntries]);
+  const capabilities = useMemo(
+    () => resolveEntryCapabilities(selectedEntries, provider),
+    [selectedEntries, provider],
+  );
   const selectForContextMenu = useCallback(
     (locator: string) => viewStore.getState().selectForContextMenu(locator),
     [viewStore],
@@ -245,7 +248,7 @@ export function DirectoryListing({
       />
       <DirectoryEntryModals
         modal={modals.modal}
-        pasteConflict={clipboard.pasteConflict}
+        transferConflict={clipboard.pasteConflict ?? upload.transferConflict}
         onClose={modals.closeModal}
       />
     </DirectoryViewContext.Provider>

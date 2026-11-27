@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import type { Capabilities, Entry } from '@shared/storage';
-import { localConnectionId } from '@shared/storage-browser';
 import { resolveEntryCapabilities } from './entry-capabilities';
 
 function makeEntry(
@@ -22,7 +21,7 @@ function makeEntry(
 
 describe('resolveEntryCapabilities', () => {
   it('disables all actions when nothing is selected', () => {
-    expect(resolveEntryCapabilities([])).toEqual({
+    expect(resolveEntryCapabilities([], 'google-drive')).toEqual({
       canCopy: false,
       canCut: false,
       canDownload: false,
@@ -31,13 +30,15 @@ describe('resolveEntryCapabilities', () => {
     });
   });
 
-  it('enables download only when every selected entry is remote and readable', () => {
-    const remoteFile = makeEntry('file', 'remote-file');
-    const localFile = makeEntry('file', 'local-file', { connectionId: localConnectionId });
+  it('enables download only for non-local readable entries', () => {
+    const file = makeEntry('file', 'file-1');
+    const unreadable = makeEntry('file', 'file-2', {
+      capabilities: { read: { support: 'unsupported' } },
+    });
 
-    expect(resolveEntryCapabilities([remoteFile]).canDownload).toBe(true);
-    expect(resolveEntryCapabilities([localFile]).canDownload).toBe(false);
-    expect(resolveEntryCapabilities([remoteFile, localFile]).canDownload).toBe(false);
+    expect(resolveEntryCapabilities([file], 'google-drive').canDownload).toBe(true);
+    expect(resolveEntryCapabilities([file], 'local').canDownload).toBe(false);
+    expect(resolveEntryCapabilities([file, unreadable], 'google-drive').canDownload).toBe(false);
   });
 
   it('only enables rename for a single renamable entry', () => {
@@ -47,9 +48,9 @@ describe('resolveEntryCapabilities', () => {
       capabilities: { rename: { support: 'unsupported' } },
     });
 
-    expect(resolveEntryCapabilities([fileA]).canRename).toBe(true);
-    expect(resolveEntryCapabilities([fileA, fileB]).canRename).toBe(false);
-    expect(resolveEntryCapabilities([readonlyFile]).canRename).toBe(false);
+    expect(resolveEntryCapabilities([fileA], 'google-drive').canRename).toBe(true);
+    expect(resolveEntryCapabilities([fileA, fileB], 'google-drive').canRename).toBe(false);
+    expect(resolveEntryCapabilities([readonlyFile], 'google-drive').canRename).toBe(false);
   });
 
   it('allows cutting when either moveWithin or remove is supported, and blocks copying links', () => {
@@ -66,14 +67,14 @@ describe('resolveEntryCapabilities', () => {
       },
     });
 
-    expect(resolveEntryCapabilities([link])).toMatchObject({
+    expect(resolveEntryCapabilities([link], 'google-drive')).toMatchObject({
       canCopy: false,
       canCut: true,
       canDownload: false,
       canDelete: true,
     });
 
-    expect(resolveEntryCapabilities([pinned])).toMatchObject({
+    expect(resolveEntryCapabilities([pinned], 'google-drive')).toMatchObject({
       canCut: false,
       canDelete: false,
     });

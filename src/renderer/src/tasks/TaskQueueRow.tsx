@@ -126,7 +126,9 @@ export function TaskQueueRow({
       </span>
       {active && progress && (
         <span className={classes.progress}>
-          {progress.stage && <span>{translateMessage(progress.stage)}</span>}
+          {(model.stageLabel ?? progress.stage) && (
+            <span>{translateMessage((model.stageLabel ?? progress.stage)!)}</span>
+          )}
           <progress
             aria-label={t('tasks:progress', { task: label })}
             max={determinate ? progress.total : undefined}

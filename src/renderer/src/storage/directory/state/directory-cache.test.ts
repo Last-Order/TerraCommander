@@ -51,3 +51,23 @@ it('limits the total cached entries and discards a previous snapshot if its repl
   expect(cache.peek(large)).toBeUndefined();
   expect(cache.peek(small)).toBe(smallListing);
 });
+
+it('updates an existing entry in place when add is called with the same locator', () => {
+  const cache = new DirectoryCache();
+  const dir = root('disk');
+  const initial: Entry = {
+    ref: { ...dir, locator: 'report.txt' },
+    kind: 'file',
+    name: 'report.txt',
+    size: 10,
+    capabilities: {},
+  };
+  const updated: Entry = { ...initial, size: 42 };
+  cache.save(dir, new Map([[initial.ref.locator, initial]]));
+
+  cache.add({ parent: dir, entry: updated });
+
+  const entries = cache.peek(dir);
+  expect(entries?.size).toBe(1);
+  expect(entries?.get('report.txt')?.size).toBe(42);
+});

@@ -5,9 +5,9 @@ import { expect, it, vi } from 'vitest';
 import { accountFixture } from '@main/accounts/providers/google-drive/testing/fixtures';
 import { createAccountServices } from '@main/accounts/runtime/account-services';
 import { FakeAccountCipher, MemoryAccountStore } from '@main/accounts/testing/fixtures';
-import { localConnectionId } from '@shared/storage-browser';
 import { createDefaultStorageProviders } from './providers/default-providers';
 import { createGoogleDriveStorageProvider } from './providers/google-drive-storage-provider';
+import { internalLocalConnectionId } from './providers/local-storage-provider';
 import { createLocalStorageProvider } from './providers/local-storage-provider';
 import { StoragePreferences } from './storage-preferences';
 import { createStoredSpaceValidator } from './storage-provider';
@@ -55,7 +55,7 @@ it('deletes local files without initializing accounts', async () => {
   });
   const storage = createServices(memorySnapshotStore(), getAccounts, async () => [temporary.path]);
   try {
-    const [choice] = await storage.browser.listSpaces(localConnectionId);
+    const [choice] = await storage.browser.listSpaces(internalLocalConnectionId);
     if (!choice) throw new Error('Expected a local space');
     const { space } = choice;
     const ref = { ...space.root, locator: 'notes.txt' };
@@ -141,10 +141,10 @@ it('restores a chosen local space and confines browsing to its saved root', asyn
   let space;
   try {
     expect(await first.browser.listConnections()).toEqual([]);
-    const [choice] = await first.browser.listSpaces(localConnectionId);
+    const [choice] = await first.browser.listSpaces(internalLocalConnectionId);
     if (!choice) throw new Error('Expected a local space');
     space = choice.space;
-    await first.browser.saveSpaces(localConnectionId, [space.id]);
+    await first.browser.saveSpaces(internalLocalConnectionId, [space.id]);
   } finally {
     await first.dispose();
   }
@@ -152,9 +152,9 @@ it('restores a chosen local space and confines browsing to its saved root', asyn
   const restored = openServices();
   try {
     expect(await restored.browser.listConnections()).toMatchObject([
-      { id: localConnectionId, spaces: [space] },
+      { id: internalLocalConnectionId, spaces: [space] },
     ]);
-    expect(await restored.browser.listSpaces(localConnectionId)).toEqual([
+    expect(await restored.browser.listSpaces(internalLocalConnectionId)).toEqual([
       { space, available: true },
     ]);
     const page = await restored.browser.listDirectory(space.root);
@@ -202,7 +202,7 @@ it('lists a local directory beyond the default page size in one response', async
     async () => [temporary.path],
   );
   try {
-    const [choice] = await storage.browser.listSpaces(localConnectionId);
+    const [choice] = await storage.browser.listSpaces(internalLocalConnectionId);
     if (!choice) throw new Error('Expected a local space');
     const { space } = choice;
     const page = await storage.browser.listDirectory(space.root);
@@ -307,7 +307,7 @@ it('keeps StoragePreferences provider-neutral and dispatches validation by provi
     version: 4,
     connections: [
       {
-        id: localConnectionId,
+        id: internalLocalConnectionId,
         provider: 'local',
         spaces: [{ id: 'custom', cached: { name: 'Custom', locator: 'not-dot' } }],
       },
@@ -354,7 +354,7 @@ it('returns the local connection summary from addConnection without persisting s
   try {
     const initial = await storage.browser.addConnection('local');
     expect(initial).toEqual({
-      id: localConnectionId,
+      id: internalLocalConnectionId,
       provider: 'local',
       name: { messageKey: 'thisPc' },
       detail: { messageKey: 'localFileSystem' },
@@ -363,9 +363,9 @@ it('returns the local connection summary from addConnection without persisting s
     });
     expect(getAccounts).not.toHaveBeenCalled();
 
-    const [choice] = await storage.browser.listSpaces(localConnectionId);
+    const [choice] = await storage.browser.listSpaces(internalLocalConnectionId);
     if (!choice) throw new Error('Expected a local space');
-    await storage.browser.saveSpaces(localConnectionId, [choice.space.id]);
+    await storage.browser.saveSpaces(internalLocalConnectionId, [choice.space.id]);
 
     const configured = await storage.browser.addConnection('local');
     expect(configured).toEqual({

@@ -2,7 +2,6 @@ import type { AccountErrorCode } from './accounts';
 import type { DownloadErrorCode } from './downloads';
 import type { EntryPage, EntryRef, Space, StorageErrorCode, StorageLabel } from './storage';
 
-export const localConnectionId = 'local';
 export const storageProviders = ['local', 'google-drive'] as const;
 export type StorageProvider = (typeof storageProviders)[number];
 export type StorageProviderAuthMode = 'none' | 'browser';

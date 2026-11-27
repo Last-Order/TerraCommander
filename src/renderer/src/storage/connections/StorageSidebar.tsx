@@ -8,13 +8,19 @@ import {
   RefreshCw,
   Settings,
   SlidersHorizontal,
+  type LucideIcon,
 } from 'lucide-react';
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Space } from '@shared/storage';
-import type { StorageConnectionSummary } from '@shared/storage-browser';
+import type { StorageConnectionSummary, StorageProvider } from '@shared/storage-browser';
 import { formatStorageLabel } from '../storage-labels';
 import classes from './StorageSidebar.module.css';
+
+const providerIcons: Record<StorageProvider, LucideIcon> = {
+  local: Monitor,
+  'google-drive': Cloud,
+};
 
 interface SidebarProps {
   connections: StorageConnectionSummary[];
@@ -122,7 +128,7 @@ function ConnectionGroup({ connection, activeSpace, onManage, onReauthorize, onO
   const { t } = useTranslation('storage');
   const [expanded, setExpanded] = useState(true);
   const spaceListId = useId();
-  const Icon = connection.provider === 'local' ? Monitor : Cloud;
+  const Icon = providerIcons[connection.provider];
   const name = formatStorageLabel(connection.name, t);
   const detail = connection.detail && formatStorageLabel(connection.detail, t);
 

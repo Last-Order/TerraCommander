@@ -6,9 +6,10 @@ export { presentGroupStatus, type TaskRowStatus };
 export interface TaskRowModel {
   typeLabel: TaskMessage;
   title: readonly { text: string; secondary?: boolean }[];
-  titleNote?: TaskMessage;
-  summary?: string;
-  resultMessage?: TaskMessage;
+  titleNote?: TaskMessage | undefined;
+  summary?: string | undefined;
+  stageLabel?: TaskMessage | undefined;
+  resultMessage?: TaskMessage | undefined;
 }
 
 export type TaskPresenter<TTask extends TaskViewItem = TaskViewItem> = (

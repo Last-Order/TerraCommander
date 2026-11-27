@@ -1,42 +1,50 @@
 import { createContext, useContext } from 'react';
 import type { Capabilities, EntryRef } from '@shared/storage';
-import { localConnectionId } from '@shared/storage-browser';
+import type { StorageProvider } from '@shared/storage-browser';
 
 export interface CurrentDirectoryContextValue {
   ref: EntryRef;
+  provider: StorageProvider;
   path: string;
   capabilities?: Capabilities | undefined;
   ancestors: readonly EntryRef[];
+  canWrite: boolean;
   canCreateDirectory: boolean;
   canUpload: boolean;
   canUploadFolder: boolean;
+  canDropLocalFiles: boolean;
 }
 
 export function createCurrentDirectoryValue({
   ref,
+  provider,
   path,
   capabilities,
   ancestors,
 }: {
   ref: EntryRef;
+  provider: StorageProvider;
   path: string;
   capabilities?: Capabilities | undefined;
   ancestors: readonly EntryRef[];
 }): CurrentDirectoryContextValue {
-  const isLocal = ref.connectionId === localConnectionId;
   const canWrite = capabilities?.write?.support !== 'unsupported';
   const canCreateDirectory = capabilities?.createDirectory?.support !== 'unsupported';
-  const canUpload = !isLocal && canWrite;
+  const canUpload = provider !== 'local' && canWrite;
   const canUploadFolder = canUpload && canCreateDirectory;
+  const canDropLocalFiles = canWrite;
 
   return {
     ref,
+    provider,
     path,
     capabilities,
     ancestors,
+    canWrite,
     canCreateDirectory,
     canUpload,
     canUploadFolder,
+    canDropLocalFiles,
   };
 }
 
