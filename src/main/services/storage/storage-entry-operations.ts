@@ -250,10 +250,6 @@ export class StorageEntryOperations {
     };
   }
 
-  prepareUpload(parent: EntryRef, name: string, source: ReopenableByteSource): WriteExecution {
-    return this.prepareWrite({ kind: 'create', parent, name, policy: 'create-only' }, source);
-  }
-
   createDirectory(target: CreateTarget, context?: OperationContext): Promise<Entry> {
     return this.spaces.withBrowsableSpace(target.parent, () =>
       this.storage.createDirectory(target, context),

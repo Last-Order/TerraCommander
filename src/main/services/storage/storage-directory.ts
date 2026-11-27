@@ -46,7 +46,6 @@ export interface StorageDirectory {
     source: ReopenableByteSource,
     options?: WriteOptions,
   ): WriteExecution;
-  prepareUpload(name: string, source: ReopenableByteSource): WriteExecution;
   copyEntry(source: EntryRef, name: string, context?: OperationContext): Promise<Entry>;
   moveEntry(source: EntryRef, name: string, context?: OperationContext): Promise<Entry>;
 }
@@ -130,10 +129,6 @@ export function createStorageDirectory(
 
     prepareWrite(target, source, options) {
       return operations.prepareWrite(target, source, options);
-    },
-
-    prepareUpload(name, source) {
-      return operations.prepareUpload(directoryRef, name, source);
     },
 
     copyEntry(source, name, context) {

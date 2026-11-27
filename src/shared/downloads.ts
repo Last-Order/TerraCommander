@@ -1,10 +1,6 @@
 import type { BrowserResult } from './storage-browser';
 
-export type DownloadErrorCode =
-  | 'InvalidDownloadDirectory'
-  | 'InvalidDownloadName'
-  | 'DownloadTargetBusy'
-  | 'DownloadCleanupFailed';
+export type DownloadErrorCode = 'InvalidDownloadDirectory';
 
 export interface DownloadSettings {
   directory: string;

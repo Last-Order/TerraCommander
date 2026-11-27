@@ -2,9 +2,7 @@ import { StorageAccess, type StorageLogger } from '@main/storage';
 import type { LocalPlatform } from '@main/storage/providers/local/local-platform';
 import type { listLocalVolumes } from '@main/storage/providers/local/local-volumes';
 import type { AccountRuntime } from '../application-services';
-import { DownloadService } from '../downloads/download-service';
 import { TransferService } from '../transfers/transfer-service';
-import { UploadService } from '../uploads/upload-service';
 import { LocalPathBridge } from './local-path-bridge';
 import { StorageBrowser } from './storage-browser';
 import { StorageConnectionManager } from './storage-connections';
@@ -27,8 +25,6 @@ export interface StorageServices {
   readonly operations: StorageEntryOperations;
   readonly transfers: TransferService;
   readonly localPathBridge: LocalPathBridge;
-  readonly downloads: DownloadService;
-  readonly uploads: UploadService;
   dispose(): Promise<void>;
 }
 
@@ -56,8 +52,6 @@ export function createStorageServices({
     listVolumes: localVolumes,
     platform: localPlatform,
   });
-  const downloads = new DownloadService(operations);
-  const uploads = new UploadService(operations);
   const browser = new StorageBrowser({
     connections,
     storage,
@@ -71,8 +65,6 @@ export function createStorageServices({
     operations,
     transfers,
     localPathBridge,
-    downloads,
-    uploads,
     dispose() {
       disposal ??= (async () => {
         browser.dispose();

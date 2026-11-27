@@ -3,7 +3,6 @@ import { z } from 'zod';
 import type { BrowserResult } from '@shared/storage-browser';
 import { AccountError } from '../accounts/core/errors';
 import { isTrustedRenderer } from '../security';
-import { DownloadError } from '../services/downloads/download-paths';
 import { DownloadPreferenceError } from '../services/preferences/download-preferences';
 import { normalizeStorageError } from '../storage/core/errors';
 
@@ -51,9 +50,7 @@ export function createTrustedIpc(
         return {
           ok: false,
           code:
-            error instanceof AccountError ||
-            error instanceof DownloadError ||
-            error instanceof DownloadPreferenceError
+            error instanceof AccountError || error instanceof DownloadPreferenceError
               ? error.code
               : normalizeStorageError(error).code,
         };

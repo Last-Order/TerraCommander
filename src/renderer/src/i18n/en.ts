@@ -198,11 +198,6 @@ export const en = {
     insufficientSpace: 'The destination is out of space or has reached its quota.',
     outcomeUnknown: 'Could not confirm the result. Refresh to check the current state.',
     invalidDownloadDirectory: 'Enter an absolute path to an existing directory.',
-    invalidDownloadName:
-      'The cloud name cannot be saved locally, or the destination has an incompatible type.',
-    downloadTargetBusy: 'The file or destination is in use by another task.',
-    downloadCleanupFailed:
-      'Temporary file cleanup failed. Check the destination before retrying; the downloaded file may already be saved.',
     unknown: 'Could not complete the storage operation. Try again.',
   } satisfies Record<BrowserErrorKey | 'unknown', string>,
 } as const;

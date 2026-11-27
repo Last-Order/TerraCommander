@@ -195,9 +195,6 @@ export const zhCN = {
     insufficientSpace: '目标位置空间不足或已达到配额。',
     outcomeUnknown: '无法确认操作结果，请刷新后查看当前状态。',
     invalidDownloadDirectory: '请输入已存在目录的绝对路径。',
-    invalidDownloadName: '网盘名称无法用于本地保存，或目标类型不匹配。',
-    downloadTargetBusy: '文件或保存位置正被其他任务使用。',
-    downloadCleanupFailed: '临时文件清理失败。文件可能已保存，请检查目标位置后再重试。',
     unknown: '无法完成存储操作，请重试。',
   },
 } satisfies { [Namespace in keyof typeof en]: Record<keyof (typeof en)[Namespace], string> };

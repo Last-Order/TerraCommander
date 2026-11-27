@@ -37,8 +37,6 @@ function buildOperations(
     createDirectory: (target, ctx) => storage.createDirectory(target, ctx),
     writeEntry: (target, source, ctx, opts) => storage.write(target, source, ctx, opts),
     prepareWrite: (target, source, opts) => storage.createWriteSession(target, source, opts),
-    prepareUpload: (parent, name, source) =>
-      storage.createWriteSession({ kind: 'create', parent, name, policy: 'create-only' }, source),
     copyWithin: (ref, target, ctx) => storage.copyWithin(ref, target, ctx),
     moveWithin: (ref, target, ctx) => storage.moveWithin(ref, target, ctx),
     renameEntry: (ref, name, ctx) => storage.rename(ref, name, ctx),
