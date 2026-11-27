@@ -8,6 +8,7 @@ import type {
   WriteExecution,
   WriteOptions,
 } from '@main/storage/core/contracts';
+import type { ResourceLockSet } from '@main/tasks/conflict-ledger';
 import {
   entryKey,
   type Capabilities,
@@ -21,6 +22,7 @@ import {
   type SpaceSemantics,
   type WriteTarget,
 } from '@shared/storage';
+import type { StorageProvider } from '@shared/storage-browser';
 import type { StorageConnectionManager } from './storage-connections';
 import { createStorageDirectory, type StorageDirectory } from './storage-directory';
 import { createStorageFile, type StorageFile } from './storage-file';
@@ -51,6 +53,98 @@ export class StorageEntryOperations {
 
   file(ref: EntryRef): StorageFile {
     return createStorageFile(this, ref);
+  }
+
+  async resolveProvider(connectionId: string): Promise<StorageProvider> {
+    return (await this.connections.resolveIntegration(connectionId)).provider;
+  }
+
+  async validateEntryName(connectionId: string, name: string): Promise<boolean> {
+    const integration = await this.connections.resolveIntegration(connectionId);
+    return integration.validateEntryName?.(name) ?? true;
+  }
+
+  async canonicalEntryKey(ref: EntryRef): Promise<string | undefined> {
+    const integration = await this.connections.resolveIntegration(ref.connectionId);
+    return integration.canonicalEntryKey?.(ref);
+  }
+
+  ancestorLocators(
+    ref: EntryRef,
+    context?: OperationContext,
+  ): Promise<readonly string[] | undefined> {
+    return this.spaces.withBrowsableSpace(ref, () => this.storage.ancestorLocators(ref, context));
+  }
+
+  async inspectCrossConnectionTransfer(
+    target: EntryRef,
+    targetAncestors: readonly EntryRef[] | undefined,
+    sources: readonly TransferSourceRef[],
+    context?: OperationContext,
+  ): Promise<{ selfContained: boolean }> {
+    const directorySources = sources.filter((source) => source.kind === 'directory');
+    if (directorySources.length === 0) return { selfContained: false };
+
+    const targetIntegration = await this.connections.resolveIntegration(target.connectionId);
+    const sourceKeys = new Set<string>();
+    let sharesProviderAndSpace = false;
+
+    for (const source of directorySources) {
+      const sourceIntegration = await this.connections.resolveIntegration(source.ref.connectionId);
+      if (sourceIntegration.provider !== targetIntegration.provider) continue;
+      const canonical = sourceIntegration.canonicalEntryKey?.(source.ref) ?? entryKey(source.ref);
+      sourceKeys.add(canonical);
+      if (source.ref.spaceId === target.spaceId) {
+        sharesProviderAndSpace = true;
+      }
+    }
+    if (sourceKeys.size === 0) return { selfContained: false };
+
+    const targetRefs = [target, ...(targetAncestors ?? [])];
+    for (const candidate of targetRefs) {
+      const canonical = targetIntegration.canonicalEntryKey?.(candidate) ?? entryKey(candidate);
+      if (sourceKeys.has(canonical)) {
+        return { selfContained: true };
+      }
+    }
+
+    if (sharesProviderAndSpace) {
+      const locators = await this.ancestorLocators(target, context);
+      if (locators) {
+        for (const locator of locators) {
+          const ancestorRef: EntryRef = { ...target, locator };
+          const canonical =
+            targetIntegration.canonicalEntryKey?.(ancestorRef) ?? entryKey(ancestorRef);
+          if (sourceKeys.has(canonical)) {
+            return { selfContained: true };
+          }
+        }
+      }
+    }
+    return { selfContained: false };
+  }
+
+  async targetLockKeys(
+    parent: EntryRef,
+    targetNames: readonly string[],
+    context?: OperationContext,
+  ): Promise<ResourceLockSet> {
+    const semantics = await this.spaceSemantics(parent);
+    if (semantics?.allowsDuplicateNames) {
+      return { exclusive: [], shared: [] };
+    }
+    const caseInsensitive = semantics?.caseSensitive === false;
+    const normalize = (name: string) => (caseInsensitive ? name.toLowerCase() : name);
+    const exclusive = targetNames.map((name) => `slot:${entryKey(parent)}/${normalize(name)}`);
+
+    const shared = new Set<string>([entryKey(parent)]);
+    const ancestors = await this.ancestorLocators(parent, context).catch(() => undefined);
+    if (ancestors) {
+      for (const locator of ancestors) {
+        shared.add(entryKey({ ...parent, locator }));
+      }
+    }
+    return { exclusive, shared: [...shared] };
   }
 
   spaceSemantics(ref: EntryRef): Promise<SpaceSemantics | undefined> {

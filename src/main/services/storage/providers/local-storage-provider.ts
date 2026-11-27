@@ -9,8 +9,10 @@ import {
   type LocalPlatform,
 } from '@main/storage/providers/local/local-platform';
 import { listLocalVolumes } from '@main/storage/providers/local/local-volumes';
-import { localConnectionId } from '@shared/storage-browser';
 import type { StorageProviderIntegration } from '../storage-provider';
+
+/** Internal singleton connection identifier for the built-in local storage provider. */
+export const internalLocalConnectionId = 'local';
 
 function isValidLocalStoredSpace({ locator }: { id: string; locator?: string }): boolean {
   return locator === '.';
@@ -26,12 +28,12 @@ export function createLocalStorageProvider(
     connection: {
       kind: 'built-in',
       connectionDefinition: {
-        id: localConnectionId,
+        id: internalLocalConnectionId,
         provider: 'local',
         configuration: {},
       },
       summarize: (spaces) => ({
-        id: localConnectionId,
+        id: internalLocalConnectionId,
         provider: 'local',
         name: { messageKey: 'thisPc' },
         detail: { messageKey: 'localFileSystem' },
@@ -42,6 +44,11 @@ export function createLocalStorageProvider(
     spaceSemantics: localSpaceSemanticsFor(platform),
     createAdapterFactory: () => localAdapterFactory(volumes, platform),
     validateStoredSpace: isValidLocalStoredSpace,
+    validateEntryName: (name) => platform.isValidEntryName(name),
+    canonicalEntryKey: (ref) => {
+      const locator = platform.caseSensitive ? ref.locator : ref.locator.toLowerCase();
+      return `local:${ref.spaceId}:${locator}`;
+    },
     async resolvePath(ref) {
       const { path, kind } = await locateLocalEntry(ref, volumes, undefined, undefined, platform);
       return { path, kind };

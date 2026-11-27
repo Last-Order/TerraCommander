@@ -31,6 +31,8 @@ export interface CoreStorageAdapter {
   stat(ref: EntryRef, ctx: OperationContext): Promise<Entry>;
   /** A snapshot of effective support, not a substitute for authorization during execution. */
   capabilities(scope: CapabilityScope, ctx: OperationContext): Promise<Capabilities>;
+  /** Returns locators from the entry itself up to its space root, if discoverable. */
+  ancestorLocators?(ref: EntryRef, ctx: OperationContext): Promise<readonly string[]>;
   dispose(): Promise<void>;
 }
 

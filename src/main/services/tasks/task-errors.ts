@@ -3,9 +3,16 @@ import { normalizeStorageError } from '@main/storage';
 import { browserErrorKey, type BrowserErrorCode } from '@shared/storage-browser';
 import type { TaskFailure } from '@shared/tasks';
 import { DownloadError } from '../downloads/download-paths';
+import { DownloadPreferenceError } from '../preferences/download-preferences';
 
 export function toBrowserErrorCode(error: unknown): BrowserErrorCode {
-  if (error instanceof AccountError || error instanceof DownloadError) return error.code;
+  if (
+    error instanceof AccountError ||
+    error instanceof DownloadError ||
+    error instanceof DownloadPreferenceError
+  ) {
+    return error.code;
+  }
   return normalizeStorageError(error).code;
 }
 

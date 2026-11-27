@@ -159,6 +159,28 @@ class GoogleDriveAdapter implements StorageAdapter {
     return fileEntry(ref, file, isRoot);
   }
 
+  async ancestorLocators(ref: EntryRef, context: OperationContext): Promise<readonly string[]> {
+    const driveId = this.sharedDriveId(ref.spaceId);
+    const rootLocator = driveId ?? 'root';
+    const chain: string[] = [];
+    const seen = new Set<string>();
+    let current = parse(identifier, ref.locator);
+    while (chain.length < 256 && !seen.has(current)) {
+      seen.add(current);
+      chain.push(current);
+      if (current === rootLocator) break;
+      const file = await this.getFile(
+        { ...ref, locator: current },
+        context,
+        'id,name,mimeType,driveId,trashed,parents',
+      );
+      const nextParent = file.parents?.[0];
+      if (!nextParent) break;
+      current = nextParent;
+    }
+    return chain;
+  }
+
   private async getFile(ref: EntryRef, context: OperationContext, fields = fileFields) {
     const id = parse(identifier, ref.locator);
     const driveId = this.sharedDriveId(ref.spaceId);

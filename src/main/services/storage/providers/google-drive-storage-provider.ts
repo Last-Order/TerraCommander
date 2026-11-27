@@ -25,5 +25,12 @@ export function createGoogleDriveStorageProvider(): StorageProviderIntegration {
     spaceSemantics: googleDriveSpaceSemantics,
     createAdapterFactory: () => googleDriveAdapterFactory(),
     builtInSpace: (connectionId) => myDriveSpace(connectionId),
+    canonicalEntryKey: (ref) => {
+      // 'root' is per-account My Drive; all other Drive file/folder IDs are globally unique.
+      if (ref.locator === 'root') {
+        return `google-drive:${ref.connectionId}:my-drive:root`;
+      }
+      return `google-drive:${ref.locator}`;
+    },
   };
 }

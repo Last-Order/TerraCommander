@@ -1,6 +1,6 @@
 import type { AppLanguage } from '@shared/language';
-import type { DownloadPreferences } from './downloads/download-preferences';
 import { LazyService } from './lazy-service';
+import type { DownloadPreferences } from './preferences/download-preferences';
 import type { StorageServices } from './storage/storage-services';
 import type { StorageTaskService } from './tasks/storage-task-service';
 import type { TransferPreferences } from './tasks/transfer-preferences';
@@ -30,7 +30,7 @@ export class ApplicationServices {
         await options.whenReady();
         signal.throwIfAborted();
         const { createDesktopDownloadPreferences } =
-          await import('./downloads/desktop-download-preferences');
+          await import('./preferences/desktop-download-preferences');
         signal.throwIfAborted();
         return createDesktopDownloadPreferences();
       },

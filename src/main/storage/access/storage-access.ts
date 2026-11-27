@@ -86,6 +86,17 @@ export class StorageAccess {
     );
   }
 
+  async ancestorLocators(
+    input: EntryRef,
+    context: OperationContext = {},
+  ): Promise<readonly string[] | undefined> {
+    const ref = parse(entryRefSchema, input);
+    return this.withConnection(ref.connectionId, context, async ({ adapter, context }) => {
+      if (!adapter.ancestorLocators) return undefined;
+      return adapter.ancestorLocators(ref, context);
+    });
+  }
+
   async list(
     input: EntryRef,
     inputRequest: ListRequest = {},

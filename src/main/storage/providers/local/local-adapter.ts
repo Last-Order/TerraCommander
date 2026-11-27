@@ -264,6 +264,20 @@ class LocalAdapter implements StorageAdapter {
     return this.toEntry(ref, basename(path) || parse(path).root, path, info, signal);
   }
 
+  async ancestorLocators(ref: EntryRef, { signal }: OperationContext): Promise<readonly string[]> {
+    throwIfAborted(signal);
+    const segments = splitLocalLocator(ref.locator);
+    if (segments.some((segment) => !this.platform.isValidLocatorSegment(segment))) {
+      throw new StorageError('InvalidArgument');
+    }
+    const locators: string[] = [];
+    for (let length = segments.length; length > 0; length -= 1) {
+      locators.push(segments.slice(0, length).join('/'));
+    }
+    locators.push('.');
+    return locators;
+  }
+
   async list(
     parent: EntryRef,
     { cursor }: ListRequest,

@@ -45,6 +45,9 @@ export interface StorageProviderIntegration {
   createAdapterFactory(): AdapterFactory;
   builtInSpace?(connectionId: string): Space | undefined;
   validateStoredSpace?(space: { id: string; locator?: string }): boolean;
+  validateEntryName?(name: string): boolean;
+  /** Returns an account-independent object key when the same underlying entry can appear under multiple connections. */
+  canonicalEntryKey?(ref: EntryRef): string | undefined;
   resolvePath?(ref: EntryRef): Promise<{ path: string; kind: Entry['kind'] }>;
   inspectTransfer?(
     target: EntryRef,

@@ -24,11 +24,15 @@ export class StorageSpaceCatalog {
     return result;
   }
 
-  async listSpaces(id: string, refresh = false): Promise<SpaceChoice[]> {
-    const integration = await this.connections.resolveIntegration(id);
+  async ensureDiscovered(id: string, refresh = false): Promise<void> {
     if (refresh || this.preferences.discoveredSpaces(id) === undefined) {
       await this.discoverSpaces(id);
     }
+  }
+
+  async listSpaces(id: string, refresh = false): Promise<SpaceChoice[]> {
+    const integration = await this.connections.resolveIntegration(id);
+    await this.ensureDiscovered(id, refresh);
     const known = this.knownSpaces(id, integration);
     const choices = Array.from(known.values(), (space) => ({ space, available: true }));
     for (const space of this.displayedSpaces(id, integration)) {

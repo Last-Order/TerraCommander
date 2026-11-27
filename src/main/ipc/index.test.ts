@@ -9,7 +9,7 @@ import type { Entry } from '@shared/storage';
 import { defaultTransferConcurrency } from '@shared/tasks';
 import { AccountError } from '../accounts/core/errors';
 import { ApplicationServices } from '../services/application-services';
-import { DownloadPreferences } from '../services/downloads/download-preferences';
+import { DownloadPreferences } from '../services/preferences/download-preferences';
 import { createDefaultStorageProviders } from '../services/storage/providers/default-providers';
 import { StoragePreferences } from '../services/storage/storage-preferences';
 import { createStorageServices } from '../services/storage/storage-services';
