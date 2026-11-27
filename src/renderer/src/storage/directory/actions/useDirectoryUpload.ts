@@ -7,7 +7,7 @@ import { useStorageTaskQueue } from '@renderer/storage/tasks/storage-task-queue-
 import type { PasteEntriesResponse } from '@shared/tasks';
 import { useCurrentDirectory } from '../current-directory-context';
 import type { DirectoryTransferConflictModal } from '../modals/DirectoryEntryModals';
-import type { DirectoryViewStore } from '../state/directory-view-store';
+import { useDirectoryViewStore } from '../state/directory-view-context';
 import {
   buildLocalPathsDropRequest,
   canDropLocalFilesIntoDirectory,
@@ -21,7 +21,6 @@ const uploadErrorNotification = 'directory-upload-error';
 
 interface DirectoryUploadOptions {
   blocked: boolean;
-  viewStore: DirectoryViewStore;
 }
 
 interface UploadConflictState {
@@ -38,10 +37,11 @@ function closestRowElement(target: EventTarget | null): HTMLTableRowElement | nu
   return null;
 }
 
-export function useDirectoryUpload({ blocked, viewStore }: DirectoryUploadOptions) {
+export function useDirectoryUpload({ blocked }: DirectoryUploadOptions) {
   const { t } = useTranslation(['storage', 'errors']);
   const { directoryEffects, onAuthRequired } = useStorageWorkspace();
   const queue = useStorageTaskQueue();
+  const viewStore = useDirectoryViewStore();
   const {
     ref: parent,
     provider,

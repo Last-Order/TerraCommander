@@ -1,5 +1,5 @@
 import { ChevronRight, FolderOpen } from 'lucide-react';
-import { useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useLayoutEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   entryKey,
@@ -17,7 +17,16 @@ import {
   type CurrentDirectoryContextValue,
 } from './current-directory-context';
 import { DirectoryListing } from './DirectoryListing';
+import { DirectoryViewContext } from './state/directory-view-context';
+import { createDirectoryViewStore } from './state/directory-view-store';
 import classes from './DirectoryPane.module.css';
+
+function DirectoryViewProvider({ children }: { children: ReactNode }) {
+  const [viewStore] = useState(() => createDirectoryViewStore());
+  return (
+    <DirectoryViewContext.Provider value={viewStore}>{children}</DirectoryViewContext.Provider>
+  );
+}
 
 interface Location {
   ref: EntryRef;
@@ -70,37 +79,38 @@ export function DirectoryPane({ space, provider }: DirectoryProps) {
   return (
     <main className={classes.directory}>
       <CurrentDirectoryContext.Provider value={currentDirectory}>
-        <DirectoryListing
-          key={`${entryKey(current.ref)}:${version}`}
-          cacheable={trail.length === 1}
-          version={version}
-          onOpen={(entry) => setTrail([...trail, entry])}
-          onNavigateUp={navigateUp}
-        >
-          <nav className={classes.breadcrumbs} aria-label={t('currentDirectory')}>
-            {trail.map((location, index) => {
-              const name = formatStorageLabel(location.name, t);
-              return (
-                <div className={classes.crumb} key={index}>
-                  {index > 0 && <ChevronRight size={16} strokeWidth={1.5} aria-hidden="true" />}
-                  {index === trail.length - 1 ? (
-                    <span aria-current="page" title={name}>
-                      {name}
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setTrail(trail.slice(0, index + 1))}
-                      title={name}
-                    >
-                      {name}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </nav>
-        </DirectoryListing>
+        <DirectoryViewProvider key={`${entryKey(current.ref)}:${version}`}>
+          <DirectoryListing
+            cacheable={trail.length === 1}
+            version={version}
+            onOpen={(entry) => setTrail([...trail, entry])}
+            onNavigateUp={navigateUp}
+          >
+            <nav className={classes.breadcrumbs} aria-label={t('currentDirectory')}>
+              {trail.map((location, index) => {
+                const name = formatStorageLabel(location.name, t);
+                return (
+                  <div className={classes.crumb} key={index}>
+                    {index > 0 && <ChevronRight size={16} strokeWidth={1.5} aria-hidden="true" />}
+                    {index === trail.length - 1 ? (
+                      <span aria-current="page" title={name}>
+                        {name}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setTrail(trail.slice(0, index + 1))}
+                        title={name}
+                      >
+                        {name}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </nav>
+          </DirectoryListing>
+        </DirectoryViewProvider>
       </CurrentDirectoryContext.Provider>
     </main>
   );

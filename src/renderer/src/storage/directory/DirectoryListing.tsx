@@ -26,8 +26,7 @@ import { DirectorySearch } from './search/DirectorySearch';
 import { useDirectorySearch } from './search/useDirectorySearch';
 import { buildDirectoryRows } from './state/directory-rows';
 import { useDirectorySortStore } from './state/directory-sort';
-import { DirectoryViewContext } from './state/directory-view-context';
-import { createDirectoryViewStore } from './state/directory-view-store';
+import { useDirectoryViewStore } from './state/directory-view-context';
 import { resolveEntryCapabilities } from './state/entry-capabilities';
 import { summarizeSelection } from './state/selection-summary';
 import { useDirectoryRenames } from './state/useDirectoryEffects';
@@ -81,13 +80,7 @@ export function DirectoryListing({
     [entries, optimisticNames, snapshot, sort, i18n.resolvedLanguage],
   );
 
-  const [viewStore] = useState(() =>
-    createDirectoryViewStore({
-      entries,
-      ready: phase === 'ready',
-      rows,
-    }),
-  );
+  const viewStore = useDirectoryViewStore();
 
   useLayoutEffect(() => {
     viewStore.getState().syncListing({
@@ -117,7 +110,7 @@ export function DirectoryListing({
     return () => scrollElement.removeEventListener('click', clearOnBlankClick);
   }, [scrollElement, viewStore]);
 
-  const selectedEntries = useSelectedEntries(viewStore);
+  const selectedEntries = useSelectedEntries();
 
   const selectionStatus = useMemo(() => summarizeSelection(selectedEntries), [selectedEntries]);
   useEffect(() => {
@@ -152,7 +145,7 @@ export function DirectoryListing({
     menuEntry: menu.menuEntry,
     onOpenModal: menu.closeMenu,
   });
-  const upload = useDirectoryUpload({ blocked: loading || error !== null, viewStore });
+  const upload = useDirectoryUpload({ blocked: loading || error !== null });
 
   const { closeMenu } = menu;
   const selectSearchMatch = useCallback(
@@ -187,7 +180,7 @@ export function DirectoryListing({
   const centeredState = (error && entries.size === 0) || (!error && snapshot?.size === 0);
 
   return (
-    <DirectoryViewContext.Provider value={viewStore}>
+    <>
       <DirectoryToolbar actions={commands.blankActions} upload={upload} moreButton={moreButton}>
         {children}
       </DirectoryToolbar>
@@ -252,6 +245,6 @@ export function DirectoryListing({
         transferConflict={clipboard.pasteConflict ?? upload.transferConflict}
         onClose={modals.closeModal}
       />
-    </DirectoryViewContext.Provider>
+    </>
   );
 }
