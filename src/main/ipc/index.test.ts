@@ -10,7 +10,8 @@ import { defaultTransferConcurrency } from '@shared/tasks';
 import { AccountError } from '../accounts/core/errors';
 import { ApplicationServices } from '../services/application-services';
 import { DownloadPreferences } from '../services/preferences/download-preferences';
-import { createDefaultStorageProviders } from '../services/storage/providers/default-providers';
+import { createGoogleDriveStorageProvider } from '../services/storage/providers/google-drive-storage-provider';
+import { createLocalStorageProvider } from '../services/storage/providers/local-storage-provider';
 import { StoragePreferences } from '../services/storage/storage-preferences';
 import { createStorageServices } from '../services/storage/storage-services';
 import { StorageTaskService } from '../services/tasks/storage-task-service';
@@ -36,7 +37,7 @@ afterEach(async () => {
   await Promise.all(activeServices.splice(0).map((services) => services.dispose()));
 });
 
-function setup() {
+function setup(localVolumes?: () => Promise<string[]>) {
   handlers.clear();
   const entryUrl = 'file:///D:/app/index.html';
   const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
@@ -66,7 +67,8 @@ function setup() {
       throw new Error('Accounts must not be initialized.');
     },
     logger: { event() {} },
-    providers: createDefaultStorageProviders(),
+    providers: [createLocalStorageProvider(localVolumes), createGoogleDriveStorageProvider()],
+    localVolumes,
   });
   const services = new ApplicationServices({ whenReady: async () => {} });
   activeServices.push(services);
@@ -152,7 +154,7 @@ it('validates task delete, rename, and create-directory requests strictly before
     [],
     [null],
     [{ ...validDelete, entries: [] }],
-    [{ ...validDelete, entries: [{ ...entry, ref: { ...entry.ref, connectionId: 'invalid' } }] }],
+    [{ ...validDelete, entries: [{ ...entry, ref: { ...entry.ref, connectionId: 'bad id!' } }] }],
     [{ ...validDelete, mode: 'permanent' }],
     [validDelete, 'extra'],
   ]) {
@@ -171,7 +173,7 @@ it('validates task delete, rename, and create-directory requests strictly before
     [null],
     [{ parent, name: '   ', directoryPath: '/disk' }],
     [{ parent, name: 'a\0b', directoryPath: '/disk' }],
-    [{ parent: { ...parent, connectionId: 'invalid' }, name: 'projects', directoryPath: '/disk' }],
+    [{ parent: { ...parent, connectionId: 'bad id!' }, name: 'projects', directoryPath: '/disk' }],
     [{ ...validCreateDirectory, extra: true }],
     [validCreateDirectory, 'extra'],
   ]) {
@@ -241,13 +243,64 @@ it('reads download settings without loading storage or accounts', async () => {
   );
 });
 
-it('uploads the selected file with speed reporting, pause and resume in the task queue', async () => {
-  const { event, storage, parent, entry, send } = setup();
-  const upload = handlers.get(channels.uploadFileTask)!;
+it('transfers a file picked via local dialog with progress, pause, and resume in the unified queue', async () => {
+  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-transfer-ipc-'));
+  const { event, storage, parent, entry, send } = setup(async () => [temporary.path]);
+  const transferDialog = handlers.get(channels.transferFromLocalDialogTask)!;
   const remoteParent = { ...parent, connectionId: '5e45885a-89f0-462e-9821-7195cba174e5' };
-  const request = { parent: remoteParent, directoryPath: '/Drive' };
-  const target = vi.spyOn(storage.uploads, 'validateDestination').mockResolvedValue(undefined);
-  const uploaded = { ...entry, ref: { ...remoteParent, locator: 'uploaded-file' } };
+  const request = {
+    targetParent: remoteParent,
+    targetDirectoryPath: '/Drive',
+    kind: 'file' as const,
+  };
+  const remoteDirEntry: Entry = {
+    ref: remoteParent,
+    name: 'Drive',
+    kind: 'directory',
+    capabilities: {
+      write: { support: 'supported' },
+      pausableWrite: { support: 'supported' },
+      createDirectory: { support: 'supported' },
+    },
+  };
+  const originalStat = storage.operations.statEntry.bind(storage.operations);
+  vi.spyOn(storage.operations, 'statEntry').mockImplementation((ref, ctx) =>
+    ref.connectionId === remoteParent.connectionId
+      ? Promise.resolve(remoteDirEntry)
+      : originalStat(ref, ctx),
+  );
+  vi.spyOn(storage.operations, 'spaceCapabilities').mockResolvedValue(remoteDirEntry.capabilities);
+  vi.spyOn(storage.operations, 'spaceSemantics').mockResolvedValue({ allowsDuplicateNames: true });
+  vi.spyOn(storage.operations, 'resolveProvider').mockImplementation(async (id) =>
+    id === 'local' ? 'local' : 'google-drive',
+  );
+  vi.spyOn(storage.operations, 'validateEntryName').mockResolvedValue(true);
+  vi.spyOn(storage.operations, 'openDirectoryScope').mockResolvedValue({
+    root: remoteParent,
+    assertValid: async () => {},
+    ensureDirectory: async (_parent, name) => ({
+      entry: {
+        ref: { ...remoteParent, locator: name },
+        name,
+        kind: 'directory',
+        capabilities: remoteDirEntry.capabilities,
+      },
+      created: true,
+    }),
+    cleanupCreated: async () => {},
+  });
+  vi.spyOn(storage.operations, 'inspectCrossConnectionTransfer').mockResolvedValue({
+    selfContained: false,
+  });
+  vi.spyOn(storage.operations, 'canonicalEntryKey').mockImplementation(
+    async (ref) => `${ref.connectionId}:${ref.spaceId}:${ref.locator}`,
+  );
+  vi.spyOn(storage.operations, 'targetLockKeys').mockResolvedValue({
+    exclusive: ['slot:remote/notes.txt'],
+    shared: ['remote'],
+  });
+
+  const uploaded: Entry = { ...entry, ref: { ...remoteParent, locator: 'uploaded-file' } };
   const run = vi
     .fn<WriteExecution['run']>()
     .mockImplementationOnce(async ({ pauseSignal, onBytesSent, onProgress }) => {
@@ -261,26 +314,33 @@ it('uploads the selected file with speed reporting, pause and resume in the task
       return interrupted;
     })
     .mockResolvedValueOnce(uploaded);
-  const write = vi.spyOn(storage.operations, 'prepareUpload').mockReturnValue({ run });
+  const prepareWrite = vi.spyOn(storage.operations, 'prepareWrite').mockReturnValue({ run });
   const snapshot = () => handlers.get(channels.getTaskSnapshot)!(event);
 
-  expect(await upload(event, { ...request, path: 'D:\\other.txt' })).toEqual({
+  expect(await transferDialog(event, { ...request, extra: true })).toEqual({
     ok: false,
     code: 'InvalidArgument',
   });
-  await expect(upload({ ...event, sender: {} }, request)).rejects.toThrow('Untrusted IPC sender');
+  await expect(transferDialog({ ...event, sender: {} }, request)).rejects.toThrow(
+    'Untrusted IPC sender',
+  );
   expect(picker).not.toHaveBeenCalled();
 
   picker.mockResolvedValueOnce({ canceled: true, filePaths: [] });
-  expect(await upload(event, request)).toEqual({ ok: true, value: undefined });
-  expect(write).not.toHaveBeenCalled();
+  expect(await transferDialog(event, request)).toEqual({
+    ok: true,
+    value: { status: 'started' },
+  });
+  expect(prepareWrite).not.toHaveBeenCalled();
 
-  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-upload-ipc-'));
-  const path = join(temporary.path, entry.name);
-  await writeFile(path, 'content');
-  picker.mockResolvedValueOnce({ canceled: false, filePaths: [path] });
-  expect(await upload(event, request)).toEqual({ ok: true, value: undefined });
-  expect(target).toHaveBeenLastCalledWith(remoteParent, undefined);
+  const filePath = join(temporary.path, entry.name);
+  await writeFile(filePath, 'content');
+  picker.mockResolvedValueOnce({ canceled: false, filePaths: [filePath] });
+  expect(await transferDialog(event, request)).toEqual({
+    ok: true,
+    value: { status: 'started' },
+  });
+
   await vi.waitFor(async () =>
     expect(await snapshot()).toMatchObject({
       value: {
@@ -295,13 +355,8 @@ it('uploads the selected file with speed reporting, pause and resume in the task
       },
     }),
   );
-  expect(write).toHaveBeenCalledExactlyOnceWith(remoteParent, entry.name, expect.anything());
-  await vi.waitFor(async () => {
-    const result = (await snapshot()) as {
-      value: { tasks: [{ progress: { bytesPerSecond: number } }] };
-    };
-    expect(result.value.tasks[0].progress.bytesPerSecond).toBeGreaterThan(0);
-  });
+  expect(prepareWrite).toHaveBeenCalledTimes(1);
+
   expect(await handlers.get(channels.pauseTask)!(event, 1)).toEqual({ ok: true, value: undefined });
   await vi.waitFor(async () =>
     expect(await snapshot()).toMatchObject({
@@ -317,6 +372,7 @@ it('uploads the selected file with speed reporting, pause and resume in the task
       },
     }),
   );
+
   expect(await handlers.get(channels.resumeTask)!(event, 1)).toEqual({
     ok: true,
     value: undefined,
@@ -334,45 +390,50 @@ it('uploads the selected file with speed reporting, pause and resume in the task
       tasks: [
         {
           status: 'completed',
-          request: { type: 'upload', input: { ...request, name: entry.name } },
+          request: {
+            type: 'transfer',
+            input: {
+              mode: 'copy',
+              sourceProvider: 'local',
+              targetProvider: 'google-drive',
+              targetName: entry.name,
+            },
+          },
         },
       ],
     },
   });
-  expect(JSON.stringify(settled)).not.toContain(JSON.stringify(path));
   expect(run).toHaveBeenCalledTimes(2);
-  expect(write).toHaveBeenCalledTimes(1);
+  expect(prepareWrite).toHaveBeenCalledTimes(1);
 });
 
-it('validates coarse task download preparation, confirmation, and task control inputs', async () => {
+it('validates transfer IPC inputs and task control channels strictly before initializing task services', async () => {
   const { event, entry, parent, services, getBrowser } = setup();
   const getTasks = vi.spyOn(services.tasks, 'get');
   const id = '5e45885a-89f0-462e-9821-7195cba174e5';
   const remoteParent = { ...parent, connectionId: id };
   const remoteEntry = { ...entry, ref: { ...entry.ref, connectionId: id } };
 
-  const prepareDownload = handlers.get(channels.prepareDownloadTask)!;
-  const validPrepare = {
-    parent: remoteParent,
+  const transferToLocal = handlers.get(channels.transferToLocalDirectoryTask)!;
+  const validToLocal = {
+    sourceParent: remoteParent,
+    sourceDirectoryPath: '/Drive',
     entries: [remoteEntry],
     directory: 'D:\\Downloads',
-    directoryPath: '/Drive',
   };
   for (const invalid of [
     null,
-    { ...validPrepare, entries: [] },
-    { ...validPrepare, parent, entries: [entry] },
-    { ...validPrepare, entries: [entry] },
-    { ...validPrepare, replace: true },
-    { ...validPrepare, directory: 'D:\\Bad\0Path' },
+    { ...validToLocal, entries: [] },
+    { ...validToLocal, replace: true },
+    { ...validToLocal, directory: 'D:\\Bad\0Path' },
   ]) {
-    expect(await prepareDownload(event, invalid)).toEqual({ ok: false, code: 'InvalidArgument' });
+    expect(await transferToLocal(event, invalid)).toEqual({ ok: false, code: 'InvalidArgument' });
   }
-  await expect(prepareDownload({ ...event, sender: {} }, validPrepare)).rejects.toThrow(
+  await expect(transferToLocal({ ...event, sender: {} }, validToLocal)).rejects.toThrow(
     'Untrusted IPC sender',
   );
 
-  for (const channel of [channels.confirmDownloadTask, channels.cancelDownloadConfirmation]) {
+  for (const channel of [channels.confirmTransferTask, channels.cancelTransferConfirmation]) {
     const handler = handlers.get(channel)!;
     for (const args of [[], ['not-a-uuid'], [id, 'extra']]) {
       expect(await handler(event, ...args)).toEqual({ ok: false, code: 'InvalidArgument' });
@@ -444,13 +505,11 @@ it('cancels owner-scoped browser operations and pending task confirmations on cr
   const { event, storage, services, emitWebContents } = setup();
   const taskService = new StorageTaskService({
     operations: storage.operations,
-    downloads: storage.downloads,
-    uploads: storage.uploads,
+    transfers: storage.transfers,
+    localPathBridge: storage.localPathBridge,
   });
   vi.spyOn(services.tasks, 'get').mockResolvedValue(taskService);
   const cancelOwner = vi.spyOn(storage.browser, 'cancelOwnerOperations');
-  const cancelDownloads = vi.spyOn(storage.downloads, 'cancelOwner');
-  const cancelUploads = vi.spyOn(storage.uploads, 'cancelOwner');
   const cancelAuth = vi.spyOn(storage.browser, 'cancelAuthorization');
   const cancelTaskOwner = vi.spyOn(taskService, 'cancelOwnerOperations');
 
@@ -460,8 +519,6 @@ it('cancels owner-scoped browser operations and pending task confirmations on cr
   emitWebContents('render-process-gone');
   expect(cancelOwner).toHaveBeenCalledTimes(1);
   expect(cancelOwner).toHaveBeenLastCalledWith(1);
-  expect(cancelDownloads).toHaveBeenCalledTimes(1);
-  expect(cancelUploads).toHaveBeenCalledTimes(1);
   expect(cancelAuth).toHaveBeenCalledTimes(1);
   expect(cancelTaskOwner).toHaveBeenCalledTimes(1);
   expect(cancelTaskOwner).toHaveBeenLastCalledWith(1);
@@ -477,112 +534,32 @@ it('cancels owner-scoped browser operations and pending task confirmations on cr
   await taskService.dispose();
 });
 
-it('pauses an upload on retryable failure and resumes the existing write session', async () => {
-  const { event, storage, parent, services, send } = setup();
-  const taskService = new StorageTaskService({
-    operations: storage.operations,
-    downloads: storage.downloads,
-    uploads: storage.uploads,
-  });
-  vi.spyOn(services.tasks, 'get').mockResolvedValue(taskService);
-  const target = vi.spyOn(storage.uploads, 'validateDestination').mockResolvedValue(undefined);
-  const remoteParent = { ...parent, connectionId: '5e45885a-89f0-462e-9821-7195cba174e5' };
-  const entry = {
-    ref: { ...remoteParent, locator: 'uploaded-retry' },
-    name: 'retry.bin',
-    kind: 'file' as const,
-    size: 7,
-    capabilities: {},
-  };
-  const run = vi
-    .fn()
-    .mockImplementationOnce(async ({ onProgress }) => {
-      onProgress?.({ confirmedBytes: 3, processedBytes: 4, totalBytes: 7 });
-      throw new StorageError('NetworkError', { retryHint: 'safe' });
-    })
-    .mockResolvedValueOnce(entry);
-  const prepare = vi.spyOn(storage.operations, 'prepareUpload').mockReturnValue({ run });
-
-  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-upload-retry-'));
-  const path = join(temporary.path, entry.name);
-  await writeFile(path, 'content');
-  picker.mockResolvedValueOnce({ canceled: false, filePaths: [path] });
-
-  expect(
-    await handlers.get(channels.uploadFileTask)!(event, {
-      parent: remoteParent,
-      directoryPath: 'My Drive',
-    }),
-  ).toEqual({ ok: true, value: undefined });
-  expect(target).toHaveBeenCalledWith(remoteParent, undefined);
-  const snapshot = () => handlers.get(channels.getTaskSnapshot)!(event);
-  await vi.waitFor(async () =>
-    expect(await snapshot()).toMatchObject({
-      value: {
-        tasks: [
-          {
-            id: 1,
-            status: 'paused',
-            failure: { code: 'NetworkError' },
-            controls: { canResume: true, canCancel: true },
-            progress: { completed: 3, total: 7 },
-          },
-        ],
-      },
-    }),
-  );
-  expect(await handlers.get(channels.resumeTask)!(event, 1)).toEqual({
-    ok: true,
-    value: undefined,
-  });
-  await vi.waitFor(() =>
-    expect(send).toHaveBeenCalledWith(channels.taskEvent, {
-      type: 'directory-changed',
-      change: { kind: 'added', parent: remoteParent, entry },
-    }),
-  );
-  expect(prepare).toHaveBeenCalledTimes(1);
-  expect(run).toHaveBeenCalledTimes(2);
-  await taskService.dispose();
-});
-
-it('requires folder creation support for a folder upload destination', async () => {
-  const { event, storage, parent } = setup();
-  const uploadFolder = handlers.get(channels.uploadFolderTask)!;
-  const remoteParent = { ...parent, connectionId: '5e45885a-89f0-462e-9821-7195cba174e5' };
-  const target = vi.spyOn(storage.uploads, 'validateDestination').mockResolvedValue(undefined);
-  picker.mockResolvedValueOnce({ canceled: true, filePaths: [] });
-
-  expect(await uploadFolder(event, { parent: remoteParent, directoryPath: '/Drive' })).toEqual({
-    ok: true,
-    value: undefined,
-  });
-  expect(target).toHaveBeenLastCalledWith(remoteParent, true);
-});
-
-it('validates dropped paths and forwards them to the owning task session without a picker', async () => {
+it('validates dropped local paths and forwards them to the owning task session for any storage target', async () => {
   const { event, parent, services } = setup();
-  const uploadPaths = handlers.get(channels.uploadPathsTask)!;
+  const transferFromLocalPaths = handlers.get(channels.transferFromLocalPathsTask)!;
   const getTasks = vi.spyOn(services.tasks, 'get');
-  const uploadSelectedPaths = vi
-    .spyOn(StorageTaskService.prototype, 'uploadSelectedPaths')
-    .mockResolvedValue(undefined);
+  const spy = vi
+    .spyOn(StorageTaskService.prototype, 'transferFromLocalPaths')
+    .mockResolvedValue({ status: 'started' });
   const request = {
-    parent: { ...parent, connectionId: '5e45885a-89f0-462e-9821-7195cba174e5' },
-    directoryPath: '/Drive',
+    targetParent: parent,
+    targetDirectoryPath: 'D:\\Target',
     paths: ['D:\\cover.txt', 'D:\\docs'],
   };
 
-  expect(await uploadPaths(event, { ...request, paths: [] })).toEqual({
+  expect(await transferFromLocalPaths(event, { ...request, paths: [] })).toEqual({
     ok: false,
     code: 'InvalidArgument',
   });
-  await expect(uploadPaths({ ...event, sender: {} }, request)).rejects.toThrow(
+  await expect(transferFromLocalPaths({ ...event, sender: {} }, request)).rejects.toThrow(
     'Untrusted IPC sender',
   );
   expect(getTasks).not.toHaveBeenCalled();
 
-  expect(await uploadPaths(event, request)).toEqual({ ok: true, value: undefined });
-  expect(uploadSelectedPaths).toHaveBeenCalledExactlyOnceWith(event.sender.id, request);
+  expect(await transferFromLocalPaths(event, request)).toEqual({
+    ok: true,
+    value: { status: 'started' },
+  });
+  expect(spy).toHaveBeenCalledExactlyOnceWith(event.sender.id, request);
   expect(picker).not.toHaveBeenCalled();
 });

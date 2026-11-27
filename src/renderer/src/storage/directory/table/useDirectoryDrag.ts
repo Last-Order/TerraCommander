@@ -155,7 +155,6 @@ export function useDirectoryDrag({ blocked }: UseDirectoryDragOptions) {
       const response = await queue.pasteEntries(request);
       if (response.status === 'rejected') {
         const notice = {
-          'cross-source': { color: 'yellow', message: t('crossSourcePasteUnsupported') },
           'self-containment': { color: 'red', message: t('moveSelfContainmentError') },
           'permission-denied': { color: 'red', message: t('errors:permissionDenied') },
           unsupported: { color: 'red', message: t('errors:unsupported') },
@@ -164,7 +163,7 @@ export function useDirectoryDrag({ blocked }: UseDirectoryDragOptions) {
         return;
       }
       if (response.status === 'conflict') {
-        void queue.cancelDownloadConfirmation(response.confirmationId).catch(() => {});
+        void queue.cancelTransferConfirmation(response.confirmationId).catch(() => {});
         notifications.show({
           id: moveStatusNotification,
           color: 'red',

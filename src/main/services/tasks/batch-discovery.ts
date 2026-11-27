@@ -4,7 +4,7 @@ import { toBrowserErrorCode, toTaskFailure } from './task-errors';
 
 export interface BatchDirectoryPage<TItem> {
   items: TItem[];
-  nextOffset?: number;
+  nextOffset?: number | undefined;
 }
 
 export interface BatchDiscoveryConfig<TItem, TDefinitions extends TaskDefinitions> {

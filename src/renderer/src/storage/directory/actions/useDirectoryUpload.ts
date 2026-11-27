@@ -73,7 +73,13 @@ export function useDirectoryUpload({ blocked }: DirectoryUploadOptions) {
         .map((file) => queue.getPathForFile(file))
         .filter((path) => path.length > 0);
       if (paths.length === 0) return;
-      void startUpload(() => queue.uploadPaths({ parent, directoryPath, paths }));
+      void startUpload(async () => {
+        await queue.transferFromLocalPaths({
+          targetParent: parent,
+          targetDirectoryPath: directoryPath,
+          paths,
+        });
+      });
     },
   };
 
@@ -81,8 +87,22 @@ export function useDirectoryUpload({ blocked }: DirectoryUploadOptions) {
     disabled,
     dropActive: dragActive && canDrop,
     dropZoneProps,
-    uploadFile: () => startUpload(() => queue.uploadFile({ parent, directoryPath })),
-    uploadFolder: () => startUpload(() => queue.uploadFolder({ parent, directoryPath })),
+    uploadFile: () =>
+      startUpload(async () => {
+        await queue.transferFromLocalDialog({
+          targetParent: parent,
+          targetDirectoryPath: directoryPath,
+          kind: 'file',
+        });
+      }),
+    uploadFolder: () =>
+      startUpload(async () => {
+        await queue.transferFromLocalDialog({
+          targetParent: parent,
+          targetDirectoryPath: directoryPath,
+          kind: 'directory',
+        });
+      }),
   };
 }
 

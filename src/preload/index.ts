@@ -32,15 +32,17 @@ const api: DesktopApi = {
       ipcRenderer.invoke(channels.enqueueCreateDirectoryTask, request),
     enqueueRename: (request) => ipcRenderer.invoke(channels.enqueueRenameTask, request),
     enqueueDelete: (request) => ipcRenderer.invoke(channels.enqueueDeleteTask, request),
-    uploadFile: (request) => ipcRenderer.invoke(channels.uploadFileTask, request),
-    uploadFolder: (request) => ipcRenderer.invoke(channels.uploadFolderTask, request),
     getPathForFile: (file) => webUtils.getPathForFile(file),
-    uploadPaths: (request) => ipcRenderer.invoke(channels.uploadPathsTask, request),
-    prepareDownload: (request) => ipcRenderer.invoke(channels.prepareDownloadTask, request),
-    confirmDownload: (confirmationId) =>
-      ipcRenderer.invoke(channels.confirmDownloadTask, confirmationId),
-    cancelDownloadConfirmation: (confirmationId) =>
-      ipcRenderer.invoke(channels.cancelDownloadConfirmation, confirmationId),
+    transferFromLocalDialog: (request) =>
+      ipcRenderer.invoke(channels.transferFromLocalDialogTask, request),
+    transferFromLocalPaths: (request) =>
+      ipcRenderer.invoke(channels.transferFromLocalPathsTask, request),
+    transferToLocalDirectory: (request) =>
+      ipcRenderer.invoke(channels.transferToLocalDirectoryTask, request),
+    confirmTransfer: (confirmationId) =>
+      ipcRenderer.invoke(channels.confirmTransferTask, confirmationId),
+    cancelTransferConfirmation: (confirmationId) =>
+      ipcRenderer.invoke(channels.cancelTransferConfirmation, confirmationId),
     pasteEntries: (request) => ipcRenderer.invoke(channels.pasteEntriesTask, request),
     pause: (taskId) => ipcRenderer.invoke(channels.pauseTask, taskId),
     resume: (taskId) => ipcRenderer.invoke(channels.resumeTask, taskId),

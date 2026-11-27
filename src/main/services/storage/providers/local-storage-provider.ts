@@ -2,7 +2,6 @@ import {
   inspectLocalTransfer,
   localAdapterFactory,
   localSpaceSemanticsFor,
-  locateLocalEntry,
 } from '@main/storage/providers/local/local-adapter';
 import {
   defaultLocalPlatform,
@@ -48,10 +47,6 @@ export function createLocalStorageProvider(
     canonicalEntryKey: (ref) => {
       const locator = platform.caseSensitive ? ref.locator : ref.locator.toLowerCase();
       return `local:${ref.spaceId}:${locator}`;
-    },
-    async resolvePath(ref) {
-      const { path, kind } = await locateLocalEntry(ref, volumes, undefined, undefined, platform);
-      return { path, kind };
     },
     inspectTransfer(target, sources, mode, context) {
       return inspectLocalTransfer(target, sources, mode, volumes, platform, context?.signal);

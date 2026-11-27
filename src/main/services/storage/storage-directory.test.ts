@@ -78,10 +78,6 @@ it('provides directory-scoped operations, child handles, and local transfer insp
       rootDir.file({ connectionId: localConnectionId, spaceId: 'other-space', locator: 'a.txt' }),
     ).toThrow(expect.objectContaining({ code: 'InvalidArgument' }));
 
-    const resolved = await operations.resolveLocalPath(dstDir.ref);
-    expect(resolved).toEqual({ path: join(temporary.path, 'dst'), kind: 'directory' });
-    expect('dev' in resolved).toBe(false);
-
     expect(
       await operations.inspectTransfer(
         nestedDir.ref,

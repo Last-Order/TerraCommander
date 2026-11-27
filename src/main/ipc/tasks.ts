@@ -1,26 +1,24 @@
 import { dialog, type BrowserWindow } from 'electron';
 import { z } from 'zod';
 import { channels } from '@shared/contracts';
-import { localConnectionId } from '@shared/storage-browser';
 import { isTrustedRenderer } from '../security';
 import type { ApplicationServices } from '../services/application-services';
 import type { StorageTaskService } from '../services/tasks/storage-task-service';
 import { entryNameSchema, entryRefSchema, entrySchema } from '../storage/core/validation';
 import type { TrustedIpc } from './helpers';
 
-const connectionId = z.union([z.literal(localConnectionId), z.uuid()]);
+const connectionId = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9-]+$/);
 const refSchema = entryRefSchema.extend({
   connectionId,
   spaceId: z.string().min(1).max(1024),
   locator: z.string().min(1).max(32_768),
 });
-const remoteRefSchema = refSchema.extend({ connectionId: z.uuid() });
 const taskEntrySchema = entrySchema.extend({
   ref: refSchema,
-  name: z.string().min(1).max(32_768),
-});
-const downloadEntrySchema = entrySchema.extend({
-  ref: remoteRefSchema,
   name: z.string().min(1).max(32_768),
 });
 const pathSchema = z
@@ -60,19 +58,25 @@ const pasteEntriesSchema = z.strictObject({
   targetAncestors: z.array(refSchema).optional(),
 });
 
-const uploadFileSchema = z.strictObject({ parent: remoteRefSchema, directoryPath: pathSchema });
-
-const uploadPathsSchema = z.strictObject({
-  parent: remoteRefSchema,
-  directoryPath: pathSchema,
-  paths: z.array(pathSchema.min(1)).min(1),
+const transferFromLocalDialogSchema = z.strictObject({
+  targetParent: refSchema,
+  targetDirectoryPath: pathSchema,
+  kind: z.enum(['file', 'directory']),
+  targetAncestors: z.array(refSchema).optional(),
 });
 
-const prepareDownloadSchema = z.strictObject({
-  parent: remoteRefSchema,
-  entries: z.array(downloadEntrySchema).min(1),
+const transferFromLocalPathsSchema = z.strictObject({
+  targetParent: refSchema,
+  targetDirectoryPath: pathSchema,
+  paths: z.array(pathSchema.min(1)).min(1),
+  targetAncestors: z.array(refSchema).optional(),
+});
+
+const transferToLocalDirectorySchema = z.strictObject({
+  sourceParent: refSchema,
+  sourceDirectoryPath: pathSchema,
+  entries: z.array(taskEntrySchema).min(1),
   directory: pathSchema,
-  directoryPath: pathSchema,
 });
 
 export function registerTaskIpc(
@@ -148,45 +152,40 @@ export function registerTaskIpc(
   handleTask(channels.pasteEntriesTask, z.tuple([pasteEntriesSchema]), (tasks, window, request) =>
     tasks.pasteEntries(window.webContents.id, request),
   );
-  handleTask(channels.uploadFileTask, z.tuple([uploadFileSchema]), (tasks, window, request) =>
-    tasks.uploadPaths(window.webContents.id, request, async () => {
-      const result = await dialog.showOpenDialog(window, {
-        properties: ['openFile', 'multiSelections'],
-      });
-      return result.canceled ? [] : result.filePaths;
-    }),
-  );
-  handleTask(channels.uploadFolderTask, z.tuple([uploadFileSchema]), (tasks, window, request) =>
-    tasks.uploadPaths(
-      window.webContents.id,
-      request,
-      async () => {
+  handleTask(
+    channels.transferFromLocalDialogTask,
+    z.tuple([transferFromLocalDialogSchema]),
+    (tasks, window, request) =>
+      tasks.transferFromLocalDialog(window.webContents.id, request, async () => {
         const result = await dialog.showOpenDialog(window, {
-          properties: ['openDirectory', 'multiSelections'],
+          properties: [
+            request.kind === 'directory' ? 'openDirectory' : 'openFile',
+            'multiSelections',
+          ],
         });
         return result.canceled ? [] : result.filePaths;
-      },
-      { requireCreateDirectory: true },
-    ),
-  );
-  handleTask(channels.uploadPathsTask, z.tuple([uploadPathsSchema]), (tasks, window, request) =>
-    tasks.uploadSelectedPaths(window.webContents.id, request),
+      }),
   );
   handleTask(
-    channels.prepareDownloadTask,
-    z.tuple([prepareDownloadSchema]),
-    (tasks, window, request) => tasks.prepareDownload(window.webContents.id, request),
+    channels.transferFromLocalPathsTask,
+    z.tuple([transferFromLocalPathsSchema]),
+    (tasks, window, request) => tasks.transferFromLocalPaths(window.webContents.id, request),
   );
   handleTask(
-    channels.confirmDownloadTask,
+    channels.transferToLocalDirectoryTask,
+    z.tuple([transferToLocalDirectorySchema]),
+    (tasks, window, request) => tasks.transferToLocalDirectory(window.webContents.id, request),
+  );
+  handleTask(
+    channels.confirmTransferTask,
     z.tuple([confirmationIdSchema]),
-    (tasks, window, confirmationId) => tasks.confirmDownload(window.webContents.id, confirmationId),
+    (tasks, window, confirmationId) => tasks.confirmTransfer(window.webContents.id, confirmationId),
   );
   handleTask(
-    channels.cancelDownloadConfirmation,
+    channels.cancelTransferConfirmation,
     z.tuple([confirmationIdSchema]),
     (tasks, window, confirmationId) =>
-      tasks.cancelDownloadConfirmation(window.webContents.id, confirmationId),
+      tasks.cancelTransferConfirmation(window.webContents.id, confirmationId),
   );
   handleTask(channels.pauseTask, z.tuple([taskIdSchema]), (tasks, _window, taskId) =>
     tasks.pause(taskId),

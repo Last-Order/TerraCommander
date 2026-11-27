@@ -81,8 +81,8 @@ export class ApplicationServices {
         const service = new StorageTaskService(
           {
             operations: storage.operations,
-            downloads: storage.downloads,
-            uploads: storage.uploads,
+            transfers: storage.transfers,
+            localPathBridge: storage.localPathBridge,
           },
           {
             transferConcurrency: transferPreferences.get().concurrencyLimit,

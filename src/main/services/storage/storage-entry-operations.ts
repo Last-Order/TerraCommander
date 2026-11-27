@@ -179,14 +179,6 @@ export class StorageEntryOperations {
     return this.spaces.withBrowsableSpace(ref, () => this.storage.read(ref, options, context));
   }
 
-  resolveLocalPath(ref: EntryRef): Promise<{ path: string; kind: Entry['kind'] }> {
-    const integration = this.connections.builtInIntegration(ref.connectionId);
-    if (!integration?.resolvePath) {
-      return Promise.reject(new StorageError('InvalidArgument'));
-    }
-    return this.spaces.withBrowsableSpace(ref, () => integration.resolvePath!(ref));
-  }
-
   async inspectTransfer(
     target: EntryRef,
     sources: readonly TransferSourceRef[],

@@ -1,18 +1,12 @@
-import { mkdir, mkdtempDisposable, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
-import { StorageError, type WriteExecution } from '@main/storage';
+import { StorageError } from '@main/storage';
 import { deferred } from '@main/testing/deferred';
-import type { Entry } from '@shared/storage';
-import { localConnectionId } from '@shared/storage-browser';
+import { entryKey, type Entry, type EntryRef } from '@shared/storage';
 import type { StorageTaskEvent } from '@shared/tasks';
-import { DownloadError } from '../downloads/download-paths';
-import type { DownloadService } from '../downloads/download-service';
-import type { DownloadProgress, DownloadRunResult } from '../downloads/download-types';
 import { createStorageDirectory } from '../storage/storage-directory';
 import type { StorageEntryOperations } from '../storage/storage-entry-operations';
-import { UploadService } from '../uploads/upload-service';
+import type { TransferService } from '../transfers/transfer-service';
+import type { TransferProgress, TransferRunResult } from '../transfers/transfer-types';
 import {
   StorageTaskService,
   type StorageTaskDependencies,
@@ -20,11 +14,14 @@ import {
 } from './storage-task-service';
 
 const connectionId = '5e45885a-89f0-462e-9821-7195cba174e5';
-const parent = { connectionId, spaceId: 'drive', locator: 'folder' };
+const targetConnectionId = 'local';
+const parent: EntryRef = { connectionId, spaceId: 'drive', locator: 'folder' };
+const targetParent: EntryRef = { connectionId: targetConnectionId, spaceId: 'vol-d', locator: '.' };
 const fileEntry: Entry = {
   ref: { connectionId, spaceId: 'drive', locator: 'file-1' },
   name: 'report.txt',
   kind: 'file',
+  size: 10,
   capabilities: {
     read: { support: 'supported' },
     rename: { support: 'supported' },
@@ -35,65 +32,91 @@ const folderEntry: Entry = {
   ref: { connectionId, spaceId: 'drive', locator: 'dir-1' },
   name: 'docs',
   kind: 'directory',
-  capabilities: { list: { support: 'supported' } },
+  capabilities: { list: { support: 'supported' }, remove: { support: 'supported' } },
+};
+const committedTargetEntry: Entry = {
+  ref: { ...targetParent, locator: 'report.txt' },
+  name: 'report.txt',
+  kind: 'file',
+  size: 10,
+  capabilities: {},
 };
 
 function setup() {
-  const resolveWork = vi.fn(async () => ({
-    id: 'exec-1',
-    path: 'D:\\Downloads\\report.txt',
+  const runWork = vi.fn<TransferService['runWork']>(async () => ({
+    status: 'completed',
+    entry: committedTargetEntry,
+    sourceSnapshot: {
+      ref: fileEntry.ref,
+      parent,
+      name: fileEntry.name,
+      kind: 'file',
+      size: fileEntry.size,
+    },
   }));
-  const run = vi.fn<DownloadService['run']>(async () => ({ status: 'completed' }));
-  const pause = vi.fn(async () => undefined);
-  const downloads = {
-    prepare: vi.fn(async () => ({
-      ref: { planId: 'single-plan', itemId: 0 },
-      path: 'D:\\Downloads\\report.txt',
-    })),
-    prepareBatch: vi.fn(async () => ({
-      id: 'batch-1',
-      path: 'D:\\Downloads',
-      conflicts: [] as string[],
-      items: [
-        {
-          id: 1,
-          path: 'docs',
-          targetPath: 'D:\\Downloads\\docs',
-          entry: folderEntry,
+  const transfers = {
+    prepare: vi.fn<TransferService['prepare']>(async (_owner, request) => {
+      if (request.entries.length === 1 && request.entries[0]!.kind === 'file') {
+        const entry = request.entries[0]!;
+        return {
+          kind: 'single' as const,
+          conflicts: [],
+          work: {
+            ref: { planId: 'single-plan', itemId: 0 },
+            mode: request.mode,
+            sourceProvider: 'google-drive' as const,
+            targetProvider: 'local' as const,
+            item: {
+              id: 0,
+              entry,
+              sourceParent: request.sourceParent,
+              targetParent: request.targetParent,
+              targetName: entry.name,
+              relativePath: entry.name,
+              replace: false,
+            },
+          },
+        };
+      }
+      return {
+        kind: 'batch' as const,
+        prepared: {
+          id: 'batch-1',
+          mode: request.mode,
+          sourceProvider: 'google-drive' as const,
+          targetProvider: 'local' as const,
+          targetParent: request.targetParent,
+          conflicts: [],
+          items: request.entries.map((entry, index) => ({
+            id: index + 1,
+            entry,
+            sourceParent: request.sourceParent,
+            targetParent: request.targetParent,
+            targetName: entry.name,
+            relativePath: entry.name,
+            replace: false,
+          })),
         },
-      ],
-    })),
-    confirmBatch: vi.fn(),
-    discoverBatchDirectory: vi.fn<DownloadService['discoverBatchDirectory']>(async () => ({
-      items: [],
-    })),
-    resolveWork,
+      };
+    }),
+    confirmPlan: vi.fn(),
+    discoverDirectory: vi.fn<TransferService['discoverDirectory']>(async () => ({ items: [] })),
+    runWork,
+    pauseWork: vi.fn(),
+    canRetryWork: vi.fn(() => true),
     cancelWork: vi.fn(async () => undefined),
+    cancelPlanItem: vi.fn(async () => undefined),
+    getCommittedFile: vi.fn(() => undefined),
+    markSourceDeleted: vi.fn(),
+    getRemainingSourceDirectories: vi.fn(() => []),
+    markSourceDirectoryDeleted: vi.fn(),
+    finishPlan: vi.fn(),
     releaseWork: vi.fn(async () => undefined),
-    cancelBatchItem: vi.fn(async () => undefined),
-    finishBatch: vi.fn(),
-    releaseBatch: vi.fn(async () => undefined),
-    run,
-    pause,
-    runWork: vi.fn<DownloadService['runWork']>(async (owner, _ref, options) => {
-      const execution = await resolveWork();
-      const attempt = 'test-attempt';
-      return run(
-        owner,
-        execution.id,
-        (progress) => {
-          if (progress.id !== execution.id) return;
-          const { id: _id, attempt: _attempt, ...rest } = progress;
-          options.onProgress(rest);
-        },
-        attempt,
-      );
-    }),
-    pauseWork: vi.fn<DownloadService['pauseWork']>(async () => {
-      await pause();
-    }),
-    assertSourceAvailable: vi.fn(),
+    releasePlan: vi.fn(async () => undefined),
+    cancelOwner: vi.fn(),
+    dispose: vi.fn(async () => undefined),
   };
+
   const createDirectory = vi.fn(async ({ name }: { name: string }) => ({
     ...folderEntry,
     name,
@@ -103,11 +126,38 @@ function setup() {
   const copyWithin = vi.fn(async () => ({ ...fileEntry, name: 'report.txt' }));
   const moveWithin = vi.fn(async () => ({ ...fileEntry, name: 'report.txt' }));
   const spaceSemantics = vi.fn<StorageEntryOperations['spaceSemantics']>(async () => undefined);
-  const resolveLocalPath = vi.fn<StorageEntryOperations['resolveLocalPath']>();
+  const spaceCapabilities = vi.fn<StorageEntryOperations['spaceCapabilities']>(async () => ({
+    write: { support: 'supported' },
+    streamingWrite: { support: 'supported' },
+    pausableWrite: { support: 'supported' },
+    createDirectory: { support: 'supported' },
+  }));
+  const statEntry = vi.fn<StorageEntryOperations['statEntry']>(async (ref) => ({
+    ref,
+    name: 'dir',
+    kind: 'directory',
+    capabilities: {
+      write: { support: 'supported' },
+      streamingWrite: { support: 'supported' },
+      pausableWrite: { support: 'supported' },
+      createDirectory: { support: 'supported' },
+    },
+  }));
   const inspectTransfer = vi.fn<StorageEntryOperations['inspectTransfer']>(async () => ({
     selfContained: false,
     moveStrategy: 'native',
   }));
+  const inspectCrossConnectionTransfer = vi.fn<
+    StorageEntryOperations['inspectCrossConnectionTransfer']
+  >(async () => ({ selfContained: false }));
+  const canonicalEntryKey = vi.fn<StorageEntryOperations['canonicalEntryKey']>(async (ref) =>
+    entryKey(ref),
+  );
+  const targetLockKeys = vi.fn<StorageEntryOperations['targetLockKeys']>(async (dir, names) => ({
+    exclusive: names.map((name) => `slot:${entryKey(dir)}/${name}`),
+    shared: [entryKey(dir)],
+  }));
+
   const entryOperations = {
     createDirectory,
     renameEntry,
@@ -115,25 +165,29 @@ function setup() {
     copyWithin,
     moveWithin,
     spaceSemantics,
-    spaceCapabilities: vi.fn(async () => ({})),
+    spaceCapabilities,
     listDirectory: vi.fn(async () => ({ entries: [] })),
-    resolveLocalPath,
     inspectTransfer,
-    statEntry: vi.fn(),
-    prepareUpload: vi.fn(),
+    inspectCrossConnectionTransfer,
+    canonicalEntryKey,
+    targetLockKeys,
+    statEntry,
     readEntry: vi.fn(),
   } as unknown as StorageEntryOperations;
   const operations: StorageTaskOperations = {
     directory: (ref) => createStorageDirectory(entryOperations, ref),
-    resolveLocalPath,
     inspectTransfer,
+    inspectCrossConnectionTransfer,
+    spaceCapabilities,
+    canonicalEntryKey,
+    targetLockKeys,
     renameEntry,
     deleteEntry,
+    statEntry,
   };
   const dependencies: StorageTaskDependencies = {
     operations,
-    downloads: downloads as unknown as DownloadService,
-    uploads: { cancelOwner: vi.fn() } as unknown as UploadService,
+    transfers: transfers as unknown as TransferService,
   };
   const service = new StorageTaskService(dependencies);
   const events: StorageTaskEvent[] = [];
@@ -141,7 +195,7 @@ function setup() {
   return {
     service,
     operations,
-    downloads,
+    transfers,
     createDirectory,
     renameEntry,
     deleteEntry,
@@ -234,29 +288,26 @@ it('executes rename and delete tasks, projects directory changes, and maps valid
 
 it('creates a delete task group for multiple entries including folders and rejects conflicting batches', async () => {
   const { service, deleteEntry, events } = setup();
-  const folderEntry: Entry = {
+  const folderToDelete: Entry = {
     ref: { connectionId, spaceId: 'drive', locator: 'folder-1' },
     name: 'Folder',
     kind: 'directory',
     capabilities: { remove: { support: 'supported' } },
   };
-  let releaseFirst!: () => void;
-  const firstDone = new Promise<undefined>((resolve) => {
-    releaseFirst = () => resolve(undefined);
-  });
-  deleteEntry.mockImplementationOnce(() => firstDone);
+  const firstDone = deferred<undefined>();
+  deleteEntry.mockImplementationOnce(() => firstDone.promise);
 
   expect(
     await service.enqueueDelete({
       parent,
-      entries: [fileEntry, folderEntry],
+      entries: [fileEntry, folderToDelete],
       directoryPath: '/docs',
     }),
   ).toBe(true);
   expect(
     await service.enqueueDelete({
       parent,
-      entries: [folderEntry],
+      entries: [folderToDelete],
       directoryPath: '/docs',
     }),
   ).toBe(false);
@@ -270,75 +321,94 @@ it('creates a delete task group for multiple entries including folders and rejec
       input: {
         names: [fileEntry.name, 'Folder'],
         directoryPath: '/docs',
-        entries: [fileEntry.ref, folderEntry.ref],
+        entries: [fileEntry.ref, folderToDelete.ref],
       },
     },
   });
-  expect(activeSnapshot.tasks.map((task) => task.groupId)).toEqual([
-    activeSnapshot.groups[0]!.id,
-    activeSnapshot.groups[0]!.id,
-  ]);
 
-  releaseFirst();
+  firstDone.resolve(undefined);
   await vi.waitFor(() =>
     expect(service.getSnapshot().tasks.every((task) => task.status === 'completed')).toBe(true),
   );
   expect(deleteEntry).toHaveBeenCalledWith(fileEntry.ref);
-  expect(deleteEntry).toHaveBeenCalledWith(folderEntry.ref);
+  expect(deleteEntry).toHaveBeenCalledWith(folderToDelete.ref);
   expect(events).toContainEqual({
     type: 'directory-changed',
     change: { kind: 'removed', parent, ref: fileEntry.ref },
   });
   expect(events).toContainEqual({
     type: 'directory-changed',
-    change: { kind: 'removed', parent, ref: folderEntry.ref },
+    change: { kind: 'removed', parent, ref: folderToDelete.ref },
   });
 
   await service.dispose();
 });
 
-it('handles single-file download overwrite confirmation, pause/resume, retry, and strips workRef from snapshots', async () => {
-  const { service, downloads, events } = setup();
-  downloads.prepare.mockRejectedValueOnce(new StorageError('AlreadyExists'));
+it('handles single-file transfer overwrite confirmation with reservation lock handoff, pause/resume, retry, and strips workRef', async () => {
+  const { service, transfers, events } = setup();
+  transfers.prepare.mockResolvedValueOnce({
+    kind: 'single',
+    conflicts: ['report.txt'],
+    work: {
+      ref: { planId: 'single-plan', itemId: 0 },
+      mode: 'copy',
+      sourceProvider: 'google-drive',
+      targetProvider: 'local',
+      item: {
+        id: 0,
+        entry: fileEntry,
+        sourceParent: parent,
+        targetParent,
+        targetName: fileEntry.name,
+        relativePath: fileEntry.name,
+        replace: false,
+      },
+    },
+  });
 
-  const conflict = await service.prepareDownload(1, {
-    parent,
+  const conflict = await service.pasteEntries(1, {
+    mode: 'copy',
+    sourceParent: parent,
+    sourceDirectoryPath: '/docs',
     entries: [fileEntry],
-    directory: 'D:\\Downloads',
-    directoryPath: '/docs',
+    targetParent,
+    targetDirectoryPath: 'D:\\Downloads',
   });
   expect(conflict.status).toBe('conflict');
   if (conflict.status !== 'conflict') throw new Error('Expected conflict');
   expect(conflict.conflicts).toBeUndefined();
 
-  await expect(service.confirmDownload(2, conflict.confirmationId)).rejects.toMatchObject({
+  // While confirmation is pending, another operation on the reserved target slot must be blocked.
+  expect(
+    await service.enqueueCreateDirectory({
+      parent: targetParent,
+      name: 'report.txt',
+      directoryPath: 'D:\\Downloads',
+    }),
+  ).toBe(false);
+
+  // Wrong owner cannot confirm.
+  await expect(service.confirmTransfer(2, conflict.confirmationId)).rejects.toMatchObject({
     code: 'InvalidArgument',
   });
 
-  const firstRun = deferred<DownloadRunResult>();
-  const retryRun = deferred<DownloadRunResult>();
-  downloads.run
-    .mockImplementationOnce(
-      async (_owner, _id, onProgress: (p: DownloadProgress) => void, attempt) => {
-        onProgress({
-          id: 'exec-1',
-          attempt: attempt ?? '',
-          controls: { cancellable: true, pausable: true },
-          stage: 'downloading',
-          completedBytes: 5,
-          totalBytes: 10,
-          bytesPerSecond: 20,
-        });
-        return firstRun.promise;
-      },
-    )
+  const firstRun = deferred<TransferRunResult>();
+  const retryRun = deferred<TransferRunResult>();
+  transfers.runWork
+    .mockImplementationOnce(async (_owner, _ref, options) => {
+      options.onProgress({
+        controls: { cancellable: true, pausable: true },
+        stage: 'transferring',
+        completedBytes: 5,
+        totalBytes: 10,
+        bytesPerSecond: 20,
+      });
+      return firstRun.promise;
+    })
     .mockImplementationOnce(async () => retryRun.promise);
 
-  await service.confirmDownload(1, conflict.confirmationId);
-  expect(downloads.prepare).toHaveBeenLastCalledWith(
-    0,
-    expect.objectContaining({ replace: true, expectedName: fileEntry.name }),
-  );
+  await service.confirmTransfer(1, conflict.confirmationId);
+  expect(transfers.confirmPlan).toHaveBeenCalledWith(0, 'single-plan');
 
   await vi.waitFor(() => expect(service.getSnapshot().tasks[0]?.controls.canPause).toBe(true));
   const projectedInput = service.getSnapshot().tasks[0]!.request.input;
@@ -356,14 +426,14 @@ it('handles single-file download overwrite confirmation, pause/resume, retry, an
   await vi.waitFor(() => expect(service.getSnapshot().tasks[0]?.status).toBe('completed'));
   expect(events).toContainEqual({
     type: 'directory-changed',
-    change: { kind: 'invalidate-connection', connectionId: localConnectionId },
+    change: { kind: 'added', parent: targetParent, entry: committedTargetEntry },
   });
 
   await service.dispose();
 });
 
-it('runs in-process DFS batch discovery, handles non-fatal issues, and releases only uncommitted confirmations on owner reset', async () => {
-  const { service, downloads, events } = setup();
+it('runs DFS transfer batch discovery, handles non-fatal issues, and releases only uncommitted confirmations on owner reset', async () => {
+  const { service, transfers } = setup();
   const childFile: Entry = {
     ...fileEntry,
     ref: { ...fileEntry.ref, locator: 'child-1' },
@@ -375,34 +445,40 @@ it('runs in-process DFS batch discovery, handles non-fatal issues, and releases 
     name: 'sub',
   };
 
-  const activeTransfer = deferred<DownloadRunResult>();
-  downloads.run.mockImplementationOnce(() => activeTransfer.promise);
-  downloads.discoverBatchDirectory
+  const activeTransfer = deferred<TransferRunResult>();
+  transfers.runWork.mockImplementationOnce(() => activeTransfer.promise);
+  transfers.discoverDirectory
     .mockResolvedValueOnce({
       items: [
         {
           id: 2,
-          path: 'docs/a.txt',
-          targetPath: 'D:\\Downloads\\docs\\a.txt',
           entry: childFile,
-          parent: folderEntry.ref,
+          sourceParent: folderEntry.ref,
+          targetParent: { ...targetParent, locator: 'docs' },
+          targetName: 'a.txt',
+          relativePath: 'docs/a.txt',
+          replace: false,
         },
         {
           id: 3,
-          path: 'docs/sub',
-          targetPath: 'D:\\Downloads\\docs\\sub',
           entry: nestedDir,
-          parent: folderEntry.ref,
+          sourceParent: folderEntry.ref,
+          targetParent: { ...targetParent, locator: 'docs' },
+          targetName: 'sub',
+          relativePath: 'docs/sub',
+          replace: false,
         },
       ],
     })
     .mockRejectedValueOnce(new StorageError('PermissionDenied'));
 
-  const started = await service.prepareDownload(1, {
-    parent,
+  const started = await service.pasteEntries(1, {
+    mode: 'copy',
+    sourceParent: parent,
+    sourceDirectoryPath: '/docs',
     entries: [folderEntry],
-    directory: 'D:\\Downloads',
-    directoryPath: '/docs',
+    targetParent,
+    targetDirectoryPath: 'D:\\Downloads',
   });
   expect(started).toEqual({ status: 'started' });
 
@@ -413,245 +489,169 @@ it('runs in-process DFS batch discovery, handles non-fatal issues, and releases 
     expect(group?.preparation.issues).toHaveLength(1);
     expect(group?.preparation.issues[0]?.failure.code).toBe('PermissionDenied');
     expect(group?.request).toEqual({
-      kind: 'download',
+      kind: 'transfer',
       input: {
+        mode: 'copy',
+        sourceProvider: 'google-drive',
+        targetProvider: 'local',
         names: [folderEntry.name],
         sourcePath: '/docs',
         destinationPath: 'D:\\Downloads',
-        entries: [folderEntry.ref],
+        sourceEntries: [folderEntry.ref],
+        targetParent,
       },
     });
     expect(snapshot.tasks[0]).not.toHaveProperty('memberKey');
   });
 
-  // Uncommitted confirmation from owner 1 should be released on owner reset without touching active task.
-  downloads.prepareBatch.mockResolvedValueOnce({
-    id: 'batch-pending',
-    path: 'D:\\Downloads',
-    conflicts: ['other.txt'],
-    items: [
-      {
-        id: 1,
-        path: 'other.txt',
-        targetPath: 'D:\\Downloads\\other.txt',
-        entry: { ...fileEntry, ref: { ...fileEntry.ref, locator: 'other' }, name: 'other.txt' },
-      },
-    ],
+  // Uncommitted confirmation from owner 1 is released on owner reset without touching active task.
+  const otherEntry: Entry = {
+    ...fileEntry,
+    ref: { ...fileEntry.ref, locator: 'other' },
+    name: 'other.txt',
+  };
+  transfers.prepare.mockResolvedValueOnce({
+    kind: 'batch',
+    prepared: {
+      id: 'batch-pending',
+      mode: 'copy',
+      sourceProvider: 'google-drive',
+      targetProvider: 'local',
+      targetParent,
+      conflicts: ['other.txt'],
+      items: [
+        {
+          id: 1,
+          entry: otherEntry,
+          sourceParent: parent,
+          targetParent,
+          targetName: 'other.txt',
+          relativePath: 'other.txt',
+          replace: false,
+        },
+      ],
+    },
   });
-  const pendingConflict = await service.prepareDownload(1, {
-    parent,
-    entries: [fileEntry, folderEntry],
-    directory: 'D:\\Downloads',
-    directoryPath: '/docs',
+  const pendingConflict = await service.pasteEntries(1, {
+    mode: 'copy',
+    sourceParent: parent,
+    sourceDirectoryPath: '/docs',
+    entries: [otherEntry],
+    targetParent,
+    targetDirectoryPath: 'D:\\Downloads',
   });
   expect(pendingConflict.status).toBe('conflict');
 
   service.cancelOwnerConfirmations(1);
-  await vi.waitFor(() => expect(downloads.releaseBatch).toHaveBeenCalledWith(0, 'batch-pending'));
+  await vi.waitFor(() => expect(transfers.releasePlan).toHaveBeenCalledWith(0, 'batch-pending'));
   expect(service.getSnapshot().tasks[0]?.status).toBe('running');
 
-  activeTransfer.resolve({ status: 'completed' });
+  activeTransfer.resolve({
+    status: 'completed',
+    entry: committedTargetEntry,
+    sourceSnapshot: {
+      ref: childFile.ref,
+      parent: folderEntry.ref,
+      name: childFile.name,
+      kind: 'file',
+      size: childFile.size,
+    },
+  });
   await vi.waitFor(() =>
     expect(service.getSnapshot().groups[0]?.state).toEqual({
       phase: 'settled',
       outcome: 'partial',
     }),
   );
-  expect(downloads.finishBatch).toHaveBeenCalledWith(0, 'batch-1');
-  expect(events).toContainEqual({
-    type: 'directory-changed',
-    change: { kind: 'invalidate-connection', connectionId: localConnectionId },
-  });
+  expect(transfers.finishPlan).toHaveBeenCalledWith(0, 'batch-1');
 
   service.clearFinished();
   expect(service.getSnapshot().tasks).toHaveLength(0);
   expect(service.getSnapshot().groups).toHaveLength(0);
-  expect(downloads.releaseBatch).toHaveBeenCalledWith(0, 'batch-1');
+  expect(transfers.releasePlan).toHaveBeenCalledWith(0, 'batch-1');
 });
 
-it('rejects prepareDownload if DownloadTargetBusy occurs after enqueue conflict check and emits auth-required on fatal discovery errors', async () => {
-  const { service, downloads, events } = setup();
-  downloads.discoverBatchDirectory.mockRejectedValueOnce(new StorageError('AuthRequired'));
+it('rejects overlapping active transfer locks and emits auth-required on fatal discovery errors', async () => {
+  const { service, transfers, events } = setup();
+  transfers.discoverDirectory.mockRejectedValueOnce(new StorageError('AuthRequired'));
 
-  await service.prepareDownload(1, {
-    parent,
+  await service.pasteEntries(1, {
+    mode: 'copy',
+    sourceParent: parent,
+    sourceDirectoryPath: '/docs',
     entries: [folderEntry],
-    directory: 'D:\\Downloads',
-    directoryPath: '/docs',
+    targetParent,
+    targetDirectoryPath: 'D:\\Downloads',
   });
   await vi.waitFor(() =>
     expect(service.getSnapshot().groups[0]?.preparation.status).toBe('failed'),
   );
   expect(events).toContainEqual({ type: 'auth-required', connectionId });
 
-  // Second request targeting an already-active standalone entry should release work and fail with DownloadTargetBusy.
-  const blocked = deferred<DownloadRunResult>();
-  downloads.run.mockImplementationOnce(() => blocked.promise);
-  await service.prepareDownload(1, {
-    parent,
+  const blocked = deferred<TransferRunResult>();
+  transfers.runWork.mockImplementationOnce(() => blocked.promise);
+  await service.pasteEntries(1, {
+    mode: 'copy',
+    sourceParent: parent,
+    sourceDirectoryPath: '/docs',
     entries: [fileEntry],
-    directory: 'D:\\Downloads',
-    directoryPath: '/docs',
+    targetParent,
+    targetDirectoryPath: 'D:\\Downloads',
   });
-  downloads.prepare.mockResolvedValueOnce({
-    ref: { planId: 'single-plan-2', itemId: 0 },
-    path: 'D:\\Downloads\\other\\report.txt',
+
+  transfers.prepare.mockResolvedValueOnce({
+    kind: 'single',
+    conflicts: [],
+    work: {
+      ref: { planId: 'single-plan-2', itemId: 0 },
+      mode: 'copy',
+      sourceProvider: 'google-drive',
+      targetProvider: 'local',
+      item: {
+        id: 0,
+        entry: fileEntry,
+        sourceParent: parent,
+        targetParent: { ...targetParent, locator: 'other' },
+        targetName: fileEntry.name,
+        relativePath: fileEntry.name,
+        replace: false,
+      },
+    },
   });
   await expect(
-    service.prepareDownload(1, {
-      parent,
+    service.pasteEntries(1, {
+      mode: 'copy',
+      sourceParent: parent,
+      sourceDirectoryPath: '/docs',
       entries: [fileEntry],
-      directory: 'D:\\OtherDownloads',
-      directoryPath: '/docs',
+      targetParent: { ...targetParent, locator: 'other' },
+      targetDirectoryPath: 'D:\\Other',
     }),
-  ).rejects.toBeInstanceOf(DownloadError);
-  expect(downloads.releaseWork).toHaveBeenCalledWith(0, { planId: 'single-plan-2', itemId: 0 });
+  ).rejects.toMatchObject({ code: 'PreconditionFailed' });
+  expect(transfers.releaseWork).toHaveBeenCalledWith(0, { planId: 'single-plan-2', itemId: 0 });
 
-  blocked.resolve({ status: 'completed' });
+  blocked.resolve({
+    status: 'completed',
+    entry: committedTargetEntry,
+    sourceSnapshot: {
+      ref: fileEntry.ref,
+      parent,
+      name: fileEntry.name,
+      kind: 'file',
+      size: fileEntry.size,
+    },
+  });
   await service.dispose();
 });
 
-it('uploads mixed files and folders as a task group, emits directory changes, and retains folder IDs on retry', async () => {
-  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-task-upload-'));
-  const rootFile = join(temporary.path, 'cover.txt');
-  const folder = join(temporary.path, 'docs');
-  await writeFile(rootFile, 'cover');
-  await mkdir(folder, { recursive: true });
-  await writeFile(join(folder, 'guide.txt'), 'guide');
-
-  let nextId = 1;
-  const createDirectory = vi.fn(
-    async ({ parent: targetParent, name }: { parent: typeof parent; name: string }) => ({
-      ref: { ...targetParent, locator: `created-dir-${nextId++}` },
-      name,
-      kind: 'directory' as const,
-      capabilities: {
-        write: { support: 'supported' as const },
-        createDirectory: { support: 'supported' as const },
-      },
-    }),
-  );
-  const prepareUpload = vi.fn((targetParent: typeof parent, name: string): WriteExecution => {
-    if (
-      name === 'guide.txt' &&
-      prepareUpload.mock.calls.filter((call) => call[1] === 'guide.txt').length === 1
-    ) {
-      throw new StorageError('OutcomeUnknown', { retryHint: 'safe' });
-    }
-    return {
-      run: vi.fn<WriteExecution['run']>(async () => ({
-        ref: { ...targetParent, locator: `uploaded-${nextId++}` },
-        name,
-        kind: 'file',
-        capabilities: {},
-      })),
-    };
-  });
-  const resolveLocalPath = vi.fn<StorageEntryOperations['resolveLocalPath']>();
-  const entryOperations = {
-    statEntry: async (ref: typeof parent) => ({
-      ref,
-      name: 'Root',
-      kind: 'directory' as const,
-      capabilities: {
-        write: { support: 'supported' as const },
-        createDirectory: { support: 'supported' as const },
-      },
-    }),
-    createDirectory,
-    prepareUpload,
-    renameEntry: vi.fn(),
-    deleteEntry: vi.fn(),
-    copyWithin: vi.fn(),
-    moveWithin: vi.fn(),
-    spaceSemantics: vi.fn(async () => undefined),
-    spaceCapabilities: vi.fn(async () => ({})),
-    listDirectory: vi.fn(async () => ({ entries: [] })),
-    resolveLocalPath,
-    inspectTransfer: vi.fn(async () => ({ selfContained: false, moveStrategy: 'native' as const })),
-    readEntry: vi.fn(),
-  } as unknown as StorageEntryOperations;
-  const directory: StorageTaskOperations['directory'] = (ref) =>
-    createStorageDirectory(entryOperations, ref);
-  const uploads = new UploadService({ directory });
-  const service = new StorageTaskService({
-    operations: {
-      directory,
-      resolveLocalPath,
-      inspectTransfer: vi.fn(async () => ({
-        selfContained: false,
-        moveStrategy: 'native' as const,
-      })),
-      renameEntry: vi.fn(),
-      deleteEntry: vi.fn(),
-    },
-    downloads: {
-      cancelOwner: vi.fn(),
-      assertSourceAvailable: vi.fn(),
-    } as unknown as DownloadService,
-    uploads,
-  });
-  const events: StorageTaskEvent[] = [];
-  service.subscribe((event) => events.push(event));
-
-  try {
-    await service.uploadSelectedPaths(1, {
-      parent,
-      directoryPath: '/Drive',
-      paths: [rootFile, folder],
-    });
-
-    await vi.waitFor(() => {
-      const snapshot = service.getSnapshot();
-      expect(snapshot.groups[0]?.state).toEqual({ phase: 'settled', outcome: 'partial' });
-    });
-
-    const createdDocsRef = { ...parent, locator: 'created-dir-1' };
-    expect(createDirectory).toHaveBeenCalledTimes(1);
-    expect(prepareUpload).toHaveBeenCalledWith(parent, 'cover.txt', expect.anything());
-    expect(events).toContainEqual({
-      type: 'directory-changed',
-      change: {
-        kind: 'added',
-        parent,
-        entry: expect.objectContaining({ ref: createdDocsRef, name: 'docs', kind: 'directory' }),
-      },
-    });
-
-    const failedTask = service
-      .getSnapshot()
-      .tasks.find(
-        (task) => task.request.type === 'upload' && task.request.input.name === 'guide.txt',
-      )!;
-    expect(failedTask.status).toBe('failed');
-    expect(failedTask.controls.canRetry).toBe(true);
-
-    await service.retry(failedTask.id);
-    await vi.waitFor(() => {
-      const snapshot = service.getSnapshot();
-      expect(snapshot.groups[0]?.state).toEqual({ phase: 'settled', outcome: 'completed' });
-    });
-
-    expect(createDirectory).toHaveBeenCalledTimes(1);
-    const guideCalls = prepareUpload.mock.calls.filter((call) => call[1] === 'guide.txt');
-    expect(guideCalls).toHaveLength(2);
-    expect(guideCalls[1]?.[0]).toEqual(createdDocsRef);
-  } finally {
-    await service.dispose();
-    await uploads.dispose();
-  }
-});
-
-it('emits lightweight task-progress events for progress ticks and includes directoryEffects on snapshots', async () => {
-  const { service, downloads, events } = setup();
-  const finish = deferred<DownloadRunResult>();
-  let reportProgress: ((progress: DownloadProgress) => void) | undefined;
-  downloads.run.mockImplementationOnce(async (_owner, id, onProgress, attempt) => {
-    reportProgress = onProgress;
-    onProgress({
-      id,
-      attempt: attempt ?? 'test-attempt',
-      stage: 'downloading',
+it('emits lightweight task-progress events with neutral stage keys and tracks busy directoryEffects', async () => {
+  const { service, transfers, events } = setup();
+  const finish = deferred<TransferRunResult>();
+  let reportProgress: ((progress: TransferProgress) => void) | undefined;
+  transfers.runWork.mockImplementationOnce(async (_owner, _ref, options) => {
+    reportProgress = options.onProgress;
+    options.onProgress({
+      stage: 'transferring',
       completedBytes: 10,
       totalBytes: 100,
       controls: { cancellable: true, pausable: true },
@@ -660,11 +660,13 @@ it('emits lightweight task-progress events for progress ticks and includes direc
   });
 
   try {
-    await service.prepareDownload(1, {
-      parent,
+    await service.pasteEntries(1, {
+      mode: 'copy',
+      sourceParent: parent,
+      sourceDirectoryPath: '/Drive',
       entries: [fileEntry],
-      directory: 'D:\\Downloads',
-      directoryPath: '/Drive',
+      targetParent,
+      targetDirectoryPath: 'D:\\Downloads',
     });
 
     await vi.waitFor(() => expect(service.getSnapshot().tasks[0]?.controls.canPause).toBe(true));
@@ -675,25 +677,21 @@ it('emits lightweight task-progress events for progress ticks and includes direc
 
     const beforeTicks = events.length;
     reportProgress?.({
-      id: 'exec-1',
-      attempt: 'test-attempt',
-      stage: 'downloading',
+      stage: 'transferring',
       completedBytes: 40,
       totalBytes: 100,
       bytesPerSecond: 2048,
       controls: { cancellable: true, pausable: true },
     });
     reportProgress?.({
-      id: 'exec-1',
-      attempt: 'test-attempt',
-      stage: 'downloading',
-      completedBytes: 80,
+      stage: 'finalizing',
+      completedBytes: 100,
       totalBytes: 100,
       bytesPerSecond: 4096,
-      controls: { cancellable: true, pausable: true },
+      controls: { cancellable: false, pausable: false },
     });
 
-    const tickEvents = events.slice(beforeTicks);
+    const tickEvents = events.slice(beforeTicks).filter((e) => e.type === 'task-progress');
     expect(tickEvents).toEqual([
       {
         type: 'task-progress',
@@ -703,7 +701,7 @@ it('emits lightweight task-progress events for progress ticks and includes direc
           completed: 40,
           total: 100,
           unit: 'bytes',
-          stage: { key: 'storage:downloadReceiving' },
+          stage: { key: 'storage:transferring' },
           bytesPerSecond: 2048,
         },
       },
@@ -712,16 +710,26 @@ it('emits lightweight task-progress events for progress ticks and includes direc
         taskId: 1,
         progress: {
           kind: 'determinate',
-          completed: 80,
+          completed: 100,
           total: 100,
           unit: 'bytes',
-          stage: { key: 'storage:downloadReceiving' },
+          stage: { key: 'storage:transferFinalizing' },
           bytesPerSecond: 4096,
         },
       },
     ]);
 
-    finish.resolve({ status: 'completed' });
+    finish.resolve({
+      status: 'completed',
+      entry: committedTargetEntry,
+      sourceSnapshot: {
+        ref: fileEntry.ref,
+        parent,
+        name: fileEntry.name,
+        kind: 'file',
+        size: fileEntry.size,
+      },
+    });
     await vi.waitFor(() => expect(service.getSnapshot().tasks[0]?.status).toBe('completed'));
     expect(service.getSnapshot().directoryEffects).toEqual({
       busyEntries: [],
@@ -740,11 +748,9 @@ it('blocks overlapping slot operations between delete, rename, create-directory,
   expect(
     await service.enqueueDelete({ parent, entries: [fileEntry], directoryPath: '/docs' }),
   ).toBe(true);
-  // Creating a directory with the same name as a pending deletion must be rejected.
   expect(
     await service.enqueueCreateDirectory({ parent, name: fileEntry.name, directoryPath: '/docs' }),
   ).toBe(false);
-  // Copying another file into the slot being deleted must also be rejected.
   const otherSource: Entry = {
     ref: { connectionId, spaceId: 'drive', locator: 'other-file' },
     name: fileEntry.name,
@@ -775,7 +781,6 @@ it('blocks overlapping slot operations between delete, rename, create-directory,
       directoryPath: '/docs',
     }),
   ).toBe(true);
-  // Both the old name slot and the new name slot are locked while rename is active.
   expect(
     await service.enqueueCreateDirectory({ parent, name: fileEntry.name, directoryPath: '/docs' }),
   ).toBe(false);

@@ -48,7 +48,6 @@ export interface StorageProviderIntegration {
   validateEntryName?(name: string): boolean;
   /** Returns an account-independent object key when the same underlying entry can appear under multiple connections. */
   canonicalEntryKey?(ref: EntryRef): string | undefined;
-  resolvePath?(ref: EntryRef): Promise<{ path: string; kind: Entry['kind'] }>;
   inspectTransfer?(
     target: EntryRef,
     sources: readonly TransferSourceRef[],

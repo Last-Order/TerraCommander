@@ -1,7 +1,7 @@
 import { app, type BrowserWindow } from 'electron';
 import { z } from 'zod';
 import { channels, type AppInfo } from '@shared/contracts';
-import { localConnectionId, storageProviders } from '@shared/storage-browser';
+import { storageProviders } from '@shared/storage-browser';
 import { isTrustedRenderer } from '../security';
 import type { ApplicationServices } from '../services/application-services';
 import {
@@ -15,7 +15,11 @@ import { createTrustedIpc } from './helpers';
 import { registerSettingsIpc } from './settings';
 import { registerTaskIpc } from './tasks';
 
-const connectionId = z.union([z.literal(localConnectionId), z.uuid()]);
+const connectionId = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9-]+$/);
 const spaceId = z.string().min(1).max(1024);
 const directory = entryRefSchema.extend({
   connectionId,

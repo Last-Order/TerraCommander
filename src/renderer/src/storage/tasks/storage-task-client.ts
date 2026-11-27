@@ -5,8 +5,6 @@ import type {
   DeleteEntriesRequest,
   PasteEntriesRequest,
   PasteEntriesResponse,
-  PrepareDownloadRequest,
-  PrepareDownloadResponse,
   RenameTaskRequest,
   StorageDirectoryChange,
   StorageTaskEvent,
@@ -15,8 +13,9 @@ import type {
   StorageTaskSnapshot,
   TaskProgress,
   TasksApi,
-  UploadFileRequest,
-  UploadPathsRequest,
+  TransferFromLocalDialogRequest,
+  TransferFromLocalPathsRequest,
+  TransferToLocalDirectoryRequest,
 } from '@shared/tasks';
 import type { DirectoryCache } from '../directory/state/directory-cache';
 import type { DirectoryEffectsStore } from '../directory/state/directory-effects';
@@ -91,32 +90,28 @@ export class StorageTaskClient implements TaskQueueViewClient<
     return api ? resultOf(api.enqueueDelete(request)) : Promise.resolve(false);
   }
 
-  uploadFile(request: UploadFileRequest): Promise<void> {
-    const api = this.api;
-    if (!api) return Promise.reject(new StorageBrowserError('Unsupported'));
-    return resultOf(api.uploadFile(request));
-  }
-
-  uploadFolder(request: UploadFileRequest): Promise<void> {
-    const api = this.api;
-    if (!api) return Promise.reject(new StorageBrowserError('Unsupported'));
-    return resultOf(api.uploadFolder(request));
-  }
-
   getPathForFile(file: File): string {
     return this.api?.getPathForFile(file) ?? '';
   }
 
-  uploadPaths(request: UploadPathsRequest): Promise<void> {
+  transferFromLocalDialog(request: TransferFromLocalDialogRequest): Promise<PasteEntriesResponse> {
     const api = this.api;
     if (!api) return Promise.reject(new StorageBrowserError('Unsupported'));
-    return resultOf(api.uploadPaths(request));
+    return resultOf(api.transferFromLocalDialog(request));
   }
 
-  prepareDownload(request: PrepareDownloadRequest): Promise<PrepareDownloadResponse> {
+  transferFromLocalPaths(request: TransferFromLocalPathsRequest): Promise<PasteEntriesResponse> {
     const api = this.api;
     if (!api) return Promise.reject(new StorageBrowserError('Unsupported'));
-    return resultOf(api.prepareDownload(request));
+    return resultOf(api.transferFromLocalPaths(request));
+  }
+
+  transferToLocalDirectory(
+    request: TransferToLocalDirectoryRequest,
+  ): Promise<PasteEntriesResponse> {
+    const api = this.api;
+    if (!api) return Promise.reject(new StorageBrowserError('Unsupported'));
+    return resultOf(api.transferToLocalDirectory(request));
   }
 
   pasteEntries(request: PasteEntriesRequest): Promise<PasteEntriesResponse> {
@@ -125,14 +120,14 @@ export class StorageTaskClient implements TaskQueueViewClient<
     return resultOf(api.pasteEntries(request));
   }
 
-  confirmDownload(confirmationId: string): Promise<void> {
+  confirmTransfer(confirmationId: string): Promise<void> {
     const api = this.api;
-    return api ? resultOf(api.confirmDownload(confirmationId)) : Promise.resolve();
+    return api ? resultOf(api.confirmTransfer(confirmationId)) : Promise.resolve();
   }
 
-  cancelDownloadConfirmation(confirmationId: string): Promise<void> {
+  cancelTransferConfirmation(confirmationId: string): Promise<void> {
     const api = this.api;
-    return api ? resultOf(api.cancelDownloadConfirmation(confirmationId)) : Promise.resolve();
+    return api ? resultOf(api.cancelTransferConfirmation(confirmationId)) : Promise.resolve();
   }
 
   pause(taskId: number): Promise<void> {

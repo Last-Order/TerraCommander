@@ -81,7 +81,7 @@ export function EntryDownloadModal({
       const confirmationId = pendingConfirmationId.current;
       pendingConfirmationId.current = null;
       if (confirmationId) {
-        void queue.cancelDownloadConfirmation(confirmationId).catch(() => {
+        void queue.cancelTransferConfirmation(confirmationId).catch(() => {
           console.error('Download preparation release failed.');
         });
       }
@@ -94,13 +94,22 @@ export function EntryDownloadModal({
     setBusy(true);
     setDirectoryInvalid(false);
     try {
-      const response = await queue.prepareDownload({ parent, entries, directory, directoryPath });
+      const response = await queue.transferToLocalDirectory({
+        sourceParent: parent,
+        sourceDirectoryPath: directoryPath,
+        entries,
+        directory,
+      });
       if (!active.current) {
         if (response.status === 'conflict') {
-          void queue.cancelDownloadConfirmation(response.confirmationId).catch(() => {
+          void queue.cancelTransferConfirmation(response.confirmationId).catch(() => {
             console.error('Download preparation release failed.');
           });
         }
+        return;
+      }
+      if (response.status === 'rejected') {
+        reportError(response.reason === 'permission-denied' ? 'permissionDenied' : 'unsupported');
         return;
       }
       if (response.status === 'conflict') {
@@ -132,7 +141,7 @@ export function EntryDownloadModal({
     const confirmationId = pendingConflict.confirmationId;
     pendingConfirmationId.current = null;
     try {
-      await queue.confirmDownload(confirmationId);
+      await queue.confirmTransfer(confirmationId);
       if (active.current) onClose();
     } catch (failure) {
       if (!active.current) return;
@@ -153,7 +162,7 @@ export function EntryDownloadModal({
     if (!confirmationId) return;
     setBusy(true);
     try {
-      await queue.cancelDownloadConfirmation(confirmationId);
+      await queue.cancelTransferConfirmation(confirmationId);
     } catch (failure) {
       if (active.current) reportError(errorKey(failure));
     } finally {

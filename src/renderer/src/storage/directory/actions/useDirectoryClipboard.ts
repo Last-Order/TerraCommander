@@ -42,7 +42,7 @@ export function useDirectoryClipboard({ blocked }: DirectoryClipboardOptions) {
       const pendingId = pasteConflictIdRef.current;
       if (pendingId !== null) {
         pasteConflictIdRef.current = null;
-        void queue.cancelDownloadConfirmation(pendingId).catch(() => {});
+        void queue.cancelTransferConfirmation(pendingId).catch(() => {});
       }
     };
   }, [queue]);
@@ -101,7 +101,6 @@ export function useDirectoryClipboard({ blocked }: DirectoryClipboardOptions) {
       });
       if (response.status === 'rejected') {
         const notice = {
-          'cross-source': { color: 'yellow', message: t('crossSourcePasteUnsupported') },
           'self-containment': { color: 'red', message: t('pasteSelfContainmentError') },
           'permission-denied': { color: 'red', message: t('errors:permissionDenied') },
           unsupported: { color: 'red', message: t('errors:unsupported') },
@@ -129,7 +128,7 @@ export function useDirectoryClipboard({ blocked }: DirectoryClipboardOptions) {
     const { confirmationId, clearClipboardOnConfirm } = pasteConflict;
     setPasteConflict((current) => (current ? { ...current, busy: true } : null));
     void queue
-      .confirmDownload(confirmationId)
+      .confirmTransfer(confirmationId)
       .then(() => {
         if (clearClipboardOnConfirm) setClipboard(null);
       })
@@ -141,7 +140,7 @@ export function useDirectoryClipboard({ blocked }: DirectoryClipboardOptions) {
     if (!pasteConflict) return;
     const id = pasteConflict.confirmationId;
     setPasteConflict(null);
-    void queue.cancelDownloadConfirmation(id).catch(() => {});
+    void queue.cancelTransferConfirmation(id).catch(() => {});
   };
 
   const pasteConflictModal: DirectoryPasteConflictModal | null = pasteConflict

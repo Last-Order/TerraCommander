@@ -42,10 +42,6 @@ export class StorageConnectionManager {
     }
   }
 
-  builtInIntegration(id: string): StorageProviderIntegration | undefined {
-    return this.builtIns.get(id);
-  }
-
   async listManagedConnections(): Promise<ManagedConnection[]> {
     const accountEntries: ManagedConnection[] = [];
     const builtInEntries: ManagedConnection[] = [];

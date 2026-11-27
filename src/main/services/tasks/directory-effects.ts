@@ -12,25 +12,21 @@ export interface DirectoryEffectTask {
   status: TaskStatus;
   request:
     | { type: 'rename'; input: Pick<RenameTaskRequest, 'parent' | 'entry' | 'name'> }
-    | { type: 'delete' | 'download' | 'move'; input: { entry: { ref: EntryRef } } }
+    | { type: 'delete' | 'move'; input: { entry: { ref: EntryRef } } }
     | {
-        type: 'upload';
-        input: { display: { sourceEntries?: readonly EntryRef[] | undefined } };
+        type: 'copy';
+        input: { entry: { ref: EntryRef }; removeSourceAfterCopy?: boolean | undefined };
       }
-    | { type: 'create-directory' | 'copy'; input: unknown };
+    | { type: 'transfer'; input: { display: { entry: { ref: EntryRef } } } }
+    | { type: 'cleanup-move-source'; input: { display: { entries: readonly EntryRef[] } } }
+    | { type: 'create-directory'; input: unknown };
 }
 
 export interface DirectoryEffectGroup {
   state: TaskGroupState;
   request:
-    | {
-        kind: 'download' | 'delete' | 'move';
-        input: { entries?: readonly EntryRef[] | undefined };
-      }
-    | {
-        kind: 'upload';
-        input: { sourceEntries?: readonly EntryRef[] | undefined };
-      }
+    | { kind: 'delete' | 'move'; input: { entries: readonly EntryRef[] } }
+    | { kind: 'transfer'; input: { sourceEntries: readonly EntryRef[] } }
     | { kind: 'copy'; input: unknown };
 }
 
@@ -56,15 +52,21 @@ export function projectDirectoryEffects(
         break;
       }
       case 'delete':
-      case 'download':
       case 'move':
         markBusy(task.request.input.entry.ref);
         break;
-      case 'upload':
-        for (const ref of task.request.input.display.sourceEntries ?? []) markBusy(ref);
+      case 'copy':
+        if (task.request.input.removeSourceAfterCopy) {
+          markBusy(task.request.input.entry.ref);
+        }
+        break;
+      case 'transfer':
+        markBusy(task.request.input.display.entry.ref);
+        break;
+      case 'cleanup-move-source':
+        for (const ref of task.request.input.display.entries) markBusy(ref);
         break;
       case 'create-directory':
-      case 'copy':
         break;
     }
   }
@@ -72,13 +74,12 @@ export function projectDirectoryEffects(
   for (const group of groups) {
     if (group.state.phase === 'settled') continue;
     switch (group.request.kind) {
-      case 'download':
       case 'delete':
       case 'move':
-        for (const ref of group.request.input.entries ?? []) markBusy(ref);
+        for (const ref of group.request.input.entries) markBusy(ref);
         break;
-      case 'upload':
-        for (const ref of group.request.input.sourceEntries ?? []) markBusy(ref);
+      case 'transfer':
+        for (const ref of group.request.input.sourceEntries) markBusy(ref);
         break;
       case 'copy':
         break;

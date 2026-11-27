@@ -1,5 +1,5 @@
 import type { Entry, EntryRef } from './storage';
-import type { BrowserResult } from './storage-browser';
+import type { BrowserResult, StorageProvider } from './storage-browser';
 
 export interface TaskMessage {
   key: string;
@@ -125,11 +125,7 @@ export interface DeleteEntriesRequest {
 
 export type PasteMode = 'copy' | 'cut';
 
-export type PasteRejectionReason =
-  | 'cross-source'
-  | 'self-containment'
-  | 'permission-denied'
-  | 'unsupported';
+export type PasteRejectionReason = 'self-containment' | 'permission-denied' | 'unsupported';
 
 export interface CopyTaskRequest {
   sourceParent: EntryRef;
@@ -139,6 +135,7 @@ export interface CopyTaskRequest {
   sourceDirectoryPath: string;
   targetDirectoryPath: string;
   displayName?: string | undefined;
+  removeSourceAfterCopy?: boolean | undefined;
 }
 
 export type MoveTaskRequest = CopyTaskRequest;
@@ -153,27 +150,46 @@ export interface PasteEntriesRequest {
   targetAncestors?: readonly EntryRef[] | undefined;
 }
 
-export interface DownloadTaskDisplayInput {
-  parent: EntryRef;
+export interface TransferTaskDisplayInput {
+  mode: 'copy' | 'move';
+  sourceProvider: StorageProvider;
+  targetProvider: StorageProvider;
+  sourceParent: EntryRef;
+  targetParent: EntryRef;
   entry: Entry;
-  directoryPath: string;
-  destinationPath: string;
+  targetName: string;
+  sourceDirectoryPath: string;
+  targetDirectoryPath: string;
   displayName?: string | undefined;
 }
 
-export interface UploadFileRequest {
-  parent: EntryRef;
-  directoryPath: string;
+export interface CleanupMoveSourceTaskDisplayInput {
+  sourceParent: EntryRef;
+  sourceDirectoryPath: string;
+  targetDirectoryPath: string;
+  names: readonly string[];
+  entries: readonly EntryRef[];
 }
 
-export interface UploadPathsRequest extends UploadFileRequest {
+export interface TransferFromLocalDialogRequest {
+  targetParent: EntryRef;
+  targetDirectoryPath: string;
+  kind: 'file' | 'directory';
+  targetAncestors?: readonly EntryRef[] | undefined;
+}
+
+export interface TransferFromLocalPathsRequest {
+  targetParent: EntryRef;
+  targetDirectoryPath: string;
   paths: readonly string[];
+  targetAncestors?: readonly EntryRef[] | undefined;
 }
 
-export interface UploadTaskDisplayInput extends UploadFileRequest {
-  name: string;
-  displayName?: string | undefined;
-  sourceEntries?: readonly EntryRef[] | undefined;
+export interface TransferToLocalDirectoryRequest {
+  sourceParent: EntryRef;
+  sourceDirectoryPath: string;
+  entries: readonly Entry[];
+  directory: string;
 }
 
 export type StorageTaskRequest =
@@ -182,26 +198,21 @@ export type StorageTaskRequest =
   | { type: 'delete'; input: DeleteTaskRequest }
   | { type: 'copy'; input: CopyTaskRequest }
   | { type: 'move'; input: MoveTaskRequest }
-  | { type: 'download'; input: DownloadTaskDisplayInput }
-  | { type: 'upload'; input: UploadTaskDisplayInput };
+  | { type: 'transfer'; input: TransferTaskDisplayInput }
+  | { type: 'cleanup-move-source'; input: CleanupMoveSourceTaskDisplayInput };
 
 export type StorageTaskGroupRequest =
   | {
-      kind: 'download';
+      kind: 'transfer';
       input: {
+        mode: 'copy' | 'move';
+        sourceProvider: StorageProvider;
+        targetProvider: StorageProvider;
         names: readonly string[];
         sourcePath: string;
         destinationPath: string;
-        entries?: readonly EntryRef[] | undefined;
-      };
-    }
-  | {
-      kind: 'upload';
-      input: {
-        names: readonly string[];
-        sourcePath: string;
-        destinationPath: string;
-        sourceEntries?: readonly EntryRef[] | undefined;
+        sourceEntries: readonly EntryRef[];
+        targetParent: EntryRef;
       };
     }
   | {
@@ -263,18 +274,10 @@ export type StorageTaskEvent =
   | { type: 'directory-changed'; change: StorageDirectoryChange }
   | { type: 'auth-required'; connectionId: string };
 
-export interface PrepareDownloadRequest {
-  parent: EntryRef;
-  entries: readonly Entry[];
-  directory: string;
-  directoryPath: string;
-}
-
 export type ConflictConfirmationResponse =
   | { status: 'started' }
   | { status: 'conflict'; confirmationId: string; conflicts?: readonly string[] | undefined };
 
-export type PrepareDownloadResponse = ConflictConfirmationResponse;
 export type PasteEntriesResponse =
   | ConflictConfirmationResponse
   | { status: 'rejected'; reason: PasteRejectionReason };
@@ -292,13 +295,18 @@ export interface TasksApi {
   enqueueCreateDirectory(request: CreateDirectoryTaskRequest): Promise<BrowserResult<boolean>>;
   enqueueRename(request: RenameTaskRequest): Promise<BrowserResult<boolean>>;
   enqueueDelete(request: DeleteEntriesRequest): Promise<BrowserResult<boolean>>;
-  uploadFile(request: UploadFileRequest): Promise<BrowserResult<void>>;
-  uploadFolder(request: UploadFileRequest): Promise<BrowserResult<void>>;
   getPathForFile(file: File): string;
-  uploadPaths(request: UploadPathsRequest): Promise<BrowserResult<void>>;
-  prepareDownload(request: PrepareDownloadRequest): Promise<BrowserResult<PrepareDownloadResponse>>;
-  confirmDownload(confirmationId: string): Promise<BrowserResult<void>>;
-  cancelDownloadConfirmation(confirmationId: string): Promise<BrowserResult<void>>;
+  transferFromLocalDialog(
+    request: TransferFromLocalDialogRequest,
+  ): Promise<BrowserResult<PasteEntriesResponse>>;
+  transferFromLocalPaths(
+    request: TransferFromLocalPathsRequest,
+  ): Promise<BrowserResult<PasteEntriesResponse>>;
+  transferToLocalDirectory(
+    request: TransferToLocalDirectoryRequest,
+  ): Promise<BrowserResult<PasteEntriesResponse>>;
+  confirmTransfer(confirmationId: string): Promise<BrowserResult<void>>;
+  cancelTransferConfirmation(confirmationId: string): Promise<BrowserResult<void>>;
   pasteEntries(request: PasteEntriesRequest): Promise<BrowserResult<PasteEntriesResponse>>;
   pause(taskId: number): Promise<BrowserResult<void>>;
   resume(taskId: number): Promise<BrowserResult<void>>;

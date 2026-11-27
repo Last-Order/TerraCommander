@@ -1,7 +1,10 @@
 import { expect, it, vi } from 'vitest';
 import { StorageError } from '@main/storage';
 import type { TaskContext } from '@main/tasks/types';
-import { createTransferHandler } from './transfer-handler';
+import type { Entry, EntryRef } from '@shared/storage';
+import type { TransferService } from '../transfers/transfer-service';
+import type { CommittedTransferFile } from '../transfers/transfer-types';
+import { createCrossSourceTransferConfig, createTransferHandler } from './transfer-handler';
 
 function createContext() {
   const controller = new AbortController();
@@ -53,13 +56,13 @@ it('maps determinate/indeterminate progress, paused status, cancelled error, and
       run: async (_input, { onProgress }) => {
         onProgress({
           controls: { cancellable: true, pausable: true },
-          stageKey: 'storage:uploadSending',
+          stageKey: 'storage:transferring',
           completedBytes: 4,
           totalBytes: 0,
         });
         onProgress({
           controls: { cancellable: true, pausable: false },
-          stageKey: 'storage:downloadSaving',
+          stageKey: 'storage:transferFinalizing',
           completedBytes: 5,
           totalBytes: 10,
           bytesPerSecond: 20,
@@ -87,7 +90,7 @@ it('maps determinate/indeterminate progress, paused status, cancelled error, and
   });
   expect(reportProgress).toHaveBeenNthCalledWith(1, {
     kind: 'indeterminate',
-    stage: { key: 'storage:uploadSending' },
+    stage: { key: 'storage:transferring' },
     completedBytes: 4,
   });
   expect(reportProgress).toHaveBeenNthCalledWith(2, {
@@ -95,7 +98,7 @@ it('maps determinate/indeterminate progress, paused status, cancelled error, and
     completed: 5,
     total: 10,
     unit: 'bytes',
-    stage: { key: 'storage:downloadSaving' },
+    stage: { key: 'storage:transferFinalizing' },
     bytesPerSecond: 20,
   });
   expect(reportProgress).toHaveBeenNthCalledWith(3, {
@@ -129,4 +132,113 @@ it('maps determinate/indeterminate progress, paused status, cancelled error, and
     { code: 'AuthRequired', message: { key: 'errors:authRequired' } },
   );
   expect(emitAuthRequired).toHaveBeenCalledWith('conn-1');
+});
+
+it('fails move with SourceCleanupFailed when source deletion fails and retries only source deletion', async () => {
+  const sourceParent: EntryRef = { connectionId: 'cloud-a', spaceId: 'drive', locator: 'src' };
+  const targetParent: EntryRef = { connectionId: 'cloud-b', spaceId: 'drive', locator: 'dst' };
+  const sourceEntry: Entry = {
+    ref: { ...sourceParent, locator: 'file-1' },
+    name: 'doc.txt',
+    kind: 'file',
+    size: 5,
+    revision: 'rev-1',
+    capabilities: { read: { support: 'supported' }, remove: { support: 'supported' } },
+  };
+  const committedTarget: Entry = {
+    ref: { ...targetParent, locator: 'file-copy-1' },
+    name: 'doc.txt',
+    kind: 'file',
+    size: 5,
+    capabilities: {},
+  };
+
+  let committed: CommittedTransferFile | undefined;
+  const runWork = vi.fn(async () => {
+    committed = {
+      itemId: 0,
+      targetEntry: committedTarget,
+      targetParent,
+      sourceSnapshot: {
+        ref: sourceEntry.ref,
+        parent: sourceParent,
+        name: sourceEntry.name,
+        kind: 'file',
+        size: 5,
+        revision: 'rev-1',
+      },
+      sourceDeleted: false,
+    };
+    return {
+      status: 'completed' as const,
+      entry: committedTarget,
+      sourceSnapshot: committed.sourceSnapshot,
+    };
+  });
+  const transfers = {
+    getCommittedFile: vi.fn(() => committed),
+    runWork,
+    markSourceDeleted: vi.fn(() => {
+      if (committed) committed.sourceDeleted = true;
+    }),
+    pauseWork: vi.fn(),
+    cancelWork: vi.fn(async () => undefined),
+    canRetryWork: vi.fn(() => true),
+    releaseWork: vi.fn(async () => undefined),
+  } as unknown as TransferService;
+
+  const emitDirectoryChanged = vi.fn();
+  const deleteVerifiedSource = vi
+    .fn()
+    .mockRejectedValueOnce(new StorageError('PreconditionFailed'))
+    .mockResolvedValueOnce(undefined);
+  const handler = createTransferHandler(
+    'transfer',
+    createCrossSourceTransferConfig(transfers, { emitDirectoryChanged, deleteVerifiedSource }),
+    { emitAuthRequired: vi.fn() },
+  );
+  const input = {
+    display: {
+      mode: 'move' as const,
+      sourceProvider: 'google-drive' as const,
+      targetProvider: 'google-drive' as const,
+      sourceParent,
+      targetParent,
+      entry: sourceEntry,
+      targetName: 'doc.txt',
+      sourceDirectoryPath: '/src',
+      targetDirectoryPath: '/dst',
+    },
+    workRef: { planId: 'plan-1', itemId: 0 },
+  };
+
+  await expect(handler.execute(input, createContext().context)).rejects.toSatisfy((error) => {
+    expect(handler.toFailure(error)).toEqual({
+      code: 'SourceCleanupFailed',
+      message: { key: 'storage:copiedSourceNotRemoved' },
+    });
+    return true;
+  });
+  expect(runWork).toHaveBeenCalledTimes(1);
+  expect(deleteVerifiedSource).toHaveBeenCalledWith(
+    sourceEntry.ref,
+    { expectedRevision: 'rev-1', expectedSize: 5 },
+    expect.any(AbortSignal),
+  );
+  expect(emitDirectoryChanged).toHaveBeenCalledWith({
+    kind: 'added',
+    parent: targetParent,
+    entry: committedTarget,
+  });
+
+  // Retry must skip re-transferring the file and only retry source deletion.
+  const retryResult = await handler.execute(input, createContext().context);
+  expect(retryResult).toEqual({ status: 'completed', result: committedTarget });
+  expect(runWork).toHaveBeenCalledTimes(1);
+  expect(deleteVerifiedSource).toHaveBeenCalledTimes(2);
+  expect(emitDirectoryChanged).toHaveBeenCalledWith({
+    kind: 'removed',
+    parent: sourceParent,
+    ref: sourceEntry.ref,
+  });
 });

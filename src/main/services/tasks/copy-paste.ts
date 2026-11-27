@@ -1,7 +1,7 @@
 import { StorageError } from '@main/storage';
 import type { TaskGroupPreparationContext } from '@main/tasks/types';
 import { entryKey, type Entry, type EntryRef } from '@shared/storage';
-import { localConnectionId, type BrowserErrorCode } from '@shared/storage-browser';
+import type { BrowserErrorCode } from '@shared/storage-browser';
 import type {
   CopyTaskRequest,
   PasteEntriesRequest,
@@ -10,11 +10,17 @@ import type {
 } from '@shared/tasks';
 import type { StorageDirectory } from '../storage/storage-directory';
 import type { StorageEntryOperations } from '../storage/storage-entry-operations';
+import { resolveTransferStrategy } from '../transfers/transfer-compatibility';
+import type { SourceDirectoryCleanupEntry } from '../transfers/transfer-types';
 import { toBrowserErrorCode, toTaskFailure } from './task-errors';
 
 export type CopyPasteOperations = Pick<
   StorageEntryOperations,
-  'directory' | 'resolveLocalPath' | 'inspectTransfer'
+  | 'directory'
+  | 'inspectTransfer'
+  | 'inspectCrossConnectionTransfer'
+  | 'spaceCapabilities'
+  | 'canonicalEntryKey'
 >;
 
 export interface CopyDiscoveryItem {
@@ -24,24 +30,19 @@ export interface CopyDiscoveryItem {
   targetName: string;
   relativePath: string;
   emitAddedOnCreate: boolean;
+  depth: number;
 }
 
 export type PastePlan =
   | { kind: 'empty' }
   | { kind: 'rejected'; reason: PasteRejectionReason }
-  | { kind: 'upload'; paths: string[]; removeSources?: readonly Entry[] | undefined }
-  | {
-      kind: 'download';
-      directory: string;
-      entries: Entry[];
-      removeSources?: readonly Entry[] | undefined;
-    }
+  | { kind: 'transfer'; mode: 'copy' | 'move'; entries: Entry[] }
   | {
       kind: 'copy';
       items: CopyDiscoveryItem[];
       entries: Entry[];
       sameDirectory?: boolean | undefined;
-      removeSources?: readonly Entry[] | undefined;
+      moveAfterCopy?: boolean | undefined;
     }
   | { kind: 'move'; items: CopyDiscoveryItem[]; entries: Entry[] };
 
@@ -101,7 +102,7 @@ async function listAllNames(
   return names;
 }
 
-/** Validates a paste request and resolves it into an upload, download, copy, or move plan. */
+/** Provider-neutral unified planner for paste, OS drops, file dialogs, and save-to-local transfers. */
 export async function planPaste(
   operations: CopyPasteOperations,
   request: PasteEntriesRequest,
@@ -130,17 +131,7 @@ export async function planPaste(
     return { kind: 'empty' };
   }
 
-  // Cross-source cloud-to-cloud transfer is not supported yet.
-  if (
-    sourceConnectionId !== localConnectionId &&
-    targetConnectionId !== localConnectionId &&
-    sourceConnectionId !== targetConnectionId
-  ) {
-    return { kind: 'rejected', reason: 'cross-source' };
-  }
-
   const hasDirectory = uniqueEntries.some((entry) => entry.kind === 'directory');
-
   if (
     hasDirectory &&
     request.targetAncestors &&
@@ -155,13 +146,27 @@ export async function planPaste(
 
   const targetDirectory = operations.directory(request.targetParent);
 
-  // Local -> Cloud: resolve OS paths via local provider integration for upload.
-  if (sourceConnectionId === localConnectionId && targetConnectionId !== localConnectionId) {
-    const targetCapabilities = await targetDirectory.capabilities();
-    if (targetCapabilities.write?.support === 'unsupported') {
+  // Any cross-connection pair (Local <-> Cloud, Cloud A <-> Cloud B, etc.) uses unified transfer.
+  if (sourceConnectionId !== targetConnectionId) {
+    const crossInspection = await operations.inspectCrossConnectionTransfer(
+      request.targetParent,
+      request.targetAncestors,
+      uniqueEntries.map((entry) => ({ ref: entry.ref, kind: entry.kind })),
+    );
+    if (crossInspection.selfContained) {
+      return { kind: 'rejected', reason: 'self-containment' };
+    }
+
+    const [spaceCaps, targetEntry] = await Promise.all([
+      operations.spaceCapabilities(request.targetParent),
+      targetDirectory.stat(),
+    ]);
+    if (targetEntry.kind !== 'directory') throw new StorageError('InvalidArgument');
+    const targetCaps = { ...spaceCaps, ...targetEntry.capabilities };
+    if (targetCaps.write?.support === 'unsupported') {
       return { kind: 'rejected', reason: 'permission-denied' };
     }
-    if (hasDirectory && targetCapabilities.createDirectory?.support === 'unsupported') {
+    if (hasDirectory && targetCaps.createDirectory?.support === 'unsupported') {
       return { kind: 'rejected', reason: 'unsupported' };
     }
     if (
@@ -170,44 +175,29 @@ export async function planPaste(
     ) {
       return { kind: 'rejected', reason: 'unsupported' };
     }
-    const paths: string[] = [];
     for (const entry of uniqueEntries) {
-      const resolved = await operations.resolveLocalPath(entry.ref);
-      paths.push(resolved.path);
-    }
-    return mode === 'cut'
-      ? { kind: 'upload', paths, removeSources: uniqueEntries }
-      : { kind: 'upload', paths };
-  }
-
-  // Cloud -> Local: resolve target local directory via local provider integration for download.
-  if (sourceConnectionId !== localConnectionId && targetConnectionId === localConnectionId) {
-    const targetCapabilities = await targetDirectory.capabilities();
-    if (targetCapabilities.write?.support === 'unsupported') {
-      return { kind: 'rejected', reason: 'permission-denied' };
-    }
-    if (hasDirectory && targetCapabilities.createDirectory?.support === 'unsupported') {
-      return { kind: 'rejected', reason: 'unsupported' };
-    }
-    if (
-      mode === 'cut' &&
-      uniqueEntries.some((entry) => entry.capabilities.remove?.support === 'unsupported')
-    ) {
-      return { kind: 'rejected', reason: 'unsupported' };
-    }
-    const target = await operations.resolveLocalPath(request.targetParent);
-    if (target.kind !== 'directory') throw new StorageError('InvalidArgument');
-    return mode === 'cut'
-      ? {
-          kind: 'download',
-          directory: target.path,
-          entries: uniqueEntries,
-          removeSources: uniqueEntries,
+      if (entry.kind === 'directory') {
+        if (entry.capabilities.list?.support === 'unsupported') {
+          return { kind: 'rejected', reason: 'unsupported' };
         }
-      : { kind: 'download', directory: target.path, entries: uniqueEntries };
+        continue;
+      }
+      const compat = resolveTransferStrategy(entry, targetCaps, false);
+      if (!compat.supported) {
+        return {
+          kind: 'rejected',
+          reason: compat.code === 'PermissionDenied' ? 'permission-denied' : 'unsupported',
+        };
+      }
+    }
+    return {
+      kind: 'transfer',
+      mode: mode === 'cut' ? 'move' : 'copy',
+      entries: uniqueEntries,
+    };
   }
 
-  // Same-connection copy or move (Local -> Local or same-account Cloud -> Cloud).
+  // Same-connection copy or move (native fast path for every provider).
   const inspection = await operations.inspectTransfer(
     request.targetParent,
     uniqueEntries.map((entry) => ({ ref: entry.ref, kind: entry.kind })),
@@ -231,6 +221,7 @@ export async function planPaste(
       targetName: entry.name,
       relativePath: entry.name,
       emitAddedOnCreate: true,
+      depth: 0,
     }));
     return { kind: 'move', items, entries: uniqueEntries };
   }
@@ -262,32 +253,14 @@ export async function planPaste(
     targetName: entry.name,
     relativePath: entry.name,
     emitAddedOnCreate: true,
+    depth: 0,
   }));
 
   if (mode === 'cut') {
-    return { kind: 'copy', items, entries: uniqueEntries, removeSources: uniqueEntries };
+    return { kind: 'copy', items, entries: uniqueEntries, moveAfterCopy: true };
   }
 
   return { kind: 'copy', items, entries: uniqueEntries, sameDirectory };
-}
-
-/** Deletes source entries after a cross-device or cross-connection move completes cleanly. */
-export async function removeMovedSources(
-  deleteEntry: (ref: EntryRef) => Promise<void>,
-  sourceParent: EntryRef,
-  entries: readonly Entry[],
-  emitDirectoryChanged: (change: StorageDirectoryChange) => void,
-): Promise<void> {
-  for (const entry of entries) {
-    try {
-      await deleteEntry(entry.ref);
-      emitDirectoryChanged({ kind: 'removed', parent: sourceParent, ref: entry.ref });
-    } catch {
-      console.error('Failed to remove source entry after move.', {
-        connectionId: entry.ref.connectionId,
-      });
-    }
-  }
 }
 
 export function slotConflictKey(parent: EntryRef, name: string, caseInsensitive = false): string {
@@ -299,6 +272,9 @@ export interface PrepareCopyGroupOptions {
   allowsDuplicateNames?: boolean | undefined;
   caseInsensitive?: boolean | undefined;
   sameDirectory?: boolean | undefined;
+  moveAfterCopy?: boolean | undefined;
+  canonicalKey?: ((ref: EntryRef) => Promise<string | undefined>) | undefined;
+  onSourceDirectoryDiscovered?: ((entry: SourceDirectoryCleanupEntry) => void) | undefined;
   getReservedNames?: (() => ReadonlySet<string> | undefined) | undefined;
   onReserveName?: ((normalizedName: string) => void) | undefined;
 }
@@ -327,6 +303,9 @@ export async function prepareCopyGroup(
   context: CopyGroupPreparationContext,
   options?: PrepareCopyGroupOptions,
 ): Promise<void> {
+  const resolveCanonicalKey = async (ref: EntryRef) =>
+    (await options?.canonicalKey?.(ref)) ?? entryKey(ref);
+
   const targetKey = entryKey(targetDirectory.ref);
   const pending: PendingCopyItem[] = initialItems.map((item) => ({
     item: { ...item },
@@ -339,7 +318,7 @@ export async function prepareCopyGroup(
         ? sourceDirectory.child(item.sourceEntry.ref)
         : undefined,
   }));
-  const visitedDirectories = new Set<string>([targetKey]);
+  const visitedDirectories = new Set<string>([await resolveCanonicalKey(targetDirectory.ref)]);
   const caseInsensitive = options?.caseInsensitive === true;
 
   if (options?.sameDirectory) {
@@ -379,6 +358,12 @@ export async function prepareCopyGroup(
         });
         continue;
       }
+      const resources = options?.allowsDuplicateNames
+        ? []
+        : [slotConflictKey(item.targetParent, item.targetName, caseInsensitive)];
+      if (options?.moveAfterCopy) {
+        resources.push(entryKey(item.sourceEntry.ref));
+      }
       await context.enqueue(
         {
           type: 'copy',
@@ -390,17 +375,16 @@ export async function prepareCopyGroup(
             sourceDirectoryPath: request.sourceDirectoryPath,
             targetDirectoryPath: request.targetDirectoryPath,
             displayName: item.relativePath,
+            ...(options?.moveAfterCopy ? { removeSourceAfterCopy: true } : {}),
           },
-          resources: options?.allowsDuplicateNames
-            ? []
-            : [slotConflictKey(item.targetParent, item.targetName, caseInsensitive)],
+          resources,
         },
         `${entryKey(item.sourceEntry.ref)}->${entryKey(item.targetParent)}/${item.targetName}`,
       );
       continue;
     }
 
-    const dirKey = entryKey(item.sourceEntry.ref);
+    const dirKey = await resolveCanonicalKey(item.sourceEntry.ref);
     if (visitedDirectories.has(dirKey)) {
       continue;
     }
@@ -410,8 +394,20 @@ export async function prepareCopyGroup(
       const { entry: createdDir, directory: createdDirectory } =
         await pendingItem.targetDirectory.createDirectory(item.targetName);
       if (context.signal.aborted) return;
+      visitedDirectories.add(await resolveCanonicalKey(createdDir.ref));
       if (item.emitAddedOnCreate) {
         emitDirectoryChanged({ kind: 'added', parent: item.targetParent, entry: createdDir });
+      }
+      if (options?.moveAfterCopy) {
+        options.onSourceDirectoryDiscovered?.({
+          ref: structuredClone(item.sourceEntry.ref),
+          parent: structuredClone(item.sourceParent),
+          depth: item.depth,
+          ...(item.sourceEntry.revision !== undefined
+            ? { revision: item.sourceEntry.revision }
+            : {}),
+          removed: false,
+        });
       }
 
       const currentSourceDirectory =
@@ -429,6 +425,7 @@ export async function prepareCopyGroup(
               targetName: child.name,
               relativePath: `${item.relativePath}/${child.name}`,
               emitAddedOnCreate: false,
+              depth: item.depth + 1,
             },
             targetDirectory: createdDirectory,
             sourceDirectory:

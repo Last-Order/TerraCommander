@@ -25,6 +25,7 @@ it('projects active tasks into deduplicated busy entries and optimistic renames'
   const fileD = makeEntry('d', 'd.txt');
   const fileE = makeEntry('e', 'e.txt');
   const fileF = makeEntry('f', 'f.txt');
+  const fileG = makeEntry('g', 'g.txt');
 
   const tasks: DirectoryEffectTask[] = [
     {
@@ -37,7 +38,7 @@ it('projects active tasks into deduplicated busy entries and optimistic renames'
     },
     {
       status: 'completed',
-      request: { type: 'download', input: { entry: fileC } },
+      request: { type: 'transfer', input: { display: { entry: fileC } } },
     },
     {
       status: 'paused',
@@ -45,11 +46,15 @@ it('projects active tasks into deduplicated busy entries and optimistic renames'
     },
     {
       status: 'running',
-      request: { type: 'upload', input: { display: { sourceEntries: [fileE.ref] } } },
+      request: { type: 'transfer', input: { display: { entry: fileE } } },
     },
     {
       status: 'running',
       request: { type: 'copy', input: { entry: fileF } },
+    },
+    {
+      status: 'running',
+      request: { type: 'copy', input: { entry: fileG, removeSourceAfterCopy: true } },
     },
     {
       status: 'running',
@@ -60,7 +65,7 @@ it('projects active tasks into deduplicated busy entries and optimistic renames'
   const effects = projectDirectoryEffects(tasks, []);
 
   expect(effects).toEqual({
-    busyEntries: [fileA.ref, fileB.ref, fileD.ref, fileE.ref],
+    busyEntries: [fileA.ref, fileB.ref, fileD.ref, fileE.ref, fileG.ref],
     renames: [{ parent, entry: fileA.ref, name: 'a2.txt' }],
   });
 });
@@ -81,11 +86,11 @@ it('projects active groups without duplicating task locks and ignores settled or
   const groups: DirectoryEffectGroup[] = [
     {
       state: { phase: 'active' },
-      request: { kind: 'download', input: { entries: [fileA.ref, fileB.ref] } },
+      request: { kind: 'transfer', input: { sourceEntries: [fileA.ref, fileB.ref] } },
     },
     {
       state: { phase: 'settling' },
-      request: { kind: 'upload', input: { sourceEntries: [fileC.ref] } },
+      request: { kind: 'move', input: { entries: [fileC.ref] } },
     },
     {
       state: { phase: 'settled', outcome: 'completed' },

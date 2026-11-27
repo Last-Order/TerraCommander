@@ -45,25 +45,43 @@ export const presentStorageTask: TaskPresenter<StorageTaskItem> = (task) => {
         summary: `${input.sourceDirectoryPath} → ${input.targetDirectoryPath}`,
       };
     }
-    case 'upload':
-      return {
-        typeLabel: { key: 'storage:uploadTask' },
-        title: [{ text: task.request.input.displayName ?? task.request.input.name }],
-        summary: task.request.input.directoryPath,
-      };
-    case 'download': {
+    case 'transfer': {
       const input = task.request.input;
+      const typeLabelKey = resolveTransferTypeLabel(
+        input.mode,
+        input.sourceProvider,
+        input.targetProvider,
+      );
       return {
-        typeLabel: { key: 'storage:downloadEntry' },
-        title: [{ text: input.displayName ?? input.entry.name }],
-        summary: `${input.directoryPath} → ${input.destinationPath}`,
+        typeLabel: { key: typeLabelKey },
+        title: [{ text: input.displayName ?? input.targetName }],
+        summary: `${input.sourceDirectoryPath} → ${input.targetDirectoryPath}`,
         ...(task.status === 'skipped'
           ? { resultMessage: { key: 'errors:unsupported' as const } }
           : {}),
       };
     }
+    case 'cleanup-move-source': {
+      const input = task.request.input;
+      return {
+        typeLabel: { key: 'storage:moveTask' },
+        ...presentGroupTitle(input.names),
+        summary: `${input.sourceDirectoryPath} → ${input.targetDirectoryPath}`,
+      };
+    }
   }
 };
+
+function resolveTransferTypeLabel(
+  mode: 'copy' | 'move',
+  sourceProvider: string,
+  targetProvider: string,
+): string {
+  if (mode === 'move') return 'storage:moveTask';
+  if (sourceProvider === 'local' && targetProvider !== 'local') return 'storage:uploadTask';
+  if (sourceProvider !== 'local' && targetProvider === 'local') return 'storage:downloadEntry';
+  return 'storage:copyTask';
+}
 
 function presentGroupTitle(names: readonly string[]): Pick<TaskRowModel, 'title' | 'titleNote'> {
   return {
@@ -76,18 +94,16 @@ function presentGroupTitle(names: readonly string[]): Pick<TaskRowModel, 'title'
 
 export const presentStorageTaskGroup: TaskGroupPresenter<StorageTaskGroupItem> = (group) => {
   switch (group.request.kind) {
-    case 'upload':
+    case 'transfer': {
+      const input = group.request.input;
       return {
-        typeLabel: { key: 'storage:uploadTask' },
-        ...presentGroupTitle(group.request.input.names),
-        summary: `${group.request.input.sourcePath} → ${group.request.input.destinationPath}`,
+        typeLabel: {
+          key: resolveTransferTypeLabel(input.mode, input.sourceProvider, input.targetProvider),
+        },
+        ...presentGroupTitle(input.names),
+        summary: `${input.sourcePath} → ${input.destinationPath}`,
       };
-    case 'download':
-      return {
-        typeLabel: { key: 'storage:downloadEntry' },
-        ...presentGroupTitle(group.request.input.names),
-        summary: `${group.request.input.sourcePath} → ${group.request.input.destinationPath}`,
-      };
+    }
     case 'delete':
       return {
         typeLabel: { key: 'storage:deleteEntry' },

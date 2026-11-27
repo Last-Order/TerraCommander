@@ -1,38 +1,19 @@
-import type { TaskHandler } from '@main/tasks/types';
-import { entryKey, type Entry, type EntryRef } from '@shared/storage';
-import { localConnectionId } from '@shared/storage-browser';
-import type {
-  DownloadTaskDisplayInput,
-  StorageDirectoryChange,
-  TaskProgress,
-  UploadTaskDisplayInput,
-} from '@shared/tasks';
-import type { DownloadService } from '../downloads/download-service';
-import type { DownloadWorkRef } from '../downloads/download-types';
-import type { UploadService } from '../uploads/upload-service';
-import type { UploadWorkRef } from '../uploads/upload-types';
-import { toBrowserErrorCode, toTaskFailure } from './task-errors';
+import type { ResourceLocks, TaskHandler } from '@main/tasks/types';
+import { entryKey, type Entry, type EntryRef, type RemoveOptions } from '@shared/storage';
+import type { StorageDirectoryChange, TaskProgress, TransferTaskDisplayInput } from '@shared/tasks';
+import type { TransferService } from '../transfers/transfer-service';
+import type { TransferWorkRef } from '../transfers/transfer-types';
+import { SourceCleanupError, toBrowserErrorCode, toTaskFailure } from './task-errors';
 import { queueOwnerId } from './transfer-session-coordinator';
 
-export interface SourceCleanupTarget {
-  parent: EntryRef;
-  entry: Entry;
-}
-
-export interface InternalDownloadInput extends DownloadTaskDisplayInput {
-  workRef: DownloadWorkRef;
-  removeAfterComplete?: SourceCleanupTarget | undefined;
-}
-
-export interface InternalUploadInput {
-  display: UploadTaskDisplayInput;
-  workRef: UploadWorkRef;
-  removeAfterComplete?: SourceCleanupTarget | undefined;
+export interface InternalTransferInput {
+  display: TransferTaskDisplayInput;
+  workRef: TransferWorkRef;
 }
 
 export interface TransferProgressReport {
   controls: { cancellable: boolean; pausable: boolean };
-  stageKey: 'storage:downloadReceiving' | 'storage:downloadSaving' | 'storage:uploadSending';
+  stageKey: 'storage:transferring' | 'storage:transferFinalizing';
   completedBytes: number;
   totalBytes?: number | undefined;
   bytesPerSecond?: number | undefined;
@@ -45,7 +26,7 @@ export type TransferOutcome<TResult> =
   | { status: 'skipped' };
 
 export interface TransferHandlerConfig<TInput, TResult> {
-  conflictKeys: (input: TInput) => string[];
+  conflictKeys: (input: TInput) => ResourceLocks;
   canExecute?: (input: TInput) => boolean;
   run: (
     input: TInput,
@@ -66,7 +47,11 @@ export interface TransferHandlerConfig<TInput, TResult> {
 export interface TransferCallbacks {
   emitAuthRequired: (connectionId: string) => void;
   emitDirectoryChanged: (change: StorageDirectoryChange) => void;
-  removeMovedSource?: (target: SourceCleanupTarget) => Promise<void>;
+  deleteVerifiedSource: (
+    ref: EntryRef,
+    options: RemoveOptions,
+    signal?: AbortSignal,
+  ) => Promise<void>;
 }
 
 function toRunningProgress(progress: TransferProgressReport): TaskProgress {
@@ -103,7 +88,7 @@ function toPausedProgress(completedBytes: number, totalBytes?: number): TaskProg
   return { kind: 'indeterminate', completedBytes };
 }
 
-/** Builds a unified queue handler for both download and upload transfers. */
+/** Builds a unified queue handler for cross-source byte transfers. */
 export function createTransferHandler<TInput, TResult, TCategory extends string = 'transfer'>(
   category: TCategory,
   config: TransferHandlerConfig<TInput, TResult>,
@@ -156,100 +141,87 @@ export function createTransferHandler<TInput, TResult, TCategory extends string 
   };
 }
 
-export function createDownloadTransferConfig(
-  downloads: DownloadService,
-  callbacks: Pick<TransferCallbacks, 'emitDirectoryChanged' | 'removeMovedSource'>,
-): TransferHandlerConfig<InternalDownloadInput, void> {
+export function createCrossSourceTransferConfig(
+  transfers: TransferService,
+  callbacks: Pick<TransferCallbacks, 'emitDirectoryChanged' | 'deleteVerifiedSource'>,
+): TransferHandlerConfig<InternalTransferInput, Entry> {
   return {
-    conflictKeys: ({ entry }) => [entryKey(entry.ref)],
-    canExecute: ({ entry }) =>
-      entry.kind === 'file' && entry.capabilities.read?.support !== 'unsupported',
-    run: async ({ workRef }, { signal, onProgress }) => {
-      const result = await downloads.runWork(queueOwnerId, workRef, {
-        signal,
-        onProgress: (progress) => {
-          onProgress({
-            controls: progress.controls,
-            stageKey:
-              progress.stage === 'saving' ? 'storage:downloadSaving' : 'storage:downloadReceiving',
-            completedBytes: progress.completedBytes,
-            totalBytes: progress.totalBytes,
-            bytesPerSecond: progress.bytesPerSecond,
-          });
-        },
-      });
-      if (result.status === 'cancelled') return { status: 'cancelled' };
-      if (result.status === 'paused') {
-        return {
-          status: 'paused',
-          completedBytes: result.completedBytes,
-          totalBytes: result.totalBytes,
-          error: result.error,
+    conflictKeys: ({ display }) => [entryKey(display.entry.ref)],
+    canExecute: ({ display }) =>
+      display.entry.kind === 'file' && display.entry.capabilities.read?.support !== 'unsupported',
+    run: async ({ display, workRef }, { signal, onProgress }) => {
+      let committed = transfers.getCommittedFile(queueOwnerId, workRef);
+      if (!committed) {
+        const result = await transfers.runWork(queueOwnerId, workRef, {
+          signal,
+          onProgress: (progress) => {
+            onProgress({
+              controls: progress.controls,
+              stageKey:
+                progress.stage === 'finalizing'
+                  ? 'storage:transferFinalizing'
+                  : 'storage:transferring',
+              completedBytes: progress.completedBytes,
+              totalBytes: progress.totalBytes,
+              bytesPerSecond: progress.bytesPerSecond,
+            });
+          },
+        });
+        if (result.status === 'skipped') return { status: 'skipped' };
+        if (result.status === 'cancelled') return { status: 'cancelled' };
+        if (result.status === 'paused') {
+          return {
+            status: 'paused',
+            completedBytes: result.completedBytes,
+            totalBytes: result.totalBytes,
+            error: result.error,
+          };
+        }
+        callbacks.emitDirectoryChanged({
+          kind: 'added',
+          parent: display.targetParent,
+          entry: result.entry,
+        });
+        committed = transfers.getCommittedFile(queueOwnerId, workRef) ?? {
+          itemId: workRef.itemId,
+          targetEntry: result.entry,
+          targetParent: display.targetParent,
+          sourceSnapshot: result.sourceSnapshot,
+          sourceDeleted: false,
         };
       }
-      return { status: 'completed', result: undefined };
-    },
-    pause: ({ workRef }) => downloads.pauseWork(queueOwnerId, workRef),
-    cancel: ({ workRef }) => downloads.cancelWork(queueOwnerId, workRef),
-    release: ({ workRef }) => downloads.releaseWork(queueOwnerId, workRef),
-    onSuccess: async ({ removeAfterComplete }) => {
-      if (removeAfterComplete && callbacks.removeMovedSource) {
-        await callbacks.removeMovedSource(removeAfterComplete);
-      }
-    },
-    onSettled: () => {
-      callbacks.emitDirectoryChanged({
-        kind: 'invalidate-connection',
-        connectionId: localConnectionId,
-      });
-    },
-    connectionId: ({ entry }) => entry.ref.connectionId,
-  };
-}
 
-export function createUploadTransferConfig(
-  uploads: UploadService,
-  callbacks: Pick<TransferCallbacks, 'emitDirectoryChanged' | 'removeMovedSource'>,
-): TransferHandlerConfig<InternalUploadInput, Entry> {
-  return {
-    // Each creation has its own provider ID, even when the destination name is shared.
-    // Lock the local source entry when this upload is part of a move.
-    conflictKeys: ({ removeAfterComplete }) =>
-      removeAfterComplete ? [entryKey(removeAfterComplete.entry.ref)] : [],
-    run: async ({ workRef }, { signal, onProgress }) => {
-      const result = await uploads.runWork(queueOwnerId, workRef, {
-        signal,
-        onProgress: (progress) => {
-          onProgress({
-            controls: progress.controls,
-            stageKey: 'storage:uploadSending',
-            completedBytes: progress.confirmedBytes,
-            totalBytes: progress.totalBytes,
-            bytesPerSecond: progress.bytesPerSecond,
-          });
-        },
-      });
-      if (result.status === 'completed') return { status: 'completed', result: result.entry };
-      if (result.status === 'cancelled') return { status: 'cancelled' };
-      return {
-        status: 'paused',
-        completedBytes: result.confirmedBytes,
-        totalBytes: result.totalBytes,
-        error: result.error,
-      };
+      if (display.mode === 'move' && !committed.sourceDeleted) {
+        const snap = committed.sourceSnapshot;
+        const removeOptions: RemoveOptions = {
+          ...(snap.revision !== undefined ? { expectedRevision: snap.revision } : {}),
+          ...(snap.checksum !== undefined ? { expectedChecksum: snap.checksum } : {}),
+          ...(snap.size !== undefined ? { expectedSize: snap.size } : {}),
+        };
+        try {
+          await callbacks.deleteVerifiedSource(snap.ref, removeOptions, signal);
+        } catch (error) {
+          throw new SourceCleanupError(error);
+        }
+        transfers.markSourceDeleted(queueOwnerId, workRef);
+        callbacks.emitDirectoryChanged({
+          kind: 'removed',
+          parent: snap.parent,
+          ref: snap.ref,
+        });
+      }
+
+      return { status: 'completed', result: committed.targetEntry };
     },
     pause: ({ workRef }) => {
-      uploads.pauseWork(queueOwnerId, workRef);
+      transfers.pauseWork(queueOwnerId, workRef);
     },
-    cancel: ({ workRef }) => uploads.cancelWork(queueOwnerId, workRef),
-    canRetry: ({ workRef }) => uploads.canRetryWork(queueOwnerId, workRef),
-    release: ({ workRef }) => uploads.releaseWork(queueOwnerId, workRef),
-    onSuccess: async ({ display, removeAfterComplete }, entry) => {
-      callbacks.emitDirectoryChanged({ kind: 'added', parent: display.parent, entry });
-      if (removeAfterComplete && callbacks.removeMovedSource) {
-        await callbacks.removeMovedSource(removeAfterComplete);
-      }
-    },
-    connectionId: ({ display }) => display.parent.connectionId,
+    cancel: ({ workRef }) => transfers.cancelWork(queueOwnerId, workRef),
+    canRetry: ({ workRef }) => transfers.canRetryWork(queueOwnerId, workRef),
+    release: ({ workRef }) => transfers.releaseWork(queueOwnerId, workRef),
+    connectionId: ({ display }) =>
+      display.sourceProvider !== 'local' && display.targetProvider === 'local'
+        ? display.sourceParent.connectionId
+        : display.targetParent.connectionId,
   };
 }
