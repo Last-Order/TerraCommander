@@ -7,11 +7,21 @@ import { useStorageTaskQueue } from '@renderer/storage/tasks/storage-task-queue-
 import type { PasteEntriesResponse } from '@shared/tasks';
 import { useCurrentDirectory } from '../current-directory-context';
 import type { DirectoryTransferConflictModal } from '../modals/DirectoryEntryModals';
+import type { DirectoryViewStore } from '../state/directory-view-store';
+import {
+  buildLocalPathsDropRequest,
+  canDropLocalFilesIntoDirectory,
+  hasExternalFileDrag,
+  isSameLocalFileDropTarget,
+  resolveLocalFileDropTarget,
+  type LocalFileDropTarget,
+} from './directory-upload';
 
 const uploadErrorNotification = 'directory-upload-error';
 
 interface DirectoryUploadOptions {
   blocked: boolean;
+  viewStore: DirectoryViewStore;
 }
 
 interface UploadConflictState {
@@ -20,13 +30,17 @@ interface UploadConflictState {
   busy: boolean;
 }
 
-function hasDroppedFiles(dataTransfer: DataTransfer | null) {
-  return Array.from(dataTransfer?.types ?? []).includes('Files');
+function closestRowElement(target: EventTarget | null): HTMLTableRowElement | null {
+  if (target instanceof Element) return target.closest<HTMLTableRowElement>('tr[data-index]');
+  if (target instanceof Node) {
+    return target.parentElement?.closest<HTMLTableRowElement>('tr[data-index]') ?? null;
+  }
+  return null;
 }
 
-export function useDirectoryUpload({ blocked }: DirectoryUploadOptions) {
+export function useDirectoryUpload({ blocked, viewStore }: DirectoryUploadOptions) {
   const { t } = useTranslation(['storage', 'errors']);
-  const { onAuthRequired } = useStorageWorkspace();
+  const { directoryEffects, onAuthRequired } = useStorageWorkspace();
   const queue = useStorageTaskQueue();
   const {
     ref: parent,
@@ -36,11 +50,14 @@ export function useDirectoryUpload({ blocked }: DirectoryUploadOptions) {
     canDropLocalFiles,
   } = useCurrentDirectory();
   const [pending, setPending] = useState(false);
-  const [dragActive, setDragActive] = useState(false);
+  const [dropTarget, setDropTarget] = useState<LocalFileDropTarget | null>(null);
   const [conflict, setConflict] = useState<UploadConflictState | null>(null);
   const conflictIdRef = useRef<string | null>(null);
   const disabled = blocked || pending;
-  const canDrop = canDropLocalFiles && !disabled;
+  const activeDropTarget =
+    disabled || (dropTarget?.kind === 'current-directory' && !canDropLocalFiles)
+      ? null
+      : dropTarget;
 
   useEffect(() => {
     conflictIdRef.current = conflict?.confirmationId ?? null;
@@ -55,6 +72,27 @@ export function useDirectoryUpload({ blocked }: DirectoryUploadOptions) {
       }
     };
   }, [queue]);
+
+  useEffect(() => {
+    if (activeDropTarget?.kind !== 'folder') return;
+    const locator = activeDropTarget.entry.ref.locator;
+    const syncFolderTarget = () => {
+      const state = viewStore.getState();
+      const index = state.rowIndexByLocator.get(locator);
+      const row = index !== undefined ? state.rows[index] : undefined;
+      const next: LocalFileDropTarget | null =
+        row && canDropLocalFilesIntoDirectory(row.entry, (ref) => directoryEffects.isBusy(ref))
+          ? { kind: 'folder', entry: row.entry, name: row.name }
+          : null;
+      setDropTarget((current) => (isSameLocalFileDropTarget(current, next) ? current : next));
+    };
+    const unsubscribeView = viewStore.subscribe(syncFolderTarget);
+    const unsubscribeBusy = directoryEffects.subscribeBusy(syncFolderTarget);
+    return () => {
+      unsubscribeView();
+      unsubscribeBusy();
+    };
+  }, [activeDropTarget, viewStore, directoryEffects]);
 
   const handleFailure = (failure: unknown) => {
     const code = errorKey(failure);
@@ -126,48 +164,71 @@ export function useDirectoryUpload({ blocked }: DirectoryUploadOptions) {
       }
     : null;
 
+  const resolveDropTarget = (target: EventTarget | null): LocalFileDropTarget | null => {
+    const rowElement = closestRowElement(target);
+    const hoveredRow = rowElement
+      ? viewStore.getState().rows[Number(rowElement.dataset.index)]
+      : undefined;
+    return resolveLocalFileDropTarget({
+      hoveredRow,
+      canDropInCurrentDirectory: canDropLocalFiles,
+      isBusy: (ref) => directoryEffects.isBusy(ref),
+      disabled,
+    });
+  };
+
+  const updateDropTarget = (next: LocalFileDropTarget | null) => {
+    setDropTarget((current) => (isSameLocalFileDropTarget(current, next) ? current : next));
+  };
+
   const dropZoneProps = {
     onDragEnter: (event: DragEvent<HTMLElement>) => {
-      if (!canDrop || !hasDroppedFiles(event.dataTransfer)) return;
+      if (!hasExternalFileDrag(event.dataTransfer.types)) return;
       event.preventDefault();
-      setDragActive(true);
+      const target = resolveDropTarget(event.target);
+      event.dataTransfer.dropEffect = target ? 'copy' : 'none';
+      updateDropTarget(target);
     },
     onDragOver: (event: DragEvent<HTMLElement>) => {
-      if (!hasDroppedFiles(event.dataTransfer)) return;
+      if (!hasExternalFileDrag(event.dataTransfer.types)) return;
       event.preventDefault();
-      event.dataTransfer.dropEffect = canDrop ? 'copy' : 'none';
-      if (canDrop !== dragActive) setDragActive(canDrop);
+      const target = resolveDropTarget(event.target);
+      event.dataTransfer.dropEffect = target ? 'copy' : 'none';
+      updateDropTarget(target);
     },
     onDragLeave: (event: DragEvent<HTMLElement>) => {
       const { currentTarget, relatedTarget } = event;
       if (!(relatedTarget instanceof Node && currentTarget.contains(relatedTarget))) {
-        setDragActive(false);
+        setDropTarget(null);
       }
     },
     onDrop: (event: DragEvent<HTMLElement>) => {
-      if (!hasDroppedFiles(event.dataTransfer)) return;
+      if (!hasExternalFileDrag(event.dataTransfer.types)) return;
       event.preventDefault();
       event.stopPropagation();
-      setDragActive(false);
-      if (!canDrop) return;
+      const target = resolveDropTarget(event.target);
+      setDropTarget(null);
+      if (!target) return;
       const paths = Array.from(event.dataTransfer.files)
         .map((file) => queue.getPathForFile(file))
         .filter((path) => path.length > 0);
       if (paths.length === 0) return;
-      void startTransfer(() =>
-        queue.transferFromLocalPaths({
-          targetParent: parent,
-          targetDirectoryPath: directoryPath,
-          paths,
-          targetAncestors,
-        }),
-      );
+      const request = buildLocalPathsDropRequest({
+        target,
+        parent,
+        directoryPath,
+        targetAncestors,
+        paths,
+      });
+      void startTransfer(() => queue.transferFromLocalPaths(request));
     },
   };
 
   return {
     disabled,
-    dropActive: dragActive && canDrop,
+    dropTarget: activeDropTarget,
+    dropTargetFolderLocator:
+      activeDropTarget?.kind === 'folder' ? activeDropTarget.entry.ref.locator : null,
     dropZoneProps,
     transferConflict,
     uploadFile: () =>

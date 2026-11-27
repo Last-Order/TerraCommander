@@ -152,7 +152,7 @@ export function DirectoryListing({
     menuEntry: menu.menuEntry,
     onOpenModal: menu.closeMenu,
   });
-  const upload = useDirectoryUpload({ blocked: loading || error !== null });
+  const upload = useDirectoryUpload({ blocked: loading || error !== null, viewStore });
 
   const { closeMenu } = menu;
   const selectSearchMatch = useCallback(
@@ -225,6 +225,7 @@ export function DirectoryListing({
               loadingWithoutEntries={loadingWithoutEntries}
               hasError={hasError}
               interactionBlocked={menu.opened}
+              externalDropTargetLocator={upload.dropTargetFolderLocator}
               onContextMenu={menu.showEntryMenu}
               onOpen={onOpen}
             />

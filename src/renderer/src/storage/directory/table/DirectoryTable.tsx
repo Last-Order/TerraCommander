@@ -85,6 +85,7 @@ interface DirectoryTableProps {
   loadingWithoutEntries: boolean;
   hasError: boolean;
   interactionBlocked: boolean;
+  externalDropTargetLocator: string | null;
   onContextMenu: (entry: Entry, position: DirectoryContextMenuPosition) => void;
   onOpen: (entry: Entry) => void;
 }
@@ -95,6 +96,7 @@ export function DirectoryTable({
   loadingWithoutEntries,
   hasError,
   interactionBlocked,
+  externalDropTargetLocator,
   onContextMenu,
   onOpen,
 }: DirectoryTableProps) {
@@ -176,6 +178,7 @@ export function DirectoryTable({
   const virtualRows = virtualizer.getVirtualItems();
   const lastRowEnd = (virtualRows.at(-1)?.end ?? scrollMargin) - scrollMargin;
   const paddingBottom = Math.max(0, virtualizer.getTotalSize() - lastRowEnd);
+  const dropTargetLocator = drag.dropTargetLocator ?? externalDropTargetLocator;
   const renderRow = (row: DirectoryRow, index: number) => (
     <DirectoryEntryRow
       key={row.entry.ref.locator}
@@ -184,7 +187,7 @@ export function DirectoryTable({
       selectionDraggable={drag.selectionDraggable}
       dragBlocked={drag.blocked || resizingColumn !== null}
       dragging={drag.draggedLocators?.has(row.entry.ref.locator) ?? false}
-      dropTarget={drag.dropTargetLocator === row.entry.ref.locator}
+      dropTarget={dropTargetLocator === row.entry.ref.locator}
       disabledTitle={disabledTitle}
       dateFormatter={dateFormatter}
       sizeFormatter={sizeFormatter}

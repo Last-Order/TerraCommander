@@ -6,7 +6,7 @@ import type { DirectoryUpload } from './useDirectoryUpload';
 import classes from '../DirectoryListing.module.css';
 
 interface DirectoryUploadDropZoneProps {
-  upload: Pick<DirectoryUpload, 'dropActive' | 'dropZoneProps'>;
+  upload: Pick<DirectoryUpload, 'dropTarget' | 'dropZoneProps'>;
   children: ReactNode;
 }
 
@@ -14,18 +14,32 @@ export function DirectoryUploadDropZone({ upload, children }: DirectoryUploadDro
   const { t } = useTranslation('storage');
   const { provider } = useCurrentDirectory();
   const isLocal = provider === 'local';
+  const target = upload.dropTarget;
+
+  let prompt: string | null = null;
+  if (target?.kind === 'folder') {
+    prompt = t(isLocal ? 'dropToCopyIntoFolder' : 'dropToUploadIntoFolder', {
+      name: target.name,
+    });
+  } else if (target !== null) {
+    prompt = t(isLocal ? 'dropToCopy' : 'dropToUpload');
+  }
 
   return (
     <div className={classes.directoryBody} {...upload.dropZoneProps}>
-      {upload.dropActive && (
-        <div className={classes.dropOverlay} aria-hidden="true">
+      {target !== null && prompt !== null && (
+        <div
+          className={classes.dropOverlay}
+          data-target={target.kind === 'folder' ? 'folder' : undefined}
+          aria-hidden="true"
+        >
           <div className={classes.dropPrompt}>
             {isLocal ? (
               <Copy size={16} strokeWidth={1.5} />
             ) : (
               <Upload size={16} strokeWidth={1.5} />
             )}
-            <span>{t(isLocal ? 'dropToCopy' : 'dropToUpload')}</span>
+            <span>{prompt}</span>
           </div>
         </div>
       )}
