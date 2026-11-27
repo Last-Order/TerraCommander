@@ -44,9 +44,10 @@ import type {
   TransferWork,
 } from '../transfers/transfer-types';
 import { prepareBatchGroup } from './batch-discovery';
-import { planPaste, prepareCopyGroup, slotConflictKey, type CopyDiscoveryItem } from './copy-paste';
+import { planPaste, prepareCopyGroup, type CopyDiscoveryItem } from './copy-paste';
 import { projectDirectoryEffects } from './directory-effects';
 import { SourceCleanupError, toBrowserErrorCode, toTaskFailure } from './task-errors';
+import { resolveTargetLockKeys, slotConflictKey } from './task-locks';
 import {
   createCrossSourceTransferConfig,
   createTransferHandler,
@@ -144,7 +145,8 @@ export type StorageTaskOperations = Pick<
   | 'inspectTransfer'
   | 'inspectCrossConnectionTransfer'
   | 'canonicalEntryKey'
-  | 'targetLockKeys'
+  | 'spaceSemantics'
+  | 'ancestorLocators'
   | 'renameEntry'
   | 'deleteEntry'
   | 'statEntry'
@@ -210,7 +212,7 @@ export class StorageTaskService {
     );
     this.session = new TransferSessionCoordinator({
       transfers: this.transfers,
-      targetLockKeys: (parent, names) => this.operations.targetLockKeys(parent, names),
+      targetLockKeys: (parent, names) => resolveTargetLockKeys(this.operations, parent, names),
       reserveLocks: (locks) => this.queue.reserve(locks),
       releaseReservation: (reservationId) => this.queue.releaseReservation(reservationId),
       enqueueTransfer: (request, work, reservationId) =>
@@ -252,7 +254,7 @@ export class StorageTaskService {
   }
 
   private async resolveSpaceSemantics(ref: Entry['ref']): Promise<ResolvedSpaceSemantics> {
-    const semantics = await this.operations.directory(ref).semantics();
+    const semantics = await this.operations.spaceSemantics(ref);
     return {
       allowsDuplicateNames: semantics?.allowsDuplicateNames === true,
       caseInsensitive: semantics?.caseSensitive === false,

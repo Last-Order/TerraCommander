@@ -56,10 +56,7 @@ function createMockTaskHost() {
   const canonicalEntryKey = vi.fn<StorageEntryOperations['canonicalEntryKey']>(async (ref) =>
     entryKey(ref),
   );
-  const targetLockKeys = vi.fn<StorageEntryOperations['targetLockKeys']>(async (parent, names) => ({
-    exclusive: names.map((name) => `slot:${entryKey(parent)}/${name}`),
-    shared: [entryKey(parent)],
-  }));
+  const ancestorLocators = vi.fn<StorageEntryOperations['ancestorLocators']>(async () => undefined);
   const listDirectory = vi.fn<StorageEntryOperations['listDirectory']>(async () => ({
     entries: [],
   }));
@@ -80,7 +77,7 @@ function createMockTaskHost() {
     inspectTransfer,
     inspectCrossConnectionTransfer,
     canonicalEntryKey,
-    targetLockKeys,
+    ancestorLocators,
     listDirectory,
     spaceSemantics,
     spaceCapabilities,
@@ -211,7 +208,8 @@ function createMockTaskHost() {
       inspectTransfer,
       inspectCrossConnectionTransfer,
       canonicalEntryKey,
-      targetLockKeys,
+      spaceSemantics,
+      ancestorLocators,
       renameEntry,
       deleteEntry,
       statEntry,

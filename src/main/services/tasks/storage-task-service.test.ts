@@ -153,10 +153,7 @@ function setup() {
   const canonicalEntryKey = vi.fn<StorageEntryOperations['canonicalEntryKey']>(async (ref) =>
     entryKey(ref),
   );
-  const targetLockKeys = vi.fn<StorageEntryOperations['targetLockKeys']>(async (dir, names) => ({
-    exclusive: names.map((name) => `slot:${entryKey(dir)}/${name}`),
-    shared: [entryKey(dir)],
-  }));
+  const ancestorLocators = vi.fn<StorageEntryOperations['ancestorLocators']>(async () => undefined);
 
   const entryOperations = {
     createDirectory,
@@ -170,7 +167,7 @@ function setup() {
     inspectTransfer,
     inspectCrossConnectionTransfer,
     canonicalEntryKey,
-    targetLockKeys,
+    ancestorLocators,
     statEntry,
     readEntry: vi.fn(),
   } as unknown as StorageEntryOperations;
@@ -179,7 +176,8 @@ function setup() {
     inspectTransfer,
     inspectCrossConnectionTransfer,
     canonicalEntryKey,
-    targetLockKeys,
+    spaceSemantics,
+    ancestorLocators,
     renameEntry,
     deleteEntry,
     statEntry,
@@ -201,6 +199,7 @@ function setup() {
     copyWithin,
     moveWithin,
     spaceSemantics,
+    ancestorLocators,
     events,
   };
 }
@@ -881,5 +880,193 @@ it('normalizes slot conflict keys according to reported space case sensitivity',
     expect(tasks[1]?.status).toBe('completed');
     expect(tasks[2]?.status).toBe('completed');
   });
+  await service.dispose();
+});
+
+it('blocks same-name create-directory and rename while a transfer awaits overwrite confirmation', async () => {
+  const { service, transfers, spaceSemantics } = setup();
+  spaceSemantics.mockResolvedValue({ allowsDuplicateNames: false, caseSensitive: false });
+  transfers.prepare.mockResolvedValueOnce({
+    kind: 'single',
+    conflicts: ['Report.txt'],
+    work: {
+      ref: { planId: 'confirm-plan', itemId: 0 },
+      mode: 'copy',
+      sourceProvider: 'google-drive',
+      targetProvider: 'local',
+      item: {
+        id: 0,
+        entry: fileEntry,
+        sourceParent: parent,
+        targetParent,
+        targetName: 'Report.txt',
+        relativePath: 'Report.txt',
+        replace: true,
+      },
+    },
+  });
+
+  const pending = await service.pasteEntries(1, {
+    mode: 'copy',
+    sourceParent: parent,
+    sourceDirectoryPath: '/docs',
+    entries: [fileEntry],
+    targetParent,
+    targetDirectoryPath: 'D:\\Downloads',
+  });
+  expect(pending).toMatchObject({ status: 'conflict' });
+  if (pending.status !== 'conflict') throw new Error('Expected conflict confirmation');
+
+  expect(
+    await service.enqueueCreateDirectory({
+      parent: targetParent,
+      name: 'report.txt',
+      directoryPath: 'D:\\Downloads',
+    }),
+  ).toBe(false);
+  expect(
+    await service.enqueueRename({
+      parent: targetParent,
+      entry: {
+        ref: { ...targetParent, locator: 'existing.txt' },
+        name: 'existing.txt',
+        kind: 'file',
+        capabilities: { rename: { support: 'supported' } },
+      },
+      name: 'REPORT.TXT',
+      directoryPath: 'D:\\Downloads',
+    }),
+  ).toBe(false);
+
+  await service.cancelTransferConfirmation(1, pending.confirmationId);
+  expect(
+    await service.enqueueCreateDirectory({
+      parent: targetParent,
+      name: 'report.txt',
+      directoryPath: 'D:\\Downloads',
+    }),
+  ).toBe(true);
+  await vi.waitFor(() => expect(service.getSnapshot().tasks[0]?.status).toBe('completed'));
+  await service.dispose();
+});
+
+it('runs sibling transfers concurrently under shared ancestor locks while blocking ancestor rename', async () => {
+  const { service, transfers, ancestorLocators } = setup();
+  const nestedTargetParent: EntryRef = {
+    connectionId: targetConnectionId,
+    spaceId: 'vol-d',
+    locator: 'projects/2026',
+  };
+  const ancestorDirRef: EntryRef = {
+    connectionId: targetConnectionId,
+    spaceId: 'vol-d',
+    locator: 'projects',
+  };
+  const rootDirRef: EntryRef = {
+    connectionId: targetConnectionId,
+    spaceId: 'vol-d',
+    locator: '.',
+  };
+  ancestorLocators.mockResolvedValue(['projects/2026', 'projects', '.']);
+
+  const firstEntry: Entry = {
+    ...fileEntry,
+    ref: { connectionId, spaceId: 'drive', locator: 'file-a' },
+    name: 'alpha.txt',
+  };
+  const secondEntry: Entry = {
+    ...fileEntry,
+    ref: { connectionId, spaceId: 'drive', locator: 'file-b' },
+    name: 'beta.txt',
+  };
+  const firstRun = deferred<TransferRunResult>();
+  const secondRun = deferred<TransferRunResult>();
+  transfers.runWork
+    .mockImplementationOnce(() => firstRun.promise)
+    .mockImplementationOnce(() => secondRun.promise);
+
+  await expect(
+    service.pasteEntries(1, {
+      mode: 'copy',
+      sourceParent: parent,
+      sourceDirectoryPath: '/docs',
+      entries: [firstEntry],
+      targetParent: nestedTargetParent,
+      targetDirectoryPath: 'D:\\projects\\2026',
+    }),
+  ).resolves.toEqual({ status: 'started' });
+  await expect(
+    service.pasteEntries(1, {
+      mode: 'copy',
+      sourceParent: parent,
+      sourceDirectoryPath: '/docs',
+      entries: [secondEntry],
+      targetParent: nestedTargetParent,
+      targetDirectoryPath: 'D:\\projects\\2026',
+    }),
+  ).resolves.toEqual({ status: 'started' });
+
+  await vi.waitFor(() => {
+    const tasks = service.getSnapshot().tasks;
+    expect(tasks).toHaveLength(2);
+    expect(tasks.every((task) => task.status === 'running')).toBe(true);
+  });
+
+  expect(
+    await service.enqueueRename({
+      parent: rootDirRef,
+      entry: {
+        ref: ancestorDirRef,
+        name: 'projects',
+        kind: 'directory',
+        capabilities: { rename: { support: 'supported' } },
+      },
+      name: 'projects-renamed',
+      directoryPath: 'D:\\',
+    }),
+  ).toBe(false);
+
+  firstRun.resolve({
+    status: 'completed',
+    entry: {
+      ...committedTargetEntry,
+      ref: { ...nestedTargetParent, locator: 'projects/2026/alpha.txt' },
+      name: 'alpha.txt',
+    },
+    sourceSnapshot: { ref: firstEntry.ref, parent, name: firstEntry.name, kind: 'file', size: 10 },
+  });
+  secondRun.resolve({
+    status: 'completed',
+    entry: {
+      ...committedTargetEntry,
+      ref: { ...nestedTargetParent, locator: 'projects/2026/beta.txt' },
+      name: 'beta.txt',
+    },
+    sourceSnapshot: {
+      ref: secondEntry.ref,
+      parent,
+      name: secondEntry.name,
+      kind: 'file',
+      size: 10,
+    },
+  });
+  await vi.waitFor(() =>
+    expect(service.getSnapshot().tasks.every((task) => task.status === 'completed')).toBe(true),
+  );
+
+  expect(
+    await service.enqueueRename({
+      parent: rootDirRef,
+      entry: {
+        ref: ancestorDirRef,
+        name: 'projects',
+        kind: 'directory',
+        capabilities: { rename: { support: 'supported' } },
+      },
+      name: 'projects-renamed',
+      directoryPath: 'D:\\',
+    }),
+  ).toBe(true);
+  await vi.waitFor(() => expect(service.getSnapshot().tasks[2]?.status).toBe('completed'));
   await service.dispose();
 });

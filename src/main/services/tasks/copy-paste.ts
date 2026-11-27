@@ -13,6 +13,7 @@ import type { StorageEntryOperations } from '../storage/storage-entry-operations
 import { resolveTransferStrategy } from '../transfers/transfer-compatibility';
 import type { SourceDirectoryCleanupEntry } from '../transfers/transfer-types';
 import { toBrowserErrorCode, toTaskFailure } from './task-errors';
+import { slotConflictKey } from './task-locks';
 
 export type CopyPasteOperations = Pick<
   StorageEntryOperations,
@@ -252,11 +253,6 @@ export async function planPaste(
   }
 
   return { kind: 'copy', items, entries: uniqueEntries, sameDirectory };
-}
-
-export function slotConflictKey(parent: EntryRef, name: string, caseInsensitive = false): string {
-  const normalized = caseInsensitive ? name.toLowerCase() : name;
-  return `slot:${entryKey(parent)}/${normalized}`;
 }
 
 export interface PrepareCopyGroupOptions {

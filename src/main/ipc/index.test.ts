@@ -294,10 +294,6 @@ it('transfers a file picked via local dialog with progress, pause, and resume in
   vi.spyOn(storage.operations, 'canonicalEntryKey').mockImplementation(
     async (ref) => `${ref.connectionId}:${ref.spaceId}:${ref.locator}`,
   );
-  vi.spyOn(storage.operations, 'targetLockKeys').mockResolvedValue({
-    exclusive: ['slot:remote/notes.txt'],
-    shared: ['remote'],
-  });
 
   const uploaded: Entry = { ...entry, ref: { ...remoteParent, locator: 'uploaded-file' } };
   const run = vi
