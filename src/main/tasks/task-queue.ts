@@ -1,5 +1,10 @@
 import { isFinishedTask } from '@shared/task-selectors';
-import { TaskConflictLedger } from './conflict-ledger';
+import {
+  mergeResourceLocks,
+  normalizeResourceLocks,
+  TaskConflictLedger,
+  type ResourceLocks,
+} from './conflict-ledger';
 import { TaskGroupCoordinator } from './group-coordinator';
 import type {
   QueueTask,
@@ -8,6 +13,7 @@ import type {
   TaskFailure,
   TaskGroupDefinitions,
   TaskGroupHooks,
+  TaskGroupOptions,
   TaskGroupRequest,
   TaskHandlers,
   TaskMembership,
@@ -45,10 +51,12 @@ export class TaskQueue<
   };
 
   private nextId = 0;
+  private nextReservation = 0;
   private draining = false;
   private readonly concurrencyLimits: Record<Category, number>;
   private readonly running: Record<string, number> = {};
   private readonly conflicts = new TaskConflictLedger();
+  private readonly taskLocks = new Map<number, ResourceLocks>();
   private readonly executions = new Map<number, symbol>();
   private readonly order = new Map<number, number>();
   private nextOrder = 0;
@@ -73,17 +81,29 @@ export class TaskQueue<
       getGroups: () => this.state.groups,
       setGroups: (groups) => this.setState({ groups }),
       subscribe: (listener) => this.store.subscribe(listener),
-      enqueue: (request, membership) => this.enqueue(request, membership),
+      enqueue: (request, membership) => this.enqueueInternal(request, membership),
       invokeHook: (id, hook) => this.invokeHook(id, hook),
       isDisposed: () => this.disposed,
     });
   }
 
+  /** Reserves resource locks before confirmation; atomically transfer via enqueue/createGroup or release. */
+  reserve(locks: ResourceLocks): string | undefined {
+    if (this.disposed) return undefined;
+    const id = `res-${++this.nextReservation}`;
+    return this.conflicts.reservePending(id, locks) ? id : undefined;
+  }
+
+  releaseReservation(reservationId: string): void {
+    this.conflicts.releasePending(reservationId);
+  }
+
   createGroup(
     request: TaskGroupRequest<Groups>,
     hooks: TaskGroupHooks<Definitions> = {},
+    options?: TaskGroupOptions,
   ): number | undefined {
-    return this.groupCoordinator.createGroup(request, hooks);
+    return this.groupCoordinator.createGroup(request, hooks, options);
   }
 
   sealGroup(id: number): void {
@@ -104,12 +124,21 @@ export class TaskQueue<
     request: TaskRequest<Definitions, Type>,
     membership: TaskMembership = {},
   ): boolean {
+    return this.enqueueInternal(request, membership);
+  }
+
+  private enqueueInternal<Type extends TaskType<Definitions>>(
+    request: TaskRequest<Definitions, Type>,
+    membership: TaskMembership & { allowSealed?: boolean } = {},
+  ): boolean {
     if (this.disposed) return false;
     const group =
       membership.groupId === undefined
         ? undefined
         : this.state.groups.find((item) => item.id === membership.groupId);
-    if (membership.groupId !== undefined && (!group || group.sealed)) return false;
+    if (membership.groupId !== undefined && (!group || (group.sealed && !membership.allowSealed))) {
+      return false;
+    }
     if (
       membership.memberKey &&
       membership.groupId !== undefined &&
@@ -118,18 +147,49 @@ export class TaskQueue<
       return false;
     const keys =
       request.resources ?? this.handlers[request.type].conflictKeys?.(request.input) ?? [];
-    if (this.conflicts.hasConflicts(keys, membership.groupId)) return false;
+    const pendingLocks = membership.reservationId
+      ? this.conflicts.getPendingLocks(membership.reservationId)
+      : undefined;
+    if (membership.reservationId && !pendingLocks) return false;
+    const mergedLocks = pendingLocks
+      ? mergeResourceLocks(pendingLocks, keys)
+      : normalizeResourceLocks(keys);
+    if (
+      this.conflicts.hasConflicts(mergedLocks, {
+        ownGroup: membership.groupId,
+        ignoreReservation: membership.reservationId,
+      })
+    ) {
+      return false;
+    }
+
+    const taskId = ++this.nextId;
+    if (membership.reservationId) {
+      if (
+        !this.conflicts.transferPendingToTask(
+          membership.reservationId,
+          taskId,
+          keys,
+          membership.groupId,
+        )
+      ) {
+        return false;
+      }
+    } else {
+      this.conflicts.reserveTask(taskId, mergedLocks);
+    }
 
     const task: QueueTask<Definitions, Type> = {
-      id: ++this.nextId,
+      id: taskId,
       request,
       status: 'queued',
-      ...membership,
+      ...(membership.groupId !== undefined ? { groupId: membership.groupId } : {}),
+      ...(membership.memberKey !== undefined ? { memberKey: membership.memberKey } : {}),
     };
+    this.taskLocks.set(task.id, mergedLocks);
     if (membership.groupId !== undefined) {
       this.groupCoordinator.registerMember(membership.groupId, membership.memberKey);
     }
-    this.conflicts.reserveTask(task.id, keys);
     this.order.set(task.id, ++this.nextOrder);
     this.setState(({ tasks }) => ({ tasks: [...tasks, task] }));
     this.groupCoordinator.sync();
@@ -142,7 +202,9 @@ export class TaskQueue<
     const removable = (task: QueueTask<Definitions>) =>
       isFinishedTask(task) && (task.groupId === undefined || finishedGroupIds.has(task.groupId));
     for (const task of this.state.tasks) {
-      if (!removable(task) || task.groupId !== undefined) continue;
+      if (!removable(task)) continue;
+      this.taskLocks.delete(task.id);
+      if (task.groupId !== undefined) continue;
       void this.handlers[task.request.type].release?.(task.request.input).catch(() => {
         console.error('Task resource release failed.', { taskId: task.id });
       });
@@ -176,9 +238,14 @@ export class TaskQueue<
     const task = this.state.tasks.find((candidate) => candidate.id === id);
     if (!task || !this.canRetry(task)) return;
     const handler = this.handlers[task.request.type];
-    const keys = task.request.resources ?? handler.conflictKeys?.(task.request.input) ?? [];
+    const keys =
+      this.taskLocks.get(id) ??
+      task.request.resources ??
+      handler.conflictKeys?.(task.request.input) ??
+      [];
     const extraConflicts = this.groupCoordinator.extraRetryConflicts(task.groupId);
-    if (this.conflicts.hasConflicts([...keys, ...extraConflicts], task.groupId)) return;
+    const combined = mergeResourceLocks(keys, extraConflicts);
+    if (this.conflicts.hasConflicts(combined, { ownGroup: task.groupId })) return;
     this.groupCoordinator.reopenForRetry(task.groupId);
     this.conflicts.reserveTask(id, keys);
     this.order.set(id, ++this.nextOrder);

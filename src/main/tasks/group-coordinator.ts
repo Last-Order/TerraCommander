@@ -1,5 +1,10 @@
 import { isFinishedGroup, isFinishedTask } from '@shared/task-selectors';
-import type { TaskConflictLedger } from './conflict-ledger';
+import {
+  mergeResourceLocks,
+  normalizeResourceLocks,
+  type ResourceLocks,
+  type TaskConflictLedger,
+} from './conflict-ledger';
 import { TaskGroupPreparations } from './group-preparations';
 import { summarizeGroup } from './group-summary';
 import type {
@@ -9,6 +14,7 @@ import type {
   TaskGroup,
   TaskGroupDefinitions,
   TaskGroupHooks,
+  TaskGroupOptions,
   TaskGroupPreparation,
   TaskGroupRequest,
   TaskGroupState,
@@ -18,10 +24,12 @@ import type {
 
 interface GroupRecord<Definitions extends TaskDefinitions> {
   closed: boolean;
+  finalized: boolean;
   phase: TaskGroupState['phase'];
   hooks: TaskGroupHooks<Definitions>;
   preparation: TaskGroupPreparation;
   members: Set<string>;
+  locks: ResourceLocks;
 }
 
 interface GroupCoordinatorDeps<
@@ -34,7 +42,10 @@ interface GroupCoordinatorDeps<
   getGroups(): readonly TaskGroup<Groups>[];
   setGroups(groups: readonly TaskGroup<Groups>[]): void;
   subscribe(listener: () => void): () => void;
-  enqueue(request: TaskRequest<Definitions>, membership: TaskMembership): boolean;
+  enqueue(
+    request: TaskRequest<Definitions>,
+    membership: TaskMembership & { allowSealed?: boolean },
+  ): boolean;
   invokeHook(id: number, hook: () => void | Promise<void>): Promise<void>;
   isDisposed(): boolean;
 }
@@ -53,23 +64,45 @@ export class TaskGroupCoordinator<
   createGroup(
     request: TaskGroupRequest<Groups>,
     hooks: TaskGroupHooks<Definitions> = {},
+    options: TaskGroupOptions = {},
   ): number | undefined {
     if (this.deps.isDisposed()) return undefined;
     const resources = request.resources ?? [];
-    if (this.deps.conflicts.hasConflicts(resources)) return undefined;
+    const pendingLocks = options.reservationId
+      ? this.deps.conflicts.getPendingLocks(options.reservationId)
+      : undefined;
+    if (options.reservationId && !pendingLocks) return undefined;
+    const mergedLocks = pendingLocks
+      ? mergeResourceLocks(pendingLocks, resources)
+      : normalizeResourceLocks(resources);
+    if (
+      this.deps.conflicts.hasConflicts(mergedLocks, {
+        ignoreReservation: options.reservationId,
+      })
+    ) {
+      return undefined;
+    }
     const id = this.deps.nextId();
+    if (options.reservationId) {
+      if (!this.deps.conflicts.transferPendingToGroup(options.reservationId, id, resources)) {
+        return undefined;
+      }
+    } else {
+      this.deps.conflicts.reserveGroup(id, mergedLocks);
+    }
     const preparation: TaskGroupPreparation = {
       status: hooks.prepare ? 'queued' : 'completed',
       issues: [],
     };
     this.records.set(id, {
       closed: false,
+      finalized: false,
       phase: 'active',
       hooks,
       preparation,
       members: new Set(),
+      locks: mergedLocks,
     });
-    this.deps.conflicts.reserveGroup(id, resources);
     const group = summarizeGroup(id, request, [], false, 'active', preparation);
     this.deps.setGroups([...this.deps.getGroups(), group]);
     if (hooks.prepare) this.preparations.enqueue((signal) => this.prepareGroup(id, signal));
@@ -121,11 +154,11 @@ export class TaskGroupCoordinator<
     return this.records.get(groupId)?.phase !== 'settling';
   }
 
-  extraRetryConflicts(groupId: number | undefined): readonly string[] {
+  extraRetryConflicts(groupId: number | undefined): ResourceLocks {
     if (groupId === undefined) return [];
     const record = this.records.get(groupId);
     if (record?.phase !== 'settled') return [];
-    return this.deps.getGroups().find((item) => item.id === groupId)?.request.resources ?? [];
+    return record.locks;
   }
 
   reopenForRetry(groupId: number | undefined): void {
@@ -134,7 +167,8 @@ export class TaskGroupCoordinator<
     const group = this.deps.getGroups().find((item) => item.id === groupId);
     if (!record || !group) return;
     record.phase = 'active';
-    this.deps.conflicts.reserveGroup(group.id, group.request.resources ?? []);
+    record.finalized = false;
+    this.deps.conflicts.reserveGroup(group.id, record.locks);
   }
 
   hasReleaseHook(groupId: number): boolean {
@@ -159,6 +193,7 @@ export class TaskGroupCoordinator<
 
   sync(): void {
     const tasksByGroup = this.deps.getTasks();
+    const finalizeCandidates: number[] = [];
     const settle: number[] = [];
     const groups = this.deps.getGroups().map((previous) => {
       const record = this.records.get(previous.id)!;
@@ -172,23 +207,56 @@ export class TaskGroupCoordinator<
         record.preparation,
       );
       if (record.phase === 'active' && group.sealed && tasks.every(isFinishedTask)) {
-        record.phase = 'settling';
-        group = summarizeGroup(
-          previous.id,
-          previous.request,
-          tasks,
-          record.closed,
-          'settling',
-          record.preparation,
-        );
-        settle.push(group.id);
+        if (!record.finalized && record.hooks.finalize) {
+          record.finalized = true;
+          finalizeCandidates.push(group.id);
+        } else {
+          record.phase = 'settling';
+          group = summarizeGroup(
+            previous.id,
+            previous.request,
+            tasks,
+            record.closed,
+            'settling',
+            record.preparation,
+          );
+          settle.push(group.id);
+        }
       }
       return group;
     });
     this.deps.setGroups(groups);
+    for (const id of finalizeCandidates) {
+      this.runFinalize(id);
+    }
     for (const id of settle) {
       const pending = this.settleGroup(id).finally(() => this.settlements.delete(id));
       this.settlements.set(id, pending);
+    }
+  }
+
+  private runFinalize(id: number): void {
+    const record = this.records.get(id);
+    if (!record || !record.hooks.finalize) return;
+    let enqueued = false;
+    try {
+      record.hooks.finalize({
+        groupId: id,
+        enqueue: (request, memberKey) => {
+          const added = this.deps.enqueue(request, {
+            groupId: id,
+            ...(memberKey !== undefined ? { memberKey } : {}),
+            allowSealed: true,
+          });
+          if (added) enqueued = true;
+          return added;
+        },
+      });
+    } catch {
+      console.error('Task group finalize hook failed.', { groupId: id });
+    }
+    if (!enqueued) {
+      this.sync();
     }
   }
 

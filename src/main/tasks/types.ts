@@ -10,8 +10,11 @@ import type {
   TaskProgress,
   TaskStatus,
 } from '@shared/tasks';
+import type { ResourceLocks, ResourceLockSet } from './conflict-ledger';
 
 export type {
+  ResourceLocks,
+  ResourceLockSet,
   TaskControls,
   TaskFailure,
   TaskGroupOutcome,
@@ -34,7 +37,7 @@ export type TaskRequest<
   [Kind in Type]: {
     type: Kind;
     input: Definitions[Kind]['input'];
-    resources?: readonly string[] | undefined;
+    resources?: ResourceLocks | undefined;
   };
 }[Type];
 
@@ -86,7 +89,7 @@ export interface TaskContext {
 
 export interface TaskHandler<Input, Result, Category extends string = string> {
   readonly category: Category;
-  conflictKeys?(input: Input): readonly string[];
+  conflictKeys?(input: Input): ResourceLocks;
   execute(input: Input, context: TaskContext): Promise<TaskExecutionOutcome<Result>>;
   cancel?(input: Input): void | Promise<void>;
   pause?(input: Input): void | Promise<void>;
@@ -116,7 +119,7 @@ export type TaskGroupRequest<Definitions extends TaskGroupDefinitions = TaskGrou
   [Kind in Extract<keyof Definitions, string>]: {
     kind: Kind;
     input: Definitions[Kind]['input'];
-    resources?: readonly string[] | undefined;
+    resources?: ResourceLocks | undefined;
   };
 }[Extract<keyof Definitions, string>];
 
@@ -136,18 +139,29 @@ export interface TaskGroupPreparationContext<Definitions extends TaskDefinitions
   reportIssue(issue: TaskPreparationIssue): void;
 }
 
+export interface TaskGroupFinalizeContext<Definitions extends TaskDefinitions> {
+  groupId: number;
+  enqueue(request: TaskRequest<Definitions>, memberKey?: string): boolean;
+}
+
 /** Executable hooks and cancellation stay outside observable snapshots. */
 export interface TaskGroupHooks<Definitions extends TaskDefinitions = TaskDefinitions> {
   prepare?(context: TaskGroupPreparationContext<Definitions>): Promise<void>;
+  finalize?(context: TaskGroupFinalizeContext<Definitions>): void;
   toFailure?(error: unknown): TaskFailure;
   onPreparationFailure?(failure: TaskFailure): void | Promise<void>;
   onSettled?(): Promise<void>;
   release?(): Promise<void>;
 }
 
+export interface TaskGroupOptions {
+  reservationId?: string | undefined;
+}
+
 export interface TaskMembership {
   groupId?: number | undefined;
   memberKey?: string | undefined;
+  reservationId?: string | undefined;
 }
 
 export interface TaskQueueSnapshot<
