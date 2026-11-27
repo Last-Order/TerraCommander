@@ -1,5 +1,5 @@
 .focus:focus-visible {
-  outline: 2px solid light-dark(var(--mantine-color-teal-9), var(--mantine-color-teal-3));
+  outline: 2px solid light-dark(var(--mantine-color-water-7), var(--mantine-color-water-3));
   outline-offset: 2px;
 }
 

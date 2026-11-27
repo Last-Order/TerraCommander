@@ -2,10 +2,10 @@
   --sidebar-surface: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7));
   --storage-border: light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
   --storage-hover: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6));
-  --storage-accent: light-dark(var(--mantine-color-teal-9), var(--mantine-color-teal-3));
-  --storage-selection: light-dark(rgb(8 127 91 / 8%), rgb(99 230 190 / 10%));
+  --storage-accent: light-dark(var(--mantine-color-water-7), var(--mantine-color-water-3));
+  --storage-selection: light-dark(rgb(91 170 212 / 12%), rgb(163 211 236 / 12%));
   --storage-secondary: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-1));
-  --storage-muted: light-dark(#68717a, var(--mantine-color-dark-2));
+  --storage-muted: light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-2));
   --storage-focus: var(--storage-accent);
   --status-bar-height: 1.5rem;
   --task-panel-min-height: min(

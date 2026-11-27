@@ -62,7 +62,7 @@ export function useDirectoryClipboard({ blocked }: DirectoryClipboardOptions) {
     const pluralKey = mode === 'copy' ? 'copiedEntriesNotice' : 'cutEntriesNotice';
     notifications.show({
       id: copyEntriesNotification,
-      color: 'blue',
+      color: 'water',
       message:
         entries.length === 1
           ? t(singleKey, { name: entries[0]!.name })

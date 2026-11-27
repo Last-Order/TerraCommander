@@ -44,8 +44,8 @@
 }
 
 .category[data-active] {
-  background: light-dark(rgb(8 127 91 / 8%), rgb(99 230 190 / 10%));
-  color: light-dark(var(--mantine-color-teal-9), var(--mantine-color-teal-3));
+  background: light-dark(rgb(91 170 212 / 12%), rgb(163 211 236 / 12%));
+  color: light-dark(var(--mantine-color-water-7), var(--mantine-color-water-3));
   font-weight: 500;
 }
 
