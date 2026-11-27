@@ -14,7 +14,6 @@ import type {
   EntryRef,
   ListRequest,
   SpaceSemantics,
-  WriteTarget,
 } from '@shared/storage';
 import type { StorageEntryOperations } from './storage-entry-operations';
 import { createStorageFile, type StorageFile } from './storage-file';
@@ -35,14 +34,14 @@ export interface StorageDirectory {
   list(request?: string | ListRequest, context?: OperationContext): Promise<EntryPage>;
   openScope(context?: OperationContext): Promise<DirectoryScope>;
   createDirectory(name: string, context?: OperationContext): Promise<CreatedStorageDirectory>;
-  write(
-    target: WriteTarget,
+  createFile(
+    name: string,
     source: ByteSource,
     context?: OperationContext,
     options?: WriteOptions,
   ): Promise<Entry>;
-  prepareWrite(
-    target: WriteTarget,
+  prepareCreateFile(
+    name: string,
     source: ReopenableByteSource,
     options?: WriteOptions,
   ): WriteExecution;
@@ -123,12 +122,21 @@ export function createStorageDirectory(
       };
     },
 
-    write(target, source, context, options) {
-      return operations.writeEntry(target, source, context, options);
+    createFile(name, source, context, options) {
+      return operations.writeEntry(
+        { kind: 'create', parent: directoryRef, name, policy: 'create-only' },
+        source,
+        context,
+        options,
+      );
     },
 
-    prepareWrite(target, source, options) {
-      return operations.prepareWrite(target, source, options);
+    prepareCreateFile(name, source, options) {
+      return operations.prepareWrite(
+        { kind: 'create', parent: directoryRef, name, policy: 'create-only' },
+        source,
+        options,
+      );
     },
 
     copyEntry(source, name, context) {

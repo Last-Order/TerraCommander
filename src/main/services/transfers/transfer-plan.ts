@@ -7,13 +7,12 @@ import {
   type EntryRef,
   type SpaceSemantics,
   type StorageErrorCode,
-  type WriteTarget,
 } from '@shared/storage';
 import type { StorageDirectory } from '../storage/storage-directory';
 import type { StorageFile } from '../storage/storage-file';
 import { createStorageFileByteSource } from './storage-file-byte-source';
 import { preferredChecksum, resolveTransferStrategy } from './transfer-compatibility';
-import { TransferExecution } from './transfer-execution';
+import { TransferExecution, type TransferDestination } from './transfer-execution';
 import { allocateTransferNames, normalizeTargetName } from './transfer-names';
 import type {
   CommittedTransferFile,
@@ -203,12 +202,11 @@ export class TransferPlan {
         throw new StorageError('SourceChanged');
       }
 
-      const writeTarget = this.resolveWriteTarget(node);
-      const isReplace = writeTarget.kind === 'replace';
+      const destination = this.resolveDestination(node);
       const compatibility = resolveTransferStrategy(
         current,
         this.config.targetCapabilities,
-        isReplace,
+        destination.kind === 'replace',
       );
       if (!compatibility.supported) {
         throw new StorageError(compatibility.code);
@@ -217,8 +215,7 @@ export class TransferPlan {
       const { source, checksum } = createStorageFileByteSource(sourceFile, current);
       const sourceSnapshot = buildSourceSnapshot(current, node.sourceParent);
       const execution = new TransferExecution({
-        targetDirectory: node.targetDirectory,
-        writeTarget,
+        destination,
         directoryScope: scope,
         source,
         sourceSnapshot,
@@ -300,22 +297,21 @@ export class TransferPlan {
     }
   }
 
-  private resolveWriteTarget(node: PlanNode): WriteTarget {
+  private resolveDestination(node: PlanNode): TransferDestination {
     if (node.replace && node.existingTarget) {
       if (node.existingTarget.kind !== 'file') {
         throw new StorageError('InvalidArgument');
       }
       return {
         kind: 'replace',
-        ref: node.existingTarget.ref,
-        policy: 'replace-unconditionally',
+        file: node.targetDirectory.file(node.existingTarget.ref),
+        policy: { policy: 'replace-unconditionally' },
       };
     }
     return {
       kind: 'create',
-      parent: node.targetParent,
+      directory: node.targetDirectory,
       name: node.targetName,
-      policy: 'create-only',
     };
   }
 

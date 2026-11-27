@@ -4,10 +4,12 @@ import {
   StorageError,
   type ByteSource,
   type DirectoryScope,
+  type OperationContext,
   type WriteExecution,
 } from '@main/storage';
-import type { ContentChecksum, Entry, WriteTarget } from '@shared/storage';
+import type { ContentChecksum, Entry } from '@shared/storage';
 import type { StorageDirectory } from '../storage/storage-directory';
+import type { FileReplacementPolicy, StorageFile } from '../storage/storage-file';
 import { TransferRateReporter } from '../transfer-rate-reporter';
 import type { TransferWriteStrategy } from './transfer-compatibility';
 import type {
@@ -22,9 +24,16 @@ export interface TransferExecutionOptions {
   onProgress: (progress: TransferProgress) => void;
 }
 
+export type TransferDestination =
+  | { readonly kind: 'create'; readonly directory: StorageDirectory; readonly name: string }
+  | {
+      readonly kind: 'replace';
+      readonly file: StorageFile;
+      readonly policy: FileReplacementPolicy;
+    };
+
 export interface TransferExecutionSpec {
-  readonly targetDirectory: StorageDirectory;
-  readonly writeTarget: WriteTarget;
+  readonly destination: TransferDestination;
   readonly directoryScope?: DirectoryScope | undefined;
   readonly source: ByteSource;
   readonly sourceSnapshot: TransferSourceSnapshot;
@@ -185,35 +194,31 @@ export class TransferExecution {
       onStage: (stage: TransferStage) => void;
     },
   ): Promise<Entry> {
-    const writeOptions = this.spec.directoryScope
-      ? { directoryScope: this.spec.directoryScope }
-      : undefined;
+    const { destination, directoryScope, source, strategy } = this.spec;
+    const writeOptions = directoryScope ? { directoryScope } : undefined;
 
-    if (this.spec.strategy === 'one-shot-write' || this.spec.source.kind !== 'reopenable') {
+    if (strategy === 'one-shot-write' || source.kind !== 'reopenable') {
       let lastBytes = 0;
-      return this.spec.targetDirectory.write(
-        this.spec.writeTarget,
-        this.spec.source,
-        {
-          signal,
-          onProgress: ({ confirmedBytes, processedBytes }) => {
-            const bytes = confirmedBytes ?? processedBytes;
-            if (bytes > lastBytes) {
-              hooks.onBytesSent(bytes - lastBytes);
-              lastBytes = bytes;
-            }
-            hooks.onConfirmed(bytes);
-          },
+      const context: OperationContext = {
+        signal,
+        onProgress: ({ confirmedBytes, processedBytes }) => {
+          const bytes = confirmedBytes ?? processedBytes;
+          if (bytes > lastBytes) {
+            hooks.onBytesSent(bytes - lastBytes);
+            lastBytes = bytes;
+          }
+          hooks.onConfirmed(bytes);
         },
-        writeOptions,
-      );
+      };
+      return destination.kind === 'create'
+        ? destination.directory.createFile(destination.name, source, context, writeOptions)
+        : destination.file.replaceContents(source, destination.policy, context, writeOptions);
     }
 
-    this.execution ??= this.spec.targetDirectory.prepareWrite(
-      this.spec.writeTarget,
-      this.spec.source,
-      writeOptions,
-    );
+    this.execution ??=
+      destination.kind === 'create'
+        ? destination.directory.prepareCreateFile(destination.name, source, writeOptions)
+        : destination.file.prepareReplaceContents(source, destination.policy, writeOptions);
     return this.execution.run({
       signal,
       ...(this.spec.pausable ? { pauseSignal } : {}),

@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtempDisposable, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Readable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import { AdapterRegistry, StorageAccess } from '@main/storage';
 import { googleDriveAdapterFactory } from '@main/storage/providers/google-drive/google-drive-adapter';
@@ -51,11 +50,12 @@ function buildOperations(
 }
 
 describe('TransferService cross-source transfers', () => {
-  it('confirms folder overwrites and tracks source cleanup across local connections', async () => {
+  it.each(['session', 'one-shot'])('%s writes and move cleanup', async (writeMode) => {
     await using srcTmp = await mkdtempDisposable(join(tmpdir(), 'terra-xfer-src-'));
     await using dstTmp = await mkdtempDisposable(join(tmpdir(), 'terra-xfer-dst-'));
     await mkdir(join(srcTmp.path, 'docs'));
     await writeFile(join(srcTmp.path, 'docs', 'a.txt'), 'new-content');
+    await writeFile(join(srcTmp.path, 'docs', 'b.txt'), 'created-content');
     await mkdir(join(dstTmp.path, 'docs'));
     await writeFile(join(dstTmp.path, 'docs', 'a.txt'), 'old-content');
 
@@ -78,6 +78,16 @@ describe('TransferService cross-source transfers', () => {
       },
       async (_conn, name) => platform.isValidEntryName(name),
     );
+    if (writeMode === 'one-shot') {
+      ops.statEntry = async (ref, context) => {
+        const entry = await storage.stat(ref, context);
+        if (ref.connectionId !== 'src-conn' || entry.kind !== 'file') return entry;
+        return {
+          ...entry,
+          capabilities: { ...entry.capabilities, rangeRead: { support: 'unsupported' } },
+        };
+      };
+    }
     const service = new TransferService(ops);
     const srcRoot = localSpace('src-conn', srcTmp.path, platform).root;
     const dstRoot = localSpace('dst-conn', dstTmp.path, platform).root;
@@ -101,21 +111,19 @@ describe('TransferService cross-source transfers', () => {
 
       service.confirmPlan(1, prepared.prepared.id);
       const page = await service.discoverDirectory(1, prepared.prepared.id, 0, 0);
-      expect(page.items).toHaveLength(1);
-      const child = page.items[0]!;
-
-      const result = await service.runWork(
-        1,
-        { planId: prepared.prepared.id, itemId: child.id },
-        { signal: new AbortController().signal, onProgress: () => {} },
-      );
-      expect(result.status).toBe('completed');
+      expect(page.items).toHaveLength(2);
+      for (const child of page.items) {
+        const work = { planId: prepared.prepared.id, itemId: child.id };
+        const result = await service.runWork(1, work, {
+          signal: new AbortController().signal,
+          onProgress: () => {},
+        });
+        expect(result.status).toBe('completed');
+        expect(service.getCommittedFile(1, work)).toMatchObject({ sourceDeleted: false });
+      }
       expect(await readFile(join(dstTmp.path, 'docs', 'a.txt'), 'utf8')).toBe('new-content');
+      expect(await readFile(join(dstTmp.path, 'docs', 'b.txt'), 'utf8')).toBe('created-content');
 
-      // Committed file and source directory cleanup tracking are populated for move mode.
-      expect(
-        service.getCommittedFile(1, { planId: prepared.prepared.id, itemId: child.id }),
-      ).toMatchObject({ sourceDeleted: false });
       expect(service.getRemainingSourceDirectories(1, prepared.prepared.id)).toHaveLength(1);
 
       service.finishPlan(1, prepared.prepared.id);
@@ -341,13 +349,9 @@ describe('TransferService cross-source transfers', () => {
           }),
           list: async () => ({ entries: [] }),
         }) as unknown as ReturnType<TransferOperations['directory']>,
-      file: (ref) => ({
-        ref,
-        stat: async () => {
-          throw new Error('unused');
-        },
-        read: async () => ({ stream: Readable.from([]), dispose: async () => {} }),
-      }),
+      file: () => {
+        throw new Error('unused');
+      },
       statEntry: async () => {
         throw new Error('unused');
       },
