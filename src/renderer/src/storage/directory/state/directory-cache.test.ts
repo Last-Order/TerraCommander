@@ -52,7 +52,7 @@ it('limits the total cached entries and discards a previous snapshot if its repl
   expect(cache.peek(small)).toBe(smallListing);
 });
 
-it('updates an existing entry in place when add is called with the same locator', () => {
+it('replaces an existing entry when add is called with the same locator', () => {
   const cache = new DirectoryCache();
   const dir = root('disk');
   const initial: Entry = {

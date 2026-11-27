@@ -28,7 +28,7 @@ describe('directory-sort', () => {
       field: 'name',
       direction: 'ascending',
     });
-    expect(toggleDirectorySort(DEFAULT_DIRECTORY_SORT, 'size')).toEqual({
+    expect(toggleDirectorySort(descending, 'size')).toEqual({
       field: 'size',
       direction: 'ascending',
     });

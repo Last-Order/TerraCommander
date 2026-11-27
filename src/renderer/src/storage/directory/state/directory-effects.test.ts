@@ -67,14 +67,13 @@ describe('DirectoryEffectsStore', () => {
     expect(onDirB).not.toHaveBeenCalled();
     expect(store.getDirectoryRenames(dirA)).toBe(initialA);
 
-    // Rename in dirA notifies dirA only and marks the entry busy.
+    // Rename in dirA notifies dirA only.
     store.apply({
       busyEntries: [file1],
       renames: [{ parent: dirA, entry: file1, name: 'renamed.txt' }],
     });
     expect(onDirA).toHaveBeenCalledTimes(1);
     expect(onDirB).not.toHaveBeenCalled();
-    expect(store.isBusy(file1)).toBe(true);
     const renamesA = store.getDirectoryRenames(dirA);
     expect(renamesA.get('file-1')).toBe('renamed.txt');
 

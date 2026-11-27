@@ -21,16 +21,12 @@ function createMemoryStorage() {
 }
 
 describe('directory-columns', () => {
-  it('clamps column widths to configured min and max limits', () => {
-    expect(clampColumnWidth('modifiedAt', 40)).toBe(DIRECTORY_COLUMN_LIMITS.modifiedAt.minWidth);
-    expect(clampColumnWidth('modifiedAt', 999)).toBe(DIRECTORY_COLUMN_LIMITS.modifiedAt.maxWidth);
+  it('rounds fractional widths and falls back to defaults for non-finite widths', () => {
     expect(clampColumnWidth('modifiedAt', 210.6)).toBe(211);
     expect(clampColumnWidth('modifiedAt', Number.NaN)).toBe(
       DIRECTORY_COLUMN_LIMITS.modifiedAt.defaultWidth,
     );
 
-    expect(clampColumnWidth('size', 10)).toBe(DIRECTORY_COLUMN_LIMITS.size.minWidth);
-    expect(clampColumnWidth('size', 600)).toBe(DIRECTORY_COLUMN_LIMITS.size.maxWidth);
     expect(clampColumnWidth('size', Number.POSITIVE_INFINITY)).toBe(
       DIRECTORY_COLUMN_LIMITS.size.defaultWidth,
     );

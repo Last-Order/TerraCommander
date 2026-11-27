@@ -26,8 +26,9 @@ async function setup(
   return { backend, adapter, registry, store, uploads };
 }
 
-describe.each(['sequential', 'parts'] as const)('%s upload recovery contract', (mode) => {
-  it('recovers using backend truth after rebuilding the coordinator and registry', async () => {
+it.each(['sequential', 'parts'] as const)(
+  'recovers a %s upload using backend truth after rebuilding the coordinator and registry',
+  async (mode) => {
     const first = await setup(undefined, undefined, mode);
     const original = byteSource();
     const id = await first.uploads.create(createTarget(), original.source.descriptor);
@@ -50,26 +51,26 @@ describe.each(['sequential', 'parts'] as const)('%s upload recovery contract', (
     expect((await next.uploads.inspect(id)).state).toBe('completed');
     expect(restarted.disposals).toBe(2);
     await next.registry.dispose();
-  });
+  },
+);
 
-  it('reconciles a lost completion response without uploading content again', async () => {
-    const fixture = await setup(undefined, undefined, mode);
-    const source = byteSource();
-    const id = await fixture.uploads.create(createTarget(), source.source.descriptor);
-    fixture.adapter.uploads.loseCompletionResponse = true;
-    await expect(fixture.uploads.resume(id, source.source)).rejects.toMatchObject({
-      code: 'OutcomeUnknown',
-    });
-    const fresh = byteSource();
-    const entry = await fixture.uploads.resume(id, fresh.source);
-    expect(entry.size).toBe(6);
-    expect(fresh.opened).toEqual([]);
-    expect(fixture.adapter.uploads.calls.filter((call) => call === 'run')).toHaveLength(1);
-    await expect(fixture.uploads.discard(id)).rejects.toMatchObject({
-      code: 'PreconditionFailed',
-    });
-    await fixture.registry.dispose();
+it('reconciles a lost completion response without uploading content again', async () => {
+  const fixture = await setup();
+  const source = byteSource();
+  const id = await fixture.uploads.create(createTarget(), source.source.descriptor);
+  fixture.adapter.uploads.loseCompletionResponse = true;
+  await expect(fixture.uploads.resume(id, source.source)).rejects.toMatchObject({
+    code: 'OutcomeUnknown',
   });
+  const fresh = byteSource();
+  const entry = await fixture.uploads.resume(id, fresh.source);
+  expect(entry.size).toBe(6);
+  expect(fresh.opened).toEqual([]);
+  expect(fixture.adapter.uploads.calls.filter((call) => call === 'run')).toHaveLength(1);
+  await expect(fixture.uploads.discard(id)).rejects.toMatchObject({
+    code: 'PreconditionFailed',
+  });
+  await fixture.registry.dispose();
 });
 
 describe('upload recovery guards', () => {

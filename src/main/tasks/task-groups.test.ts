@@ -203,18 +203,6 @@ it('stops preparation waiting for capacity when the session closes', async () =>
   expect(queue.enqueue({ type: 'work', input: { name: 'late' } })).toBe(false);
 });
 
-it('finishes an empty group after successful preparation', async () => {
-  const { queue } = setup();
-  queue.createGroup(groupRequest, { prepare: async () => {} });
-  await vi.waitFor(() =>
-    expect(queue.store.getState().groups[0]).toMatchObject({
-      state: { phase: 'settled', outcome: 'completed' },
-      summary: { total: 0 },
-      preparation: { status: 'completed' },
-    }),
-  );
-});
-
 it('keeps preparation issues outside member counts and preserves successful member results', async () => {
   const { queue } = setup();
   queue.createGroup(groupRequest, {
@@ -315,13 +303,15 @@ it('bounds concurrent preparations independently of task capacity', async () => 
   gates[0]!.resolve();
   await vi.waitFor(() => expect(starts).toHaveBeenCalledTimes(5));
   for (const gate of gates) gate.resolve();
-  await vi.waitFor(() =>
-    expect(
-      queue.store
-        .getState()
-        .groups.every(
-          (group) => group.state.phase === 'settled' && group.state.outcome === 'completed',
-        ),
-    ).toBe(true),
-  );
+  await vi.waitFor(() => {
+    const { groups } = queue.store.getState();
+    expect(groups).toHaveLength(gates.length);
+    for (const group of groups) {
+      expect(group).toMatchObject({
+        state: { phase: 'settled', outcome: 'completed' },
+        summary: { total: 0 },
+        preparation: { status: 'completed' },
+      });
+    }
+  });
 });

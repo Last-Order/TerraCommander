@@ -36,7 +36,7 @@ describe('TaskConflictLedger shared/exclusive locks and reservations', () => {
     expect(ledger.hasConflicts({ exclusive: ['/'] })).toBe(false);
   });
 
-  it('supports pending reservations with atomic handoff to task or group', () => {
+  it('merges pending reservation locks into a task and releases unused reservations', () => {
     const ledger = new TaskConflictLedger();
 
     expect(ledger.reservePending('r1', { exclusive: ['/target'], shared: ['/'] })).toBe(true);
@@ -58,7 +58,7 @@ describe('TaskConflictLedger shared/exclusive locks and reservations', () => {
 });
 
 describe('TaskQueue reservations and group finalization', () => {
-  it('atomically transfers a reservation into a queued task and releases on cancel', async () => {
+  it('keeps reservation locks held by the task until it completes', async () => {
     let resolveWork!: () => void;
     const workStarted = new Promise<void>((resolve) => {
       resolveWork = resolve;

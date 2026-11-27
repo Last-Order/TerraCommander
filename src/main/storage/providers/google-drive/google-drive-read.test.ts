@@ -41,9 +41,10 @@ async function fixture(media: (init?: RequestInit) => Response | Promise<Respons
   return { registry, storage, ref, request, event };
 }
 
-it('streams Drive content with its response length and authorization', async () => {
+it('streams Drive content and exposes its response length and metadata checksums', async () => {
   const { registry, storage, ref } = await fixture(
     () => new Response('content', { headers: { 'Content-Length': '7' } }),
+    { sha256Checksum: 'a'.repeat(64), md5Checksum: 'b'.repeat(32) },
   );
   try {
     const handle = await storage.read(ref);
@@ -52,12 +53,16 @@ it('streams Drive content with its response length and authorization', async () 
     for await (const chunk of handle.stream) chunks.push(chunk as Buffer);
     expect(Buffer.concat(chunks).toString()).toBe('content');
     await handle.dispose();
+    expect((await storage.stat(ref)).checksums).toEqual([
+      { algorithm: 'sha256', value: 'a'.repeat(64) },
+      { algorithm: 'md5', value: 'b'.repeat(32) },
+    ]);
   } finally {
     await registry.dispose();
   }
 });
 
-it('distinguishes a failed range request from initial download and metadata failures', async () => {
+it('records a network failure while opening a ranged media response', async () => {
   const { registry, storage, ref, event } = await fixture(() => {
     throw new TypeError('fetch failed', { cause: { code: 'UND_ERR_SOCKET' } });
   });
@@ -200,7 +205,7 @@ it.each([undefined, 2])(
           status: 206,
           headers: { 'Content-Range': `bytes 4-${length === undefined ? 6 : 5}/7` },
         }),
-      { size: '7', sha256Checksum: 'a'.repeat(64), md5Checksum: 'b'.repeat(32) },
+      { size: '7' },
     );
     try {
       const handle = await storage.read(ref, {
@@ -217,10 +222,6 @@ it.each([undefined, 2])(
       expect(new Headers(media?.[1]?.headers).get('range')).toBe(
         length === undefined ? 'bytes=4-' : 'bytes=4-5',
       );
-      expect((await storage.stat(ref)).checksums).toEqual([
-        { algorithm: 'sha256', value: 'a'.repeat(64) },
-        { algorithm: 'md5', value: 'b'.repeat(32) },
-      ]);
     } finally {
       await registry.dispose();
     }

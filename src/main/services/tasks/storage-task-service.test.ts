@@ -660,16 +660,25 @@ it('emits lightweight task-progress events with neutral stage keys and tracks bu
   });
 
   try {
-    await service.pasteEntries(1, {
-      mode: 'copy',
-      sourceParent: parent,
-      sourceDirectoryPath: '/Drive',
-      entries: [fileEntry],
-      targetParent,
-      targetDirectoryPath: 'D:\\Downloads',
-    });
+    await expect(
+      service.pasteEntries(1, {
+        sourceParent: parent,
+        sourceDirectoryPath: '/Drive',
+        entries: [fileEntry],
+        targetParent,
+        targetDirectoryPath: 'D:\\Downloads',
+      }),
+    ).resolves.toEqual({ status: 'started' });
+    expect(transfers.prepare).toHaveBeenCalledWith(
+      0,
+      expect.objectContaining({ mode: 'copy', sourceParent: parent, targetParent }),
+    );
 
     await vi.waitFor(() => expect(service.getSnapshot().tasks[0]?.controls.canPause).toBe(true));
+    expect(service.getSnapshot().tasks[0]?.request).toMatchObject({
+      type: 'transfer',
+      input: { mode: 'copy', sourceProvider: 'google-drive', targetProvider: 'local' },
+    });
     expect(service.getSnapshot().directoryEffects).toEqual({
       busyEntries: [fileEntry.ref],
       renames: [],

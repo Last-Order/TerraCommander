@@ -79,7 +79,7 @@ it('performs DFS discovery across paginated directories, respects skipped items,
   expect(afterDirectory).toHaveBeenCalledTimes(2);
 });
 
-it('cancels the active directory on abort and rethrows fatal errors', async () => {
+it('cancels the active directory and propagates cancellation on abort', async () => {
   const { controller, context } = createPrepContext();
   const cancelDirectoryItem = vi.fn(async () => undefined);
 

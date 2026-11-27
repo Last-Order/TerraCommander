@@ -2,8 +2,8 @@ import { mkdir, mkdtempDisposable, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
-import { AdapterRegistry, StorageAccess, StorageError } from '@main/storage';
-import { localAdapterFactory, localSpace } from '@main/storage/providers/local/local-adapter';
+import { StorageError } from '@main/storage';
+import { localSpace } from '@main/storage/providers/local/local-adapter';
 import { entryKey, type Entry, type EntryPage, type EntryRef } from '@shared/storage';
 import { internalLocalConnectionId } from '../storage/providers/local-storage-provider';
 import { createStorageDirectory } from '../storage/storage-directory';
@@ -329,49 +329,6 @@ it('rejects cross-connection self-containment such as two accounts on the same s
   await service.dispose();
 });
 
-it('routes cloud-to-local paste to a unified transfer task targeting the local directory', async () => {
-  const { dependencies, transfers } = createMockTaskHost();
-  const service = new StorageTaskService(dependencies);
-  const sourceParent: EntryRef = { connectionId: cloudConnectionA, spaceId: 'drive', locator: 'a' };
-  const targetParent: EntryRef = {
-    connectionId: internalLocalConnectionId,
-    spaceId: 'local-1',
-    locator: '.',
-  };
-
-  const response = await service.pasteEntries(1, {
-    sourceParent,
-    sourceDirectoryPath: 'My Drive',
-    entries: [
-      {
-        ref: { connectionId: cloudConnectionA, spaceId: 'drive', locator: 'file-1' },
-        name: 'report.txt',
-        kind: 'file',
-        size: 10,
-        capabilities: { read: { support: 'supported' } },
-      },
-    ],
-    targetParent,
-    targetDirectoryPath: 'LocalTarget',
-  });
-
-  expect(response).toEqual({ status: 'started' });
-  expect(transfers.prepare).toHaveBeenCalledWith(
-    0,
-    expect.objectContaining({ mode: 'copy', sourceParent, targetParent }),
-  );
-  expect(service.getSnapshot().tasks[0]?.request).toMatchObject({
-    type: 'transfer',
-    input: {
-      mode: 'copy',
-      sourceProvider: 'google-drive',
-      targetProvider: 'local',
-    },
-  });
-
-  await service.dispose();
-});
-
 it('enqueues same-directory single file copy immediately as a group and auto-renames during preparation', async () => {
   const { dependencies, listDirectory, copyWithin } = createMockTaskHost();
   const service = new StorageTaskService(dependencies);
@@ -582,33 +539,6 @@ it('maps same-connection folder copy to a copy task group and copies children re
   expect(snapshot.tasks[0]?.groupId).toBe(snapshot.groups[0]?.id);
 
   await service.dispose();
-});
-
-it('copies local files and creates directories through StorageAccess capability checks', async () => {
-  await using temporary = await mkdtempDisposable(join(tmpdir(), 'terra-local-copy-'));
-  await writeFile(join(temporary.path, 'notes.txt'), 'hello copy');
-  const registry = new AdapterRegistry({
-    credentials: { async resolve() {} },
-    logger: { event() {} },
-  });
-  registry.register(localAdapterFactory(async () => [temporary.path]));
-  await registry.connect({ id: internalLocalConnectionId, provider: 'local', configuration: {} });
-  const storage = new StorageAccess(registry);
-  const root = localSpace(internalLocalConnectionId, temporary.path).root;
-  try {
-    const copied = await storage.copyWithin(
-      { ...root, locator: 'notes.txt' },
-      { parent: root, name: 'notes - Copy.txt' },
-    );
-    expect(copied.name).toBe('notes - Copy.txt');
-    expect(await readFile(join(temporary.path, 'notes - Copy.txt'), 'utf8')).toBe('hello copy');
-
-    const createdDir = await storage.createDirectory({ parent: root, name: 'sub' });
-    expect(createdDir.kind).toBe('directory');
-    expect(createdDir.name).toBe('sub');
-  } finally {
-    await registry.dispose();
-  }
 });
 
 it('rejects entries whose connectionId or spaceId does not match sourceParent', async () => {

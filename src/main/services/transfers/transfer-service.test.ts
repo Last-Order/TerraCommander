@@ -51,7 +51,7 @@ function buildOperations(
 }
 
 describe('TransferService cross-source transfers', () => {
-  it('transfers folders across two local connections with overwrite confirmation and directory identity guard', async () => {
+  it('confirms folder overwrites and tracks source cleanup across local connections', async () => {
     await using srcTmp = await mkdtempDisposable(join(tmpdir(), 'terra-xfer-src-'));
     await using dstTmp = await mkdtempDisposable(join(tmpdir(), 'terra-xfer-dst-'));
     await mkdir(join(srcTmp.path, 'docs'));

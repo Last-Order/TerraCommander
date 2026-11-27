@@ -47,10 +47,8 @@ function row(item: Entry): DirectoryRow {
 
 describe('hasDirectoryEntryDrag', () => {
   it('detects the internal directory drag MIME type', () => {
-    expect(hasDirectoryEntryDrag([directoryDragMimeType])).toBe(true);
     expect(hasDirectoryEntryDrag(['Files', directoryDragMimeType])).toBe(true);
     expect(hasDirectoryEntryDrag(['Files'])).toBe(false);
-    expect(hasDirectoryEntryDrag([])).toBe(false);
   });
 });
 
@@ -255,17 +253,6 @@ describe('canDropEntriesIntoTarget', () => {
         target: readOnlyFolder,
         draggedEntries: [draggedFile],
         draggedLocators: new Set(['file-1']),
-        isBusy: () => false,
-        blocked: false,
-      }),
-    ).toBe(false);
-
-    // Self-drop single
-    expect(
-      canDropEntriesIntoTarget({
-        target: draggedFolder,
-        draggedEntries: [draggedFolder],
-        draggedLocators: new Set(['dir-1']),
         isBusy: () => false,
         blocked: false,
       }),

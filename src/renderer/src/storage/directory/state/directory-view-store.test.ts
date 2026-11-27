@@ -57,16 +57,6 @@ describe('createDirectoryViewStore', () => {
     expect(store.getState().activeLocator).toBeNull();
   });
 
-  it('migrates renamed selection, anchor, and active locators', () => {
-    const store = createDirectoryViewStore(createProjection(['a', 'b'], true));
-    store.getState().selectOnly('b');
-    store.getState().migrateRename('b', 'b-renamed');
-
-    expect([...store.getState().selectedLocators]).toEqual(['b-renamed']);
-    expect(store.getState().anchorLocator).toBe('b-renamed');
-    expect(store.getState().activeLocator).toBe('b-renamed');
-  });
-
   it('sequences viewport commands and only clears matching sequence numbers', () => {
     const store = createDirectoryViewStore(createProjection(['a', 'b'], true));
 

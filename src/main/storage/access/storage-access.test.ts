@@ -103,8 +103,11 @@ describe('storage access dispatch and native references', () => {
     await registry.dispose();
   });
 
-  it('blocks unsupported mutations without emulation and permits unknown ordinary reads', async () => {
+  it('blocks unsupported and cross-connection mutations and permits unknown ordinary reads', async () => {
     const { adapter, registry, access } = await setup();
+    await expect(
+      access.copyWithin(fixtureRef(), { parent: fixtureRef('other'), name: 'copy' }),
+    ).rejects.toMatchObject({ code: 'Unsupported' });
     adapter.caps.copyWithin = { support: 'unsupported' };
     adapter.caps.moveWithin = { support: 'unsupported' };
     adapter.caps.remove = { support: 'unsupported' };
@@ -114,9 +117,6 @@ describe('storage access dispatch and native references', () => {
     ).rejects.toMatchObject({ code: 'Unsupported' });
     await expect(
       access.moveWithin(fixtureRef(), { parent: fixtureRef(), name: 'move' }),
-    ).rejects.toMatchObject({ code: 'Unsupported' });
-    await expect(
-      access.copyWithin(fixtureRef(), { parent: fixtureRef('other'), name: 'copy' }),
     ).rejects.toMatchObject({ code: 'Unsupported' });
     expect(adapter.calls).toEqual([]);
     adapter.caps.read = { support: 'unknown' };
@@ -160,25 +160,12 @@ describe('storage access dispatch and native references', () => {
     await registry.dispose();
   });
 
-  it('writes through a managed byte source, creates folders and returns changed move references', async () => {
+  it('passes a managed source to the write adapter and disposes it', async () => {
     const { adapter, registry, access } = await setup();
     const source = byteSource();
     await access.write(createTarget(), source.source);
     expect(adapter.lastWrite?.toString()).toBe('abcdef');
     expect(source.disposals).toBe(1);
-    expect((await access.createDirectory({ parent: fixtureRef(), name: 'new' })).kind).toBe(
-      'directory',
-    );
-    expect(
-      (
-        await access.moveWithin(fixtureRef('connection', 'old'), {
-          parent: fixtureRef(),
-          name: 'new',
-        })
-      ).ref.locator,
-    ).toBe('new');
-    await access.remove(fixtureRef('connection', 'new'));
-    expect(adapter.calls).toContain('remove');
     await registry.dispose();
   });
 

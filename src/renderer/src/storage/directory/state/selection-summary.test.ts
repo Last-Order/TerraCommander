@@ -1,10 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Entry } from '@shared/storage';
-import {
-  createSelectionSummaryStore,
-  sameSelectionSummary,
-  summarizeSelection,
-} from './selection-summary';
+import { createSelectionSummaryStore, summarizeSelection } from './selection-summary';
 
 function createEntry(locator: string, kind: Entry['kind'], size?: number): Entry {
   return {
@@ -92,8 +88,6 @@ describe('createSelectionSummaryStore', () => {
 
     store.getState().setSummary({ count: 2, sizeBytes: 500, estimated: true });
     expect(listener).toHaveBeenCalledTimes(2);
-    expect(
-      sameSelectionSummary(store.getState().summary, { count: 2, sizeBytes: 500, estimated: true }),
-    ).toBe(true);
+    expect(store.getState().summary).toEqual({ count: 2, sizeBytes: 500, estimated: true });
   });
 });

@@ -44,7 +44,7 @@ describe('Google Drive account lifecycle', () => {
     await fixture.accounts.dispose();
   });
 
-  it('accepts a same-account replacement without a new refresh token only when a saved grant is usable', async () => {
+  it('reuses a valid saved refresh token for same-account reauthorization', async () => {
     const fixture = accountFixture();
     const first = await fixture.accounts.add('google-drive', { method: 'browser' });
     const replacement = { ...authorizationGrant(), refreshToken: undefined };

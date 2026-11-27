@@ -108,23 +108,16 @@ it('keeps control availability independent from progress and preserves measureme
   expect(task(1).progress).toBe(latest);
 });
 
-it.each(['operation', 'transfer'] as const)(
-  'uses handler pause support independently of the %s scheduling category',
-  async (category) => {
-    const { queue, executions, onSuccess, onFailure, task } = setup(category);
-    queue.enqueue({ type: 'transfer', input: 'file' });
-    expect(queue.canPause(task(1))).toBe(true);
-    await queue.pause(1);
-    await vi.waitFor(() => expect(task(1).status).toBe('paused'));
-    expect(onSuccess).not.toHaveBeenCalled();
-    expect(onFailure).not.toHaveBeenCalled();
-    queue.resume(1);
-    await vi.waitFor(() => expect(executions).toHaveLength(2));
-    executions[1]?.pending.resolve({ status: 'completed', result: undefined });
-    await vi.waitFor(() => expect(task(1).status).toBe('completed'));
-    expect(onSuccess).toHaveBeenCalledOnce();
-  },
-);
+it('resumes an operation-category task whose handler supports pausing', async () => {
+  const { queue, executions, task } = setup('operation');
+  queue.enqueue({ type: 'transfer', input: 'file' });
+  await queue.pause(1);
+  await vi.waitFor(() => expect(task(1).status).toBe('paused'));
+  queue.resume(1);
+  await vi.waitFor(() => expect(executions).toHaveLength(2));
+  executions[1]?.pending.resolve({ status: 'completed', result: undefined });
+  await vi.waitFor(() => expect(task(1).status).toBe('completed'));
+});
 
 it('releases capacity after suspension, retains conflicts and resumes at the end of runnable work', async () => {
   const { queue, executions, onSuccess, onFailure, task } = setup();

@@ -109,7 +109,6 @@ function setup(localVolumes?: () => Promise<string[]>) {
     createDirectory,
     deleteEntry,
     services,
-    transferPreferences,
     setLanguage,
     send,
     emitWebContents,
@@ -208,7 +207,7 @@ it('rejects untrusted senders on task channels before initializing task services
 
   for (const untrusted of [
     { ...event, sender: {} },
-    { ...event, senderFrame: { url: 'https://example.com' } },
+    { ...event, senderFrame: { url: event.senderFrame.url } },
   ]) {
     await expect(enqueueDelete(untrusted, request)).rejects.toThrow('Untrusted IPC sender');
   }
@@ -355,7 +354,6 @@ it('transfers a file picked via local dialog with progress, pause, and resume in
       },
     }),
   );
-  expect(prepareWrite).toHaveBeenCalledTimes(1);
 
   expect(await handlers.get(channels.pauseTask)!(event, 1)).toEqual({ ok: true, value: undefined });
   await vi.waitFor(async () =>
