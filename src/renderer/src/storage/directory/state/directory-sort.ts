@@ -14,11 +14,13 @@ export function toggleDirectorySort(
   previous: DirectorySort,
   field: DirectorySort['field'],
 ): DirectorySort {
-  return {
-    field,
-    direction:
-      previous.field === field && previous.direction === 'ascending' ? 'descending' : 'ascending',
-  };
+  if (previous.field !== field) {
+    return { field, direction: 'ascending' };
+  }
+  if (previous.direction === 'ascending') {
+    return { field, direction: 'descending' };
+  }
+  return { ...DEFAULT_DIRECTORY_SORT };
 }
 
 export function parseDirectorySort(raw: string | null): DirectorySort | null {
