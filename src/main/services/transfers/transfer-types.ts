@@ -1,11 +1,9 @@
-import type { DirectoryScope, OperationContext } from '@main/storage/core/contracts';
+import type { OperationContext } from '@main/storage/core/contracts';
 import type {
-  Capabilities,
   ContentChecksum,
   Entry,
   EntryRef,
   RemoveOptions,
-  SpaceSemantics,
   StorageErrorCode,
 } from '@shared/storage';
 import type { StorageProvider } from '@shared/storage-browser';
@@ -109,9 +107,6 @@ export interface TransferOperations {
   file(ref: EntryRef): StorageFile;
   statEntry(ref: EntryRef, context?: OperationContext): Promise<Entry>;
   deleteEntry(ref: EntryRef, context?: OperationContext, options?: RemoveOptions): Promise<void>;
-  openDirectoryScope(root: EntryRef, context?: OperationContext): Promise<DirectoryScope>;
-  spaceCapabilities(ref: EntryRef, context?: OperationContext): Promise<Capabilities>;
-  spaceSemantics(ref: EntryRef): Promise<SpaceSemantics | undefined>;
   resolveProvider(connectionId: string): Promise<StorageProvider>;
   validateEntryName?(connectionId: string, name: string): Promise<boolean>;
   canonicalEntryKey?(ref: EntryRef): Promise<string | undefined>;

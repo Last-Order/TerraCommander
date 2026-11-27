@@ -210,7 +210,6 @@ function createMockTaskHost() {
       directory,
       inspectTransfer,
       inspectCrossConnectionTransfer,
-      spaceCapabilities,
       canonicalEntryKey,
       targetLockKeys,
       renameEntry,

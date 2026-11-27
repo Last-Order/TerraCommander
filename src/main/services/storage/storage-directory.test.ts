@@ -59,6 +59,9 @@ it('provides directory-scoped operations, child handles, and local transfer insp
     const [choice] = await spaces.listSpaces(internalLocalConnectionId);
     if (!choice) throw new Error('Expected a local space');
     const rootDir = operations.directory(choice.space.root);
+    const rootRef = rootDir.ref;
+    rootRef.locator = 'src';
+    expect(rootDir.ref).toEqual(choice.space.root);
 
     expect(await rootDir.semantics()).toEqual(choice.space.semantics);
     expect((await rootDir.stat()).kind).toBe('directory');
@@ -73,6 +76,9 @@ it('provides directory-scoped operations, child handles, and local transfer insp
     const noteFile = srcDir.file({ ...choice.space.root, locator: 'src/note.txt' });
     expect((await noteFile.stat()).name).toBe('note.txt');
     expect((await operations.file(noteFile.ref).stat()).size).toBe(5);
+    await expect(operations.directory(noteFile.ref).capabilities()).rejects.toMatchObject({
+      code: 'InvalidArgument',
+    });
     expect(() =>
       rootDir.child({
         connectionId: internalLocalConnectionId,

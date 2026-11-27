@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { StorageError, throwIfAborted } from '@main/storage/core/errors';
-import { entryKey, type Entry, type EntryRef } from '@shared/storage';
+import {
+  entryKey,
+  type Capabilities,
+  type Entry,
+  type EntryRef,
+  type SpaceSemantics,
+} from '@shared/storage';
+import type { StorageDirectory } from '../storage/storage-directory';
 import { resolveTransferStrategy } from './transfer-compatibility';
 import type { TransferExecution, TransferExecutionOptions } from './transfer-execution';
 import { allocateTransferNames, normalizeTargetName } from './transfer-names';
@@ -214,17 +221,17 @@ export class TransferService {
     const epoch = this.ownerEpochs.get(owner);
     if (request.entries.length === 0) throw new StorageError('InvalidArgument');
 
-    const [sourceProvider, targetProvider, targetSemantics, targetSpaceCaps] = await Promise.all([
-      this.operations.resolveProvider(request.sourceParent.connectionId),
-      this.operations.resolveProvider(request.targetParent.connectionId),
-      this.operations.spaceSemantics(request.targetParent),
-      this.operations.spaceCapabilities(request.targetParent, { signal: this.lifetime.signal }),
-    ]);
-
     const targetDir = this.operations.directory(request.targetParent);
-    const targetDirEntry = await targetDir.stat({ signal: this.lifetime.signal });
-    if (targetDirEntry.kind !== 'directory') throw new StorageError('InvalidArgument');
-    const targetCapabilities = { ...targetSpaceCaps, ...targetDirEntry.capabilities };
+    const targetRef = targetDir.ref;
+    const [sourceProvider, targetProvider, targetSemantics, targetCapabilities] = await Promise.all(
+      [
+        this.operations.resolveProvider(request.sourceParent.connectionId),
+        this.operations.resolveProvider(targetRef.connectionId),
+        targetDir.semantics(),
+        targetDir.capabilities({ signal: this.lifetime.signal }),
+      ],
+    );
+
     if (targetCapabilities.write?.support === 'unsupported') {
       throw new StorageError('PermissionDenied');
     }
@@ -237,8 +244,7 @@ export class TransferService {
     const allocatedNames = allocateTransferNames(uniqueEntries, targetSemantics);
     for (const name of allocatedNames) {
       const valid =
-        (await this.operations.validateEntryName?.(request.targetParent.connectionId, name)) ??
-        true;
+        (await this.operations.validateEntryName?.(targetRef.connectionId, name)) ?? true;
       if (!valid) throw new StorageError('InvalidArgument');
     }
 
@@ -276,15 +282,14 @@ export class TransferService {
     if (this.ownerEpochs.get(owner) !== epoch) throw new StorageError('Cancelled');
 
     const targetCanonicalKey =
-      (await this.operations.canonicalEntryKey?.(request.targetParent)) ??
-      entryKey(request.targetParent);
+      (await this.operations.canonicalEntryKey?.(targetRef)) ?? entryKey(targetRef);
     const planId = randomUUID();
     const standalone = uniqueEntries.length === 1 && uniqueEntries[0]!.kind === 'file';
     const confirmed = conflicts.length === 0 || request.replace === true;
     const plan = new TransferPlan({
       operations: this.operations,
       mode: request.mode,
-      targetRoot: request.targetParent,
+      targetRoot: targetDir,
       targetCapabilities,
       targetSemantics,
       roots,
@@ -315,7 +320,7 @@ export class TransferService {
         mode: request.mode,
         sourceProvider,
         targetProvider,
-        targetParent: request.targetParent,
+        targetParent: targetRef,
         conflicts,
         items: plan.roots,
       },
@@ -325,7 +330,7 @@ export class TransferService {
   private deduplicateAndValidateEntries(
     entries: readonly Entry[],
     mode: PrepareTransferRequest['mode'],
-    targetCapabilities: Awaited<ReturnType<TransferOperations['spaceCapabilities']>>,
+    targetCapabilities: Capabilities,
   ): Entry[] {
     const seen = new Set<string>();
     const unique: Entry[] = [];
@@ -357,8 +362,8 @@ export class TransferService {
   }
 
   private async listExistingTargets(
-    targetDir: ReturnType<TransferOperations['directory']>,
-    semantics?: Awaited<ReturnType<TransferOperations['spaceSemantics']>>,
+    targetDir: StorageDirectory,
+    semantics?: SpaceSemantics,
   ): Promise<Map<string, Entry>> {
     const existing = new Map<string, Entry>();
     const cursors = new Set<string>();

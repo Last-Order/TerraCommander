@@ -16,11 +16,7 @@ import { toBrowserErrorCode, toTaskFailure } from './task-errors';
 
 export type CopyPasteOperations = Pick<
   StorageEntryOperations,
-  | 'directory'
-  | 'inspectTransfer'
-  | 'inspectCrossConnectionTransfer'
-  | 'spaceCapabilities'
-  | 'canonicalEntryKey'
+  'directory' | 'inspectTransfer' | 'inspectCrossConnectionTransfer' | 'canonicalEntryKey'
 >;
 
 export interface CopyDiscoveryItem {
@@ -157,12 +153,7 @@ export async function planPaste(
       return { kind: 'rejected', reason: 'self-containment' };
     }
 
-    const [spaceCaps, targetEntry] = await Promise.all([
-      operations.spaceCapabilities(request.targetParent),
-      targetDirectory.stat(),
-    ]);
-    if (targetEntry.kind !== 'directory') throw new StorageError('InvalidArgument');
-    const targetCaps = { ...spaceCaps, ...targetEntry.capabilities };
+    const targetCaps = await targetDirectory.capabilities();
     if (targetCaps.write?.support === 'unsupported') {
       return { kind: 'rejected', reason: 'permission-denied' };
     }
@@ -227,7 +218,7 @@ export async function planPaste(
   }
 
   if (hasDirectory) {
-    const targetCapabilities = await targetDirectory.capabilities();
+    const targetCapabilities = await targetDirectory.spaceCapabilities();
     if (targetCapabilities.createDirectory?.support === 'unsupported') {
       return { kind: 'rejected', reason: 'unsupported' };
     }

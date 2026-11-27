@@ -143,7 +143,6 @@ export type StorageTaskOperations = Pick<
   | 'directory'
   | 'inspectTransfer'
   | 'inspectCrossConnectionTransfer'
-  | 'spaceCapabilities'
   | 'canonicalEntryKey'
   | 'targetLockKeys'
   | 'renameEntry'
@@ -514,12 +513,7 @@ export class StorageTaskService {
     targetParent: EntryRef,
     requireCreateDirectory: boolean,
   ): Promise<void> {
-    const [spaceCaps, targetEntry] = await Promise.all([
-      this.operations.spaceCapabilities(targetParent),
-      this.operations.directory(targetParent).stat(),
-    ]);
-    if (targetEntry.kind !== 'directory') throw new StorageError('InvalidArgument');
-    const targetCaps = { ...spaceCaps, ...targetEntry.capabilities };
+    const targetCaps = await this.operations.directory(targetParent).capabilities();
     if (targetCaps.write?.support === 'unsupported') {
       throw new StorageError('PermissionDenied');
     }

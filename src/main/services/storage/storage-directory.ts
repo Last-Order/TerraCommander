@@ -31,6 +31,7 @@ export interface StorageDirectory {
   stat(context?: OperationContext): Promise<Entry>;
   semantics(): Promise<SpaceSemantics | undefined>;
   capabilities(context?: OperationContext): Promise<Capabilities>;
+  spaceCapabilities(context?: OperationContext): Promise<Capabilities>;
   list(request?: string | ListRequest, context?: OperationContext): Promise<EntryPage>;
   openScope(context?: OperationContext): Promise<DirectoryScope>;
   createDirectory(name: string, context?: OperationContext): Promise<CreatedStorageDirectory>;
@@ -60,7 +61,9 @@ export function createStorageDirectory(
   };
 
   return {
-    ref: directoryRef,
+    get ref(): EntryRef {
+      return { ...directoryRef };
+    },
 
     child(childRef) {
       if (
@@ -92,7 +95,16 @@ export function createStorageDirectory(
       return operations.spaceSemantics(directoryRef);
     },
 
-    capabilities(context) {
+    async capabilities(context) {
+      const [spaceCapabilities, entry] = await Promise.all([
+        operations.spaceCapabilities(directoryRef, context),
+        operations.statEntry(directoryRef, context),
+      ]);
+      if (entry.kind !== 'directory') throw new StorageError('InvalidArgument');
+      return { ...spaceCapabilities, ...entry.capabilities };
+    },
+
+    spaceCapabilities(context) {
       return context !== undefined
         ? operations.spaceCapabilities(directoryRef, context)
         : operations.spaceCapabilities(directoryRef);

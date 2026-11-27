@@ -336,18 +336,13 @@ describe('TransferService cross-source transfers', () => {
       directory: (ref) =>
         ({
           ref,
-          stat: async () => ({
-            ref,
-            name: 'My Drive',
-            kind: 'directory',
-            capabilities: {
-              write: { support: 'supported' },
-              streamingWrite: { support: 'unsupported' },
-              pausableWrite: { support: 'supported' },
-              replaceWrite: { support: 'unsupported' },
-            },
+          capabilities: async () => ({
+            write: { support: 'supported' },
+            streamingWrite: { support: 'unsupported' },
+            pausableWrite: { support: 'supported' },
+            replaceWrite: { support: 'unsupported' },
           }),
-          list: async () => ({ entries: [] }),
+          semantics: async () => ({ allowsDuplicateNames: true, caseSensitive: true }),
         }) as unknown as ReturnType<TransferOperations['directory']>,
       file: () => {
         throw new Error('unused');
@@ -356,16 +351,6 @@ describe('TransferService cross-source transfers', () => {
         throw new Error('unused');
       },
       deleteEntry: async () => {},
-      openDirectoryScope: async () => {
-        throw new Error('unused');
-      },
-      spaceCapabilities: async () => ({
-        write: { support: 'supported' },
-        streamingWrite: { support: 'unsupported' },
-        pausableWrite: { support: 'supported' },
-        replaceWrite: { support: 'unsupported' },
-      }),
-      spaceSemantics: async () => ({ allowsDuplicateNames: true, caseSensitive: true }),
       resolveProvider: async (id) => (id === 'drive' ? 'google-drive' : 'local'),
     };
     const service = new TransferService(ops);

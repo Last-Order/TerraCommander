@@ -31,28 +31,33 @@ export interface TransferPlanRoot {
   readonly existingTarget?: Entry | undefined;
 }
 
-interface PlanNode {
-  readonly id: number;
-  readonly entry: Entry;
+type PlanSource = { readonly entry: Omit<Entry, 'kind'> } & (
+  | { readonly kind: 'file'; readonly source: StorageFile }
+  | { readonly kind: 'directory'; readonly source: StorageDirectory }
+  | { readonly kind: 'link' | 'other' }
+);
+
+type PlanNodeOptions = PlanSource & {
   readonly sourceParent: EntryRef;
-  readonly targetParent: EntryRef;
   readonly targetName: string;
   readonly relativePath: string;
   readonly depth: number;
-  replace: boolean;
-  existingTarget?: Entry | undefined;
-  code?: StorageErrorCode | undefined;
+  readonly targetDirectory: StorageDirectory;
+  readonly replace: boolean;
+  readonly existingTarget?: Entry | undefined;
+  readonly code?: StorageErrorCode | undefined;
+};
+
+type PlanNode = PlanNodeOptions & {
+  readonly id: number;
   cancelled: boolean;
-  sourceFile?: StorageFile | undefined;
-  sourceDirectory?: StorageDirectory | undefined;
-  targetDirectory: StorageDirectory;
   children?: PlanNode[] | undefined;
-}
+};
 
 export interface TransferPlanConfig {
   readonly operations: TransferOperations;
   readonly mode: TransferMode;
-  readonly targetRoot: EntryRef;
+  readonly targetRoot: StorageDirectory;
   readonly targetCapabilities: Capabilities;
   readonly targetSemantics?: SpaceSemantics | undefined;
   readonly roots: readonly TransferPlanRoot[];
@@ -119,25 +124,17 @@ export class TransferPlan {
     for (const key of config.initialVisitedKeys ?? []) {
       this.visitedDirectories.add(key);
     }
-    const targetRootDir = config.operations.directory(config.targetRoot);
     this.roots = config.roots.map((root) =>
       this.snapshot(
         this.addNode({
-          entry: root.entry,
+          ...this.bindSource(root.entry),
           sourceParent: root.sourceParent,
-          targetParent: config.targetRoot,
           targetName: root.targetName,
           relativePath: root.targetName,
           depth: 0,
           replace: root.existingTarget !== undefined,
           existingTarget: root.existingTarget,
-          targetDirectory: targetRootDir,
-          sourceFile:
-            root.entry.kind === 'file' ? config.operations.file(root.entry.ref) : undefined,
-          sourceDirectory:
-            root.entry.kind === 'directory'
-              ? config.operations.directory(root.entry.ref)
-              : undefined,
+          targetDirectory: config.targetRoot,
         }),
       ),
     );
@@ -151,7 +148,7 @@ export class TransferPlan {
   async directoryPage(itemId: number, offset: number): Promise<TransferPlanPage> {
     const node = this.node(itemId);
     this.assertConfirmed();
-    if (node.entry.kind !== 'directory') throw new StorageError('InvalidArgument');
+    if (node.kind !== 'directory') throw new StorageError('InvalidArgument');
     let pending = this.discovery.get(itemId);
     if (!pending) {
       pending = this.discoverDirectory(node);
@@ -174,19 +171,16 @@ export class TransferPlan {
     const node = this.node(itemId);
     this.assertConfirmed();
     if (node.code) throw new StorageError(node.code);
-    const sourceFile = node.sourceFile;
-    if (
-      !sourceFile ||
-      node.entry.kind !== 'file' ||
-      node.entry.capabilities.read?.support === 'unsupported'
-    ) {
+    if (node.kind !== 'file' || node.entry.capabilities.read?.support === 'unsupported') {
       throw new StorageError('Unsupported');
     }
+    const sourceFile = node.source;
+    const targetParent = node.targetDirectory.ref;
     const controller = this.begin(node);
     try {
       const scope = await this.ensureScope(controller.signal);
       // Verify target parent directory identity BEFORE touching or reading the source.
-      await scope.assertValid(node.targetParent, { signal: controller.signal });
+      await scope.assertValid(targetParent, { signal: controller.signal });
       const current = await sourceFile.stat({ signal: controller.signal });
       throwIfAborted(controller.signal);
       this.node(itemId);
@@ -225,7 +219,7 @@ export class TransferPlan {
       });
       return {
         execution,
-        targetParent: node.targetParent,
+        targetParent,
         sourceSnapshot,
       };
     } finally {
@@ -242,7 +236,7 @@ export class TransferPlan {
     const record: CommittedTransferFile = {
       itemId,
       targetEntry: structuredClone(targetEntry),
-      targetParent: structuredClone(node?.targetParent ?? this.config.targetRoot),
+      targetParent: structuredClone((node?.targetDirectory ?? this.config.targetRoot).ref),
       sourceSnapshot: structuredClone(sourceSnapshot),
       sourceDeleted: false,
     };
@@ -316,8 +310,8 @@ export class TransferPlan {
   }
 
   private async ensureScope(signal?: AbortSignal): Promise<DirectoryScope> {
-    this.scopePromise ??= this.config.operations
-      .openDirectoryScope(this.config.targetRoot, signal ? { signal } : {})
+    this.scopePromise ??= this.config.targetRoot
+      .openScope(signal ? { signal } : {})
       .then((scope) => {
         this.scope = scope;
         return scope;
@@ -335,10 +329,12 @@ export class TransferPlan {
     return (await this.config.operations.canonicalEntryKey?.(ref)) ?? entryKey(ref);
   }
 
-  private async discoverDirectory(node: PlanNode): Promise<PlanNode[]> {
+  private async discoverDirectory(
+    node: Extract<PlanNode, { kind: 'directory' }>,
+  ): Promise<PlanNode[]> {
     if (node.children) return node.children;
-    const sourceDirectory = node.sourceDirectory;
-    if (!sourceDirectory || node.entry.capabilities.list?.support === 'unsupported') {
+    const sourceDirectory = node.source;
+    if (node.entry.capabilities.list?.support === 'unsupported') {
       throw new StorageError('Unsupported');
     }
 
@@ -352,7 +348,7 @@ export class TransferPlan {
     try {
       const scope = await this.ensureScope(controller.signal);
       const ensured = await scope.ensureDirectory(
-        node.targetParent,
+        node.targetDirectory.ref,
         node.targetName,
         { replace: node.replace },
         { signal: controller.signal },
@@ -364,7 +360,7 @@ export class TransferPlan {
       this.visitedDirectories.add(createdCanonicalKey);
 
       if (ensured.created) {
-        this.config.onDirectoryCreated?.(node.targetParent, ensured.entry);
+        this.config.onDirectoryCreated?.(node.targetDirectory.ref, ensured.entry);
       }
 
       if (this.config.mode === 'move') {
@@ -386,22 +382,18 @@ export class TransferPlan {
             controller.signal,
           );
 
-      const children = await this.listAllSourceChildren(
-        sourceDirectory,
-        node.entry.ref,
-        controller.signal,
-      );
+      const children = await this.listAllSourceChildren(sourceDirectory, controller.signal);
       this.node(node.id);
 
       const allocatedNames = allocateTransferNames(children, this.config.targetSemantics);
       const childNodes: PlanNode[] = [];
+      const sourceParent = sourceDirectory.ref;
+      const { connectionId: targetConnectionId } = targetChildDir.ref;
       for (const [index, child] of children.entries()) {
         const allocatedName = allocatedNames[index]!;
         const validName =
-          (await this.config.operations.validateEntryName?.(
-            this.config.targetRoot.connectionId,
-            allocatedName,
-          )) ?? true;
+          (await this.config.operations.validateEntryName?.(targetConnectionId, allocatedName)) ??
+          true;
         const normalized = normalizeTargetName(allocatedName, this.config.targetSemantics);
         const existingTarget = existingChildren.get(normalized);
         let childCode: StorageErrorCode | undefined;
@@ -412,9 +404,8 @@ export class TransferPlan {
         }
         childNodes.push(
           this.addNode({
-            entry: child,
-            sourceParent: node.entry.ref,
-            targetParent: ensured.entry.ref,
+            ...this.bindSource(child, sourceDirectory),
+            sourceParent,
             targetName: allocatedName,
             relativePath: `${node.relativePath}/${allocatedName}`,
             depth: node.depth + 1,
@@ -422,9 +413,6 @@ export class TransferPlan {
             existingTarget,
             code: childCode,
             targetDirectory: targetChildDir,
-            sourceFile: child.kind === 'file' ? sourceDirectory.file(child.ref) : undefined,
-            sourceDirectory:
-              child.kind === 'directory' ? sourceDirectory.child(child.ref) : undefined,
           }),
         );
       }
@@ -437,9 +425,9 @@ export class TransferPlan {
 
   private async listAllSourceChildren(
     sourceDirectory: StorageDirectory,
-    parentRef: EntryRef,
     signal: AbortSignal,
   ): Promise<Entry[]> {
+    const parentRef = sourceDirectory.ref;
     const entries = new Map<string, Entry>();
     const cursors = new Set<string>();
     let cursor: string | undefined;
@@ -465,35 +453,33 @@ export class TransferPlan {
     return [...entries.values()];
   }
 
-  private addNode(options: {
-    entry: Entry;
-    sourceParent: EntryRef;
-    targetParent: EntryRef;
-    targetName: string;
-    relativePath: string;
-    depth: number;
-    replace: boolean;
-    existingTarget?: Entry | undefined;
-    code?: StorageErrorCode | undefined;
-    targetDirectory: StorageDirectory;
-    sourceFile?: StorageFile | undefined;
-    sourceDirectory?: StorageDirectory | undefined;
-  }): PlanNode {
+  private bindSource(entry: Entry, parent?: StorageDirectory): PlanSource {
+    const { kind, ...snapshot } = structuredClone(entry);
+    const { ref } = snapshot;
+    if (kind === 'file') {
+      return {
+        kind,
+        entry: snapshot,
+        source: parent ? parent.file(ref) : this.config.operations.file(ref),
+      };
+    }
+    if (kind === 'directory') {
+      return {
+        kind,
+        entry: snapshot,
+        source: parent ? parent.child(ref) : this.config.operations.directory(ref),
+      };
+    }
+    return { kind, entry: snapshot };
+  }
+
+  private addNode(options: PlanNodeOptions): PlanNode {
     const node: PlanNode = {
+      ...options,
       id: this.nodes.length,
-      entry: structuredClone(options.entry),
       sourceParent: structuredClone(options.sourceParent),
-      targetParent: structuredClone(options.targetParent),
-      targetName: options.targetName,
-      relativePath: options.relativePath,
-      depth: options.depth,
-      replace: options.replace,
       existingTarget: options.existingTarget ? structuredClone(options.existingTarget) : undefined,
-      code: options.code,
       cancelled: false,
-      targetDirectory: options.targetDirectory,
-      sourceFile: options.sourceFile,
-      sourceDirectory: options.sourceDirectory,
     };
     this.nodes.push(node);
     return node;
@@ -502,9 +488,9 @@ export class TransferPlan {
   private snapshot(node: PlanNode): TransferPlanItem {
     return {
       id: node.id,
-      entry: structuredClone(node.entry),
+      entry: { ...structuredClone(node.entry), kind: node.kind },
       sourceParent: structuredClone(node.sourceParent),
-      targetParent: structuredClone(node.targetParent),
+      targetParent: structuredClone(node.targetDirectory.ref),
       targetName: node.targetName,
       relativePath: node.relativePath,
       replace: node.replace,

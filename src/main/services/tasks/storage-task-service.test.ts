@@ -178,7 +178,6 @@ function setup() {
     directory: (ref) => createStorageDirectory(entryOperations, ref),
     inspectTransfer,
     inspectCrossConnectionTransfer,
-    spaceCapabilities,
     canonicalEntryKey,
     targetLockKeys,
     renameEntry,
