@@ -48,6 +48,7 @@ export const en = {
     searchDirectory: 'Search current directory',
     searchPlaceholder: 'Search by name…',
     closeSearch: 'Close search',
+    selectAllSearchMatches: 'Select all matches',
     previousSearchMatch: 'Previous match',
     nextSearchMatch: 'Next match',
     searchMatchPosition: 'Match {{current}} of {{total}}',

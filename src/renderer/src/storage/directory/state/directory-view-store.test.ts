@@ -75,4 +75,18 @@ describe('createDirectoryViewStore', () => {
     store.getState().clearViewportCommand(2);
     expect(store.getState().viewportCommand).toBeNull();
   });
+
+  it('selects multiple entries with an optional primary locator', () => {
+    const store = createDirectoryViewStore(createProjection(['a', 'b', 'c'], true));
+
+    store.getState().selectMany(['a', 'c'], 'c');
+    expect([...store.getState().selectedLocators]).toEqual(['a', 'c']);
+    expect(store.getState().anchorLocator).toBe('c');
+    expect(store.getState().activeLocator).toBe('c');
+
+    store.getState().selectMany([]);
+    expect(store.getState().selectedLocators.size).toBe(0);
+    expect(store.getState().anchorLocator).toBeNull();
+    expect(store.getState().activeLocator).toBeNull();
+  });
 });

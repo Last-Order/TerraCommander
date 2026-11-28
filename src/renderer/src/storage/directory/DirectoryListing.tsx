@@ -159,7 +159,18 @@ export function DirectoryListing({
     },
     [viewStore, closeMenu],
   );
-  const search = useDirectorySearch(rows, selectSearchMatch);
+  const selectAllSearchMatches = useCallback(
+    (locators: readonly string[], primaryLocator: string | null) => {
+      const state = viewStore.getState();
+      state.selectMany(locators, primaryLocator);
+      closeMenu();
+      if (primaryLocator !== null) {
+        state.requestViewport({ locator: primaryLocator, align: 'auto', focus: false });
+      }
+    },
+    [viewStore, closeMenu],
+  );
+  const search = useDirectorySearch(rows, selectSearchMatch, selectAllSearchMatches);
   const clipboard = useDirectoryClipboard({
     blocked: loadingWithoutEntries || error !== null,
   });

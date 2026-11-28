@@ -1,7 +1,7 @@
 import { ActionIcon, TextInput, Transition, type MantineTransition } from '@mantine/core';
 import { useReducedMotion } from '@mantine/hooks';
 import type { TFunction } from 'i18next';
-import { ChevronDown, ChevronUp, Search, X, type LucideIcon } from 'lucide-react';
+import { ChevronDown, ChevronUp, ListChecks, Search, X, type LucideIcon } from 'lucide-react';
 import { useCallback, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DirectorySearchController } from './useDirectorySearch';
@@ -72,7 +72,7 @@ function isMatchNavigationEvent(event: KeyboardEvent<HTMLInputElement>): boolean
 
 interface SearchActionButtonProps {
   label: string;
-  shortcut: string;
+  shortcut?: string;
   shortcutHint?: string;
   disabled?: boolean;
   icon: LucideIcon;
@@ -95,7 +95,7 @@ function SearchActionButton({
       disabled={disabled}
       aria-label={label}
       aria-keyshortcuts={shortcut}
-      title={`${label} (${shortcutHint})`}
+      title={shortcutHint ? `${label} (${shortcutHint})` : label}
       onClick={onClick}
     >
       <Icon size={iconSize} strokeWidth={1.5} aria-hidden="true" />
@@ -106,7 +106,7 @@ function SearchActionButton({
 interface DirectorySearchProps {
   search: Pick<
     DirectorySearchController,
-    'opened' | 'inputRef' | 'query' | 'index' | 'total' | 'changeQuery' | 'navigate'
+    'opened' | 'inputRef' | 'query' | 'index' | 'total' | 'changeQuery' | 'navigate' | 'selectAll'
   >;
   onClose: () => void;
 }
@@ -114,7 +114,7 @@ interface DirectorySearchProps {
 export function DirectorySearch({ search, onClose }: DirectorySearchProps) {
   const { t } = useTranslation('storage');
   const reduceMotion = useReducedMotion();
-  const { opened, inputRef, query, index, total, changeQuery, navigate } = search;
+  const { opened, inputRef, query, index, total, changeQuery, navigate, selectAll } = search;
 
   const hasMatches = query.length > 0 && total > 0;
   const status = getMatchStatus(query, index, total, t);
@@ -181,6 +181,12 @@ export function DirectorySearch({ search, onClose }: DirectorySearchProps) {
             </output>
             <span className={classes.divider} aria-hidden="true" />
             <div className={classes.actions}>
+              <SearchActionButton
+                label={t('selectAllSearchMatches')}
+                disabled={!hasMatches}
+                icon={ListChecks}
+                onClick={selectAll}
+              />
               {navigationActions.map(({ direction, labelKey, shortcut, icon }) => (
                 <SearchActionButton
                   key={direction}

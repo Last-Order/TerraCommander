@@ -14,6 +14,7 @@ import {
   selectAllDirectoryEntries,
   selectDirectoryEntry,
   selectDirectoryEntryForContextMenu,
+  selectManyDirectoryEntries,
   selectOnlyDirectoryEntry,
   setActiveDirectoryEntry,
   type DirectorySelectionState,
@@ -36,6 +37,7 @@ export interface DirectoryViewState {
   syncListing: (projection: DirectoryListingProjection) => void;
   selectEntry: (locator: string, modifiers: DirectorySelectionModifiers) => void;
   selectAll: () => void;
+  selectMany: (locators: readonly string[], primaryLocator?: string | null) => void;
   selectOnly: (locator: string | null) => void;
   selectForContextMenu: (locator: string) => void;
   setActiveLocator: (locator: string | null) => void;
@@ -143,6 +145,13 @@ export function createDirectoryViewStore(
       set((state) => {
         const current = readSelection(state);
         const next = selectAllDirectoryEntries(current, state.rows, state.rowIndexByLocator);
+        return selectionPatch(current, next) ?? state;
+      }),
+
+    selectMany: (locators, primaryLocator) =>
+      set((state) => {
+        const current = readSelection(state);
+        const next = selectManyDirectoryEntries(locators, primaryLocator);
         return selectionPatch(current, next) ?? state;
       }),
 

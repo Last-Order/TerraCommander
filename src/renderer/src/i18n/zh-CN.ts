@@ -45,6 +45,7 @@ export const zhCN = {
     searchDirectory: '搜索当前目录',
     searchPlaceholder: '按名称搜索…',
     closeSearch: '关闭搜索',
+    selectAllSearchMatches: '选中所有匹配项',
     previousSearchMatch: '上一个匹配项',
     nextSearchMatch: '下一个匹配项',
     searchMatchPosition: '第 {{current}} 个匹配项，共 {{total}} 个',

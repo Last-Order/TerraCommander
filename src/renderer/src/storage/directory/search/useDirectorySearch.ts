@@ -10,6 +10,7 @@ interface DirectorySearchState {
 export function useDirectorySearch(
   rows: readonly DirectoryRow[],
   onMatch: (locator: string | null) => void,
+  onSelectAll: (locators: readonly string[], primaryLocator: string | null) => void,
 ) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState<DirectorySearchState>({
@@ -48,6 +49,10 @@ export function useDirectorySearch(
     const next = (index + direction + matches.length) % matches.length;
     setSearch({ ...search, locator: matches[next] ?? null });
   };
+  const selectAll = () => {
+    if (!search.opened || matches.length === 0) return;
+    onSelectAll(matches, search.locator ?? matches[0] ?? null);
+  };
 
   return {
     opened: search.opened,
@@ -59,6 +64,7 @@ export function useDirectorySearch(
     close: () => setSearch((previous) => ({ ...previous, opened: false })),
     changeQuery: (query: string) => setSearch({ opened: true, query, locator: null }),
     navigate,
+    selectAll,
   };
 }
 
