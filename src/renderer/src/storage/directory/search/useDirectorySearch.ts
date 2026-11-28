@@ -1,10 +1,13 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { DirectoryRow } from '../directory-types';
+import { matchDirectoryRows } from './directory-search';
 
 interface DirectorySearchState {
   opened: boolean;
   query: string;
   locator: string | null;
+  caseSensitive: boolean;
+  useRegex: boolean;
 }
 
 export function useDirectorySearch(
@@ -17,16 +20,16 @@ export function useDirectorySearch(
     opened: false,
     query: '',
     locator: null,
+    caseSensitive: false,
+    useRegex: false,
   });
-  const keyword = search.query.toLowerCase();
-  const matches = useMemo(
+  const { matches, invalidPattern } = useMemo(
     () =>
-      keyword
-        ? rows
-            .filter(({ name }) => name.toLowerCase().includes(keyword))
-            .map(({ entry }) => entry.ref.locator)
-        : [],
-    [rows, keyword],
+      matchDirectoryRows(rows, search.query, {
+        caseSensitive: search.caseSensitive,
+        useRegex: search.useRegex,
+      }),
+    [rows, search.query, search.caseSensitive, search.useRegex],
   );
   const index = search.locator === null ? -1 : matches.indexOf(search.locator);
   if (index === -1 && (matches.length > 0 || search.locator !== null)) {
@@ -39,7 +42,7 @@ export function useDirectorySearch(
 
   const open = () => {
     setSearch((previous) =>
-      previous.opened ? previous : { opened: true, query: '', locator: null },
+      previous.opened ? previous : { ...previous, opened: true, query: '', locator: null },
     );
     inputRef.current?.focus({ preventScroll: true });
     inputRef.current?.select();
@@ -58,11 +61,18 @@ export function useDirectorySearch(
     opened: search.opened,
     inputRef,
     query: search.query,
+    caseSensitive: search.caseSensitive,
+    useRegex: search.useRegex,
+    invalidPattern,
     index,
     total: matches.length,
     open,
     close: () => setSearch((previous) => ({ ...previous, opened: false })),
-    changeQuery: (query: string) => setSearch({ opened: true, query, locator: null }),
+    changeQuery: (query: string) =>
+      setSearch((previous) => ({ ...previous, opened: true, query, locator: null })),
+    toggleCaseSensitive: () =>
+      setSearch((previous) => ({ ...previous, caseSensitive: !previous.caseSensitive })),
+    toggleRegex: () => setSearch((previous) => ({ ...previous, useRegex: !previous.useRegex })),
     navigate,
     selectAll,
   };

@@ -1,5 +1,6 @@
 .search {
   --search-control-height: 1.5rem;
+  --search-error: light-dark(var(--mantine-color-red-8), var(--mantine-color-red-3));
 
   position: absolute;
   z-index: 2;
@@ -8,7 +9,7 @@
   );
   inset-inline-end: var(--directory-cell-padding-inline);
   display: flex;
-  width: min(23.5rem, calc(100% - 1.5rem));
+  width: min(27rem, calc(100% - 1.5rem));
   align-items: center;
   gap: 0.375rem;
   padding: 0.25rem;
@@ -21,6 +22,10 @@
 
 .search:has(input:focus) {
   border-color: var(--storage-focus);
+}
+
+.search[data-invalid='true'] {
+  border-color: var(--search-error);
 }
 
 .input {
@@ -37,9 +42,31 @@
   line-height: var(--search-control-height);
 }
 
+.toggles,
+.actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.toggle {
+  border-color: transparent;
+}
+
+.toggle[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--storage-accent) 45%, transparent);
+  background: var(--storage-selection);
+  color: var(--storage-accent);
+}
+
+.toggle[aria-pressed='true']:hover {
+  background: color-mix(in srgb, var(--storage-accent) 18%, transparent);
+}
+
 .position {
   flex: none;
-  min-width: 4rem;
+  min-width: 4.5rem;
   color: var(--storage-secondary);
   font-size: var(--mantine-font-size-xs);
   font-variant-numeric: tabular-nums;
@@ -49,7 +76,7 @@
 }
 
 .position[data-empty='true'] {
-  color: light-dark(var(--mantine-color-red-8), var(--mantine-color-red-3));
+  color: var(--search-error);
 }
 
 .divider {
@@ -57,11 +84,4 @@
   height: 1rem;
   flex: none;
   background: var(--storage-border);
-}
-
-.actions {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 0.125rem;
 }

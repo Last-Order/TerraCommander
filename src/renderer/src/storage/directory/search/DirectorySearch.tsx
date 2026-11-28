@@ -1,9 +1,19 @@
 import { ActionIcon, TextInput, Transition, type MantineTransition } from '@mantine/core';
 import { useReducedMotion } from '@mantine/hooks';
 import type { TFunction } from 'i18next';
-import { ChevronDown, ChevronUp, ListChecks, Search, X, type LucideIcon } from 'lucide-react';
+import {
+  CaseSensitive,
+  ChevronDown,
+  ChevronUp,
+  ListChecks,
+  Regex,
+  Search,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { useCallback, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useKeyboardShortcuts } from '@renderer/shortcuts/useKeyboardShortcuts';
 import type { DirectorySearchController } from './useDirectorySearch';
 import listingClasses from '../DirectoryListing.module.css';
 import classes from './DirectorySearch.module.css';
@@ -30,6 +40,7 @@ const navigationActions = [
 ] as const;
 
 const iconSize = 14;
+const toggleIconSize = 15;
 const actionButtonSize = 24;
 
 interface MatchStatus {
@@ -43,10 +54,15 @@ function getMatchStatus(
   query: string,
   index: number,
   total: number,
+  invalidPattern: boolean,
   t: TFunction<'storage'>,
 ): MatchStatus {
   if (query.length === 0) {
     return { text: '', empty: false };
+  }
+  if (invalidPattern) {
+    const label = t('invalidSearchPattern');
+    return { text: label, ariaLabel: label, title: label, empty: true };
   }
   if (total === 0) {
     const label = t('noSearchResults');
@@ -75,7 +91,10 @@ interface SearchActionButtonProps {
   shortcut?: string;
   shortcutHint?: string;
   disabled?: boolean;
+  pressed?: boolean;
+  className?: string | undefined;
   icon: LucideIcon;
+  iconSize?: number;
   onClick: () => void;
 }
 
@@ -84,7 +103,10 @@ function SearchActionButton({
   shortcut,
   shortcutHint = shortcut,
   disabled = false,
+  pressed,
+  className,
   icon: Icon,
+  iconSize: size = iconSize,
   onClick,
 }: SearchActionButtonProps) {
   return (
@@ -92,13 +114,15 @@ function SearchActionButton({
       size={actionButtonSize}
       variant="subtle"
       color="gray"
+      className={className}
       disabled={disabled}
+      aria-pressed={pressed}
       aria-label={label}
       aria-keyshortcuts={shortcut}
       title={shortcutHint ? `${label} (${shortcutHint})` : label}
       onClick={onClick}
     >
-      <Icon size={iconSize} strokeWidth={1.5} aria-hidden="true" />
+      <Icon size={size} strokeWidth={1.5} aria-hidden="true" />
     </ActionIcon>
   );
 }
@@ -106,7 +130,19 @@ function SearchActionButton({
 interface DirectorySearchProps {
   search: Pick<
     DirectorySearchController,
-    'opened' | 'inputRef' | 'query' | 'index' | 'total' | 'changeQuery' | 'navigate' | 'selectAll'
+    | 'opened'
+    | 'inputRef'
+    | 'query'
+    | 'caseSensitive'
+    | 'useRegex'
+    | 'invalidPattern'
+    | 'index'
+    | 'total'
+    | 'changeQuery'
+    | 'toggleCaseSensitive'
+    | 'toggleRegex'
+    | 'navigate'
+    | 'selectAll'
   >;
   onClose: () => void;
 }
@@ -114,10 +150,24 @@ interface DirectorySearchProps {
 export function DirectorySearch({ search, onClose }: DirectorySearchProps) {
   const { t } = useTranslation('storage');
   const reduceMotion = useReducedMotion();
-  const { opened, inputRef, query, index, total, changeQuery, navigate, selectAll } = search;
+  const {
+    opened,
+    inputRef,
+    query,
+    caseSensitive,
+    useRegex,
+    invalidPattern,
+    index,
+    total,
+    changeQuery,
+    toggleCaseSensitive,
+    toggleRegex,
+    navigate,
+    selectAll,
+  } = search;
 
   const hasMatches = query.length > 0 && total > 0;
-  const status = getMatchStatus(query, index, total, t);
+  const status = getMatchStatus(query, index, total, invalidPattern, t);
 
   const assignInputRef = useCallback(
     (node: HTMLInputElement | null) => {
@@ -125,6 +175,29 @@ export function DirectorySearch({ search, onClose }: DirectorySearchProps) {
       if (node && opened) node.focus({ preventScroll: true });
     },
     [inputRef, opened],
+  );
+
+  const focusInput = () => {
+    inputRef.current?.focus({ preventScroll: true });
+  };
+
+  useKeyboardShortcuts(
+    opened
+      ? [
+          {
+            key: 'c',
+            altKey: true,
+            allowInEditable: true,
+            onTrigger: toggleCaseSensitive,
+          },
+          {
+            key: 'r',
+            altKey: true,
+            allowInEditable: true,
+            onTrigger: toggleRegex,
+          },
+        ]
+      : [],
   );
 
   const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -135,7 +208,12 @@ export function DirectorySearch({ search, onClose }: DirectorySearchProps) {
 
   const handleNavigate = (direction: -1 | 1) => {
     navigate(direction);
-    inputRef.current?.focus({ preventScroll: true });
+    focusInput();
+  };
+
+  const handleToggle = (toggle: () => void) => {
+    toggle();
+    focusInput();
   };
 
   return (
@@ -154,7 +232,7 @@ export function DirectorySearch({ search, onClose }: DirectorySearchProps) {
           inert={!opened}
           aria-hidden={!opened || undefined}
         >
-          <div className={classes.search}>
+          <search className={classes.search} data-invalid={invalidPattern || undefined}>
             <TextInput
               ref={assignInputRef}
               type="search"
@@ -162,6 +240,7 @@ export function DirectorySearch({ search, onClose }: DirectorySearchProps) {
               size="xs"
               className={classes.input}
               aria-label={t('searchDirectory')}
+              aria-invalid={invalidPattern || undefined}
               aria-keyshortcuts="Control+f"
               placeholder={t('searchPlaceholder')}
               leftSection={<Search size={iconSize} strokeWidth={1.5} aria-hidden="true" />}
@@ -179,6 +258,26 @@ export function DirectorySearch({ search, onClose }: DirectorySearchProps) {
             >
               {status.text}
             </output>
+            <div className={classes.toggles}>
+              <SearchActionButton
+                label={t('matchSearchCase')}
+                shortcut="Alt+C"
+                pressed={caseSensitive}
+                className={classes.toggle}
+                icon={CaseSensitive}
+                iconSize={toggleIconSize}
+                onClick={() => handleToggle(toggleCaseSensitive)}
+              />
+              <SearchActionButton
+                label={t('useSearchRegex')}
+                shortcut="Alt+R"
+                pressed={useRegex}
+                className={classes.toggle}
+                icon={Regex}
+                iconSize={toggleIconSize}
+                onClick={() => handleToggle(toggleRegex)}
+              />
+            </div>
             <span className={classes.divider} aria-hidden="true" />
             <div className={classes.actions}>
               <SearchActionButton
@@ -205,7 +304,7 @@ export function DirectorySearch({ search, onClose }: DirectorySearchProps) {
                 onClick={onClose}
               />
             </div>
-          </div>
+          </search>
         </div>
       )}
     </Transition>
