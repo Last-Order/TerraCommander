@@ -1,6 +1,7 @@
 import {
   ActionIcon,
   Button,
+  Menu,
   Modal,
   createTheme,
   localStorageColorSchemeManager,
@@ -71,6 +72,9 @@ export const theme = createTheme({
       classNames: { root: classes.quietActionIcon! },
     }),
     Button: Button.extend({ defaultProps: { fw: 500 } }),
+    Menu: Menu.extend({
+      classNames: { dropdown: classes.menuDropdown! },
+    }),
     Modal: Modal.extend({ defaultProps: { radius: 'lg' } }),
   },
 });
