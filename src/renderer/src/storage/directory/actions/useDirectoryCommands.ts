@@ -1,5 +1,5 @@
 import { notifications } from '@mantine/notifications';
-import { useEffect, type RefObject } from 'react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useKeyboardShortcuts } from '@renderer/shortcuts/useKeyboardShortcuts';
 import { useStorageWorkspace } from '@renderer/storage/storage-workspace-context';
@@ -31,12 +31,6 @@ interface DirectoryCommandClipboard {
   clear: () => void;
 }
 
-interface DirectoryCommandSearch {
-  opened: boolean;
-  open: () => void;
-  close: () => void;
-}
-
 interface DirectoryCommandsOptions {
   phase: DirectoryListingPhase;
   refresh: () => void;
@@ -46,8 +40,7 @@ interface DirectoryCommandsOptions {
   menu: DirectoryCommandMenu;
   modals: DirectoryCommandModals;
   clipboard: DirectoryCommandClipboard;
-  search: DirectoryCommandSearch;
-  moreButton: RefObject<HTMLButtonElement | null>;
+  searchOpened: boolean;
   onNavigateUp?: (() => void) | undefined;
 }
 
@@ -60,8 +53,7 @@ export function useDirectoryCommands({
   menu,
   modals,
   clipboard,
-  search,
-  moreButton,
+  searchOpened,
   onNavigateUp,
 }: DirectoryCommandsOptions) {
   const { t } = useTranslation('storage');
@@ -76,12 +68,6 @@ export function useDirectoryCommands({
   };
 
   const reload = runAfterClosingMenu(refresh);
-  const openSearch = runAfterClosingMenu(search.open);
-
-  const closeSearch = () => {
-    search.close();
-    moreButton.current?.focus();
-  };
 
   const selectAllEntries = () => {
     if (phase === 'ready') {
@@ -177,10 +163,8 @@ export function useDirectoryCommands({
       enabled: capabilities.canDelete,
     },
     { key: 'F5', onTrigger: reload, enabled: !loading, allowInEditable: true },
-    { key: 'f', ctrlKey: true, onTrigger: openSearch, allowInEditable: true },
     { key: 'a', ctrlKey: true, onTrigger: selectAllEntries, enabled: phase !== 'error' },
-    ...(search.opened ? [{ key: 'Escape', onTrigger: closeSearch, allowInEditable: true }] : []),
-    ...(!search.opened && clipboard.isCutActive
+    ...(!searchOpened && clipboard.isCutActive
       ? [{ key: 'Escape', onTrigger: clipboard.clear }]
       : []),
   ]);
@@ -197,7 +181,6 @@ export function useDirectoryCommands({
   return {
     blankActions,
     reload,
-    closeSearch,
     copySelection,
     cutSelection,
   };

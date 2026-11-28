@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import { useCallback, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useKeyboardShortcuts } from '@renderer/shortcuts/useKeyboardShortcuts';
 import type { DirectorySearchController } from './useDirectorySearch';
 import listingClasses from '../DirectoryListing.module.css';
 import classes from './DirectorySearch.module.css';
@@ -138,16 +137,16 @@ interface DirectorySearchProps {
     | 'invalidPattern'
     | 'index'
     | 'total'
+    | 'close'
     | 'changeQuery'
     | 'toggleCaseSensitive'
     | 'toggleRegex'
     | 'navigate'
     | 'selectAll'
   >;
-  onClose: () => void;
 }
 
-export function DirectorySearch({ search, onClose }: DirectorySearchProps) {
+export function DirectorySearch({ search }: DirectorySearchProps) {
   const { t } = useTranslation('storage');
   const reduceMotion = useReducedMotion();
   const {
@@ -159,6 +158,7 @@ export function DirectorySearch({ search, onClose }: DirectorySearchProps) {
     invalidPattern,
     index,
     total,
+    close,
     changeQuery,
     toggleCaseSensitive,
     toggleRegex,
@@ -180,25 +180,6 @@ export function DirectorySearch({ search, onClose }: DirectorySearchProps) {
   const focusInput = () => {
     inputRef.current?.focus({ preventScroll: true });
   };
-
-  useKeyboardShortcuts(
-    opened
-      ? [
-          {
-            key: 'c',
-            altKey: true,
-            allowInEditable: true,
-            onTrigger: toggleCaseSensitive,
-          },
-          {
-            key: 'r',
-            altKey: true,
-            allowInEditable: true,
-            onTrigger: toggleRegex,
-          },
-        ]
-      : [],
-  );
 
   const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (!isMatchNavigationEvent(event)) return;
@@ -301,7 +282,7 @@ export function DirectorySearch({ search, onClose }: DirectorySearchProps) {
                 shortcut="Escape"
                 shortcutHint="Esc"
                 icon={X}
-                onClick={onClose}
+                onClick={close}
               />
             </div>
           </search>

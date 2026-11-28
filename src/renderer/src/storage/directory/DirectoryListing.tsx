@@ -170,7 +170,13 @@ export function DirectoryListing({
     },
     [viewStore, closeMenu],
   );
-  const search = useDirectorySearch(rows, selectSearchMatch, selectAllSearchMatches);
+  const search = useDirectorySearch({
+    rows,
+    onOpen: closeMenu,
+    onClose: () => moreButton.current?.focus(),
+    onMatch: selectSearchMatch,
+    onSelectAll: selectAllSearchMatches,
+  });
   const clipboard = useDirectoryClipboard({
     blocked: loadingWithoutEntries || error !== null,
   });
@@ -183,8 +189,7 @@ export function DirectoryListing({
     menu,
     modals,
     clipboard,
-    search,
-    moreButton,
+    searchOpened: search.opened,
     onNavigateUp,
   });
 
@@ -216,7 +221,7 @@ export function DirectoryListing({
             menu.showBlankMenu({ x: event.clientX, y: event.clientY });
           }}
         >
-          <DirectorySearch search={search} onClose={commands.closeSearch} />
+          <DirectorySearch search={search} />
           <DirectoryStatus
             error={entries.size === 0 ? error : null}
             empty={snapshot?.size === 0}
