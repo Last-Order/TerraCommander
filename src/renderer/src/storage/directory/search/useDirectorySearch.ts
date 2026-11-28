@@ -40,7 +40,7 @@ export function useDirectorySearch(
     setSearch((previous) =>
       previous.opened ? previous : { opened: true, query: '', locator: null },
     );
-    inputRef.current?.focus();
+    inputRef.current?.focus({ preventScroll: true });
     inputRef.current?.select();
   };
   const navigate = (direction: -1 | 1) => {

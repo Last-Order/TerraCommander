@@ -1,11 +1,107 @@
-import { ActionIcon, TextInput, Transition } from '@mantine/core';
+import { ActionIcon, TextInput, Transition, type MantineTransition } from '@mantine/core';
 import { useReducedMotion } from '@mantine/hooks';
-import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
-import { useLayoutEffect } from 'react';
+import type { TFunction } from 'i18next';
+import { ChevronDown, ChevronUp, Search, X, type LucideIcon } from 'lucide-react';
+import { useCallback, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DirectorySearchController } from './useDirectorySearch';
 import listingClasses from '../DirectoryListing.module.css';
 import classes from './DirectorySearch.module.css';
+
+const searchTransition: MantineTransition = {
+  in: { opacity: 1, transform: 'translateY(0)' },
+  out: { opacity: 0, transform: 'translateY(-4px)' },
+  transitionProperty: 'opacity, transform',
+};
+
+const navigationActions = [
+  {
+    direction: -1,
+    labelKey: 'previousSearchMatch',
+    shortcut: 'Shift+Enter',
+    icon: ChevronUp,
+  },
+  {
+    direction: 1,
+    labelKey: 'nextSearchMatch',
+    shortcut: 'Enter',
+    icon: ChevronDown,
+  },
+] as const;
+
+const iconSize = 14;
+const actionButtonSize = 24;
+
+interface MatchStatus {
+  text: string;
+  ariaLabel?: string | undefined;
+  title?: string | undefined;
+  empty: boolean;
+}
+
+function getMatchStatus(
+  query: string,
+  index: number,
+  total: number,
+  t: TFunction<'storage'>,
+): MatchStatus {
+  if (query.length === 0) {
+    return { text: '', empty: false };
+  }
+  if (total === 0) {
+    const label = t('noSearchResults');
+    return { text: label, ariaLabel: label, title: label, empty: true };
+  }
+  const current = Math.max(index, 0) + 1;
+  return {
+    text: `${current}/${total}`,
+    ariaLabel: t('searchMatchPosition', { current, total }),
+    empty: false,
+  };
+}
+
+function isMatchNavigationEvent(event: KeyboardEvent<HTMLInputElement>): boolean {
+  return (
+    event.key === 'Enter' &&
+    !event.nativeEvent.isComposing &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey
+  );
+}
+
+interface SearchActionButtonProps {
+  label: string;
+  shortcut: string;
+  shortcutHint?: string;
+  disabled?: boolean;
+  icon: LucideIcon;
+  onClick: () => void;
+}
+
+function SearchActionButton({
+  label,
+  shortcut,
+  shortcutHint = shortcut,
+  disabled = false,
+  icon: Icon,
+  onClick,
+}: SearchActionButtonProps) {
+  return (
+    <ActionIcon
+      size={actionButtonSize}
+      variant="subtle"
+      color="gray"
+      disabled={disabled}
+      aria-label={label}
+      aria-keyshortcuts={shortcut}
+      title={`${label} (${shortcutHint})`}
+      onClick={onClick}
+    >
+      <Icon size={iconSize} strokeWidth={1.5} aria-hidden="true" />
+    </ActionIcon>
+  );
+}
 
 interface DirectorySearchProps {
   search: Pick<
@@ -20,9 +116,27 @@ export function DirectorySearch({ search, onClose }: DirectorySearchProps) {
   const reduceMotion = useReducedMotion();
   const { opened, inputRef, query, index, total, changeQuery, navigate } = search;
 
-  useLayoutEffect(() => {
-    if (opened) inputRef.current?.focus();
-  }, [inputRef, opened]);
+  const hasMatches = query.length > 0 && total > 0;
+  const status = getMatchStatus(query, index, total, t);
+
+  const assignInputRef = useCallback(
+    (node: HTMLInputElement | null) => {
+      inputRef.current = node;
+      if (node && opened) node.focus({ preventScroll: true });
+    },
+    [inputRef, opened],
+  );
+
+  const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (!isMatchNavigationEvent(event)) return;
+    event.preventDefault();
+    navigate(event.shiftKey ? -1 : 1);
+  };
+
+  const handleNavigate = (direction: -1 | 1) => {
+    navigate(direction);
+    inputRef.current?.focus({ preventScroll: true });
+  };
 
   return (
     <Transition
@@ -30,11 +144,7 @@ export function DirectorySearch({ search, onClose }: DirectorySearchProps) {
       duration={reduceMotion ? 0 : 160}
       exitDuration={reduceMotion ? 0 : 120}
       timingFunction="ease-out"
-      transition={{
-        in: { opacity: 1, transform: 'translateY(0)' },
-        out: { opacity: 0, transform: 'translateY(-4px)' },
-        transitionProperty: 'opacity, transform',
-      }}
+      transition={searchTransition}
     >
       {(styles) => (
         <div
@@ -46,83 +156,49 @@ export function DirectorySearch({ search, onClose }: DirectorySearchProps) {
         >
           <div className={classes.search}>
             <TextInput
-              ref={inputRef}
+              ref={assignInputRef}
               type="search"
+              variant="unstyled"
+              size="xs"
               className={classes.input}
-              size="sm"
               aria-label={t('searchDirectory')}
               aria-keyshortcuts="Control+f"
               placeholder={t('searchPlaceholder')}
-              leftSection={<Search size={16} strokeWidth={1.5} aria-hidden="true" />}
+              leftSection={<Search size={iconSize} strokeWidth={1.5} aria-hidden="true" />}
+              leftSectionWidth={actionButtonSize}
               leftSectionPointerEvents="none"
               value={query}
               onChange={(event) => changeQuery(event.currentTarget.value)}
-              onKeyDown={(event) => {
-                if (
-                  event.key !== 'Enter' ||
-                  event.nativeEvent.isComposing ||
-                  event.altKey ||
-                  event.ctrlKey ||
-                  event.metaKey
-                )
-                  return;
-                event.preventDefault();
-                navigate(event.shiftKey ? -1 : 1);
-              }}
+              onKeyDown={handleInputKeyDown}
             />
-            {query && (
-              <output
-                className={classes.position}
-                aria-label={
-                  total === 0
-                    ? t('noSearchResults')
-                    : t('searchMatchPosition', { current: index + 1, total })
-                }
-                title={total === 0 ? t('noSearchResults') : undefined}
-              >
-                {total === 0 ? t('noSearchResults') : `${index + 1} / ${total}`}
-              </output>
-            )}
-            {query &&
-              total > 0 &&
-              (
-                [
-                  {
-                    direction: -1,
-                    label: 'previousSearchMatch',
-                    shortcut: 'Shift+Enter',
-                    Icon: ChevronUp,
-                  },
-                  { direction: 1, label: 'nextSearchMatch', shortcut: 'Enter', Icon: ChevronDown },
-                ] as const
-              ).map(({ direction, label, shortcut, Icon }) => (
-                <ActionIcon
-                  key={direction}
-                  size="sm"
-                  variant="subtle"
-                  color="gray"
-                  aria-label={t(label)}
-                  aria-keyshortcuts={shortcut}
-                  title={`${t(label)} (${shortcut})`}
-                  onClick={() => {
-                    navigate(direction);
-                    inputRef.current?.focus();
-                  }}
-                >
-                  <Icon size={16} strokeWidth={1.5} aria-hidden="true" />
-                </ActionIcon>
-              ))}
-            <ActionIcon
-              size="sm"
-              variant="subtle"
-              color="gray"
-              aria-label={t('closeSearch')}
-              aria-keyshortcuts="Escape"
-              title={`${t('closeSearch')} (Esc)`}
-              onClick={onClose}
+            <output
+              className={classes.position}
+              data-empty={status.empty || undefined}
+              aria-label={status.ariaLabel}
+              title={status.title}
             >
-              <X size={16} strokeWidth={1.5} aria-hidden="true" />
-            </ActionIcon>
+              {status.text}
+            </output>
+            <span className={classes.divider} aria-hidden="true" />
+            <div className={classes.actions}>
+              {navigationActions.map(({ direction, labelKey, shortcut, icon }) => (
+                <SearchActionButton
+                  key={direction}
+                  label={t(labelKey)}
+                  shortcut={shortcut}
+                  disabled={!hasMatches}
+                  icon={icon}
+                  onClick={() => handleNavigate(direction)}
+                />
+              ))}
+              <SearchActionButton
+                label={t('closeSearch')}
+                shortcut="Escape"
+                shortcutHint="Esc"
+                icon={X}
+                onClick={onClose}
+              />
+            </div>
           </div>
         </div>
       )}
